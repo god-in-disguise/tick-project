@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "TICK",
+    "slug": "tick-mobile-mockup",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "tick",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.tick.mockup"
+    },
+    "android": {
+      "package": "app.tick.mockup"
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
+
