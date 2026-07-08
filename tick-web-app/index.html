@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TICK Web Mockup</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <section id="boardScreen" class="screen board-screen">
+        <header class="topbar">
+          <div class="brand-lockup">
+            <div class="brand">TICK</div>
+            <div>
+              <div class="eyebrow">Volatility board</div>
+              <div class="subline">Crypto, stocks, ETFs, commodities, FX.</div>
+            </div>
+          </div>
+          <div class="topbar-right">
+            <label class="search-box">
+              <span>Search</span>
+              <input id="marketSearch" type="search" placeholder="BTC, NVDA, ETF..." autocomplete="off" />
+            </label>
+            <div class="metric-pill">
+              <span>Balance</span>
+              <strong id="boardBalance">$420.60</strong>
+            </div>
+          </div>
+        </header>
+
+        <main class="board-main">
+          <section class="board-copy">
+            <h1>Scan the market by movement, not menus.</h1>
+            <p>
+              The web start screen is a wall of live charts across crypto, stocks, ETFs, and macro markets.
+              Pick the chart first, then trade it in the workstation.
+            </p>
+          </section>
+          <section id="chartGrid" class="chart-grid" aria-label="Live market charts"></section>
+        </main>
+      </section>
+
+      <section id="workspaceScreen" class="screen workspace-screen hidden">
+        <header class="workbar">
+          <button id="backToBoard" class="ghost-button">Board</button>
+          <div class="workbar-market">
+            <strong id="workSymbol">BTC</strong>
+            <span id="workName">Bitcoin</span>
+            <span id="workPrice">$0.00</span>
+            <span id="workMove" class="move-up">+0.0%</span>
+          </div>
+          <div class="workbar-right">
+            <div class="metric-pill">
+              <span>Balance</span>
+              <strong id="workBalance">$420.60</strong>
+            </div>
+          </div>
+        </header>
+
+        <main id="workbench" class="workbench">
+          <aside id="marketRail" class="market-rail" aria-label="Markets"></aside>
+
+          <section class="desk-chart">
+            <div class="chart-header">
+              <div>
+                <div class="eyebrow" id="deskAssetClass">CRYPTO</div>
+                <h2 id="deskTitle">BTC Bitcoin</h2>
+              </div>
+              <div class="chart-header-right">
+                <div class="desk-price">
+                  <strong id="deskPrice">$0.00</strong>
+                  <span id="deskMove" class="move-up">+0.0%</span>
+                </div>
+                <button id="focusToggle" class="ghost-button chart-focus-button">Focus</button>
+              </div>
+            </div>
+            <div id="marketStats" class="market-stats"></div>
+            <div class="main-chart-shell">
+              <canvas id="mainChart"></canvas>
+              <div id="positionBadge" class="position-badge hidden"></div>
+            </div>
+          </section>
+
+          <aside class="order-panel">
+            <button id="collapsePanel" class="panel-x" aria-label="Collapse to focus view">X</button>
+            <div class="panel-head">
+              <div class="eyebrow">Execution</div>
+              <h3 id="orderTitle">BTC trade</h3>
+            </div>
+
+            <div class="terms-grid">
+              <div>
+                <span>Size</span>
+                <strong id="termSize">$25</strong>
+              </div>
+              <div>
+                <span>Leverage</span>
+                <strong id="termLeverage">100x</strong>
+              </div>
+              <div>
+                <span>Notional</span>
+                <strong id="termNotional">$2500</strong>
+              </div>
+              <div>
+                <span>Open fee</span>
+                <strong id="termFee">$1.00</strong>
+              </div>
+              <div>
+                <span>Est. liq move</span>
+                <strong id="termLiq">0.8%</strong>
+              </div>
+              <div>
+                <span>Route</span>
+                <strong id="termRoute">Best venue</strong>
+              </div>
+            </div>
+
+            <div class="depth-panel">
+              <div class="depth-head">
+                <span>Depth</span>
+                <strong>Live book</strong>
+              </div>
+              <div id="depthRows" class="depth-rows"></div>
+            </div>
+
+            <div class="preset-row" id="stakePresets"></div>
+            <div class="preset-row" id="leveragePresets"></div>
+
+            <div id="orderActions" class="order-actions">
+              <button id="longButton" class="trade-button long">Up</button>
+              <button id="shortButton" class="trade-button short">Down</button>
+            </div>
+          </aside>
+        </main>
+
+        <main id="focusDesk" class="focus-desk hidden">
+          <section class="focus-chart-shell">
+            <div class="focus-top">
+              <div>
+                <strong id="focusSymbol">BTC</strong>
+                <span id="focusPrice">$0.00</span>
+              </div>
+              <button id="expandTool" class="ghost-button">Expand</button>
+            </div>
+            <canvas id="focusChart"></canvas>
+            <div id="focusPnl" class="focus-pnl hidden"></div>
+            <div class="focus-actions">
+              <button id="focusLong" class="trade-button long">Up</button>
+              <button id="focusShort" class="trade-button short">Down</button>
+              <button id="focusClose" class="trade-button close hidden">Close</button>
+            </div>
+          </section>
+        </main>
+      </section>
+    </div>
+
+    <script src="./main.js"></script>
+  </body>
+</html>

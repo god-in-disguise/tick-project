@@ -22,7 +22,7 @@ import Svg, {
 } from "react-native-svg";
 
 type Direction = "up" | "down";
-type Tab = "trade" | "activity" | "wallet" | "profile";
+type Tab = "dashboard" | "trade" | "profile";
 type Multiplier = 5 | 15 | 25 | 50 | 100;
 type AssetClass = "CRYPTO" | "STOCK" | "INDEX" | "COMMODITY" | "FX";
 
@@ -366,9 +366,18 @@ export default function App() {
             onPrev={prevMarket}
           />
         )}
-        {tab === "activity" && <Activity trades={trades} />}
-        {tab === "wallet" && <Wallet balance={balance} position={position} livePnl={livePnl} />}
-        {tab === "profile" && <Profile stake={stake} multiplier={multiplier} onStake={setStake} onMultiplier={setMultiplier} />}
+        {tab === "dashboard" && <Dashboard trades={trades} markets={liveMarkets} />}
+        {tab === "profile" && (
+          <Profile
+            stake={stake}
+            multiplier={multiplier}
+            balance={balance}
+            position={position}
+            livePnl={livePnl}
+            onStake={setStake}
+            onMultiplier={setMultiplier}
+          />
+        )}
         <BottomNav tab={tab} onTab={setTab} />
       </View>
     </SafeAreaView>
@@ -544,7 +553,7 @@ function Trade({
               }
             ]}
           >
-            <Text style={styles.closedLabel}>Cashed out</Text>
+            <Text style={styles.closedLabel}>Position closed</Text>
             <Text style={[styles.closedValue, closedTrade.pnl >= 0 ? styles.greenText : styles.redText]}>
               {formatSignedMoney(closedTrade.pnl)}
             </Text>
@@ -577,7 +586,7 @@ function Trade({
               <MiniTerm label="Risk" value={`$${position.stake}`} />
             </View>
             <Pressable style={styles.cashButton} onPress={onCashOut}>
-              <Text style={styles.cashText}>Cash out</Text>
+              <Text style={styles.cashText}>Close</Text>
             </Pressable>
           </View>
         ) : null}
@@ -689,14 +698,91 @@ function Chart({
   );
 }
 
+function Dashboard({
+  trades,
+  markets
+}: {
+  trades: Trade[];
+  markets: Market[];
+}) {
+  const pnl = trades.reduce((sum, trade) => sum + trade.pnl, 0);
+  const wins = trades.filter((trade) => trade.pnl > 0).length;
+  const winRate = trades.length > 0 ? Math.round((wins / trades.length) * 100) : 0;
+  const bestTrade = trades.reduce<Trade | null>((best, trade) => (!best || trade.pnl > best.pnl ? trade : best), null);
+  const hotMarket = markets.reduce((hot, market) => (Math.abs(market.move) > Math.abs(hot.move) ? market : hot), markets[0]);
+  const alertsHit = markets.filter((market) => Math.abs(market.move) >= 3).length;
+
+  return (
+    <ScrollView style={styles.page} contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
+      <Text style={styles.pageTitle}>TICK</Text>
+      <View style={styles.hotCard}>
+        <View>
+          <Text style={styles.micro}>Hot now</Text>
+          <Text style={styles.hotSymbol}>{hotMarket.symbol}</Text>
+          <Text style={styles.softText}>
+            {hotMarket.feedLabel} · {hotMarket.assetClass}
+          </Text>
+        </View>
+        <Text style={[styles.hotMove, hotMarket.move >= 0 ? styles.greenText : styles.redText]}>
+          {formatPercent(hotMarket.move)}
+        </Text>
+      </View>
+      <View style={styles.statsRow}>
+        <View style={styles.statTile}>
+          <Text style={styles.micro}>Alerts hit</Text>
+          <Text style={styles.statValue}>{alertsHit}</Text>
+        </View>
+        <View style={styles.statTile}>
+          <Text style={styles.micro}>Markets watched</Text>
+          <Text style={styles.statValue}>{markets.length}</Text>
+        </View>
+      </View>
+      <View style={styles.statsRow}>
+        <View style={styles.statTile}>
+          <Text style={styles.micro}>Best session</Text>
+          <Text style={[styles.statValue, (bestTrade?.pnl ?? 0) >= 0 ? styles.greenText : styles.redText]}>
+            {bestTrade ? formatSignedMoney(bestTrade.pnl) : "$0.00"}
+          </Text>
+        </View>
+        <View style={styles.statTile}>
+          <Text style={styles.micro}>Win rate</Text>
+          <Text style={styles.statValue}>{winRate}%</Text>
+        </View>
+      </View>
+      <View style={styles.sectionHead}>
+        <Text style={styles.boxTitle}>Recent trades</Text>
+        <Text style={styles.micro}>{trades.length} trades</Text>
+      </View>
+      {trades.map((trade) => (
+        <View key={trade.id} style={styles.listItem}>
+          <View>
+            <Text style={styles.listTitle}>
+              {trade.symbol} {trade.direction.toUpperCase()}
+            </Text>
+            <Text style={styles.micro}>{trade.duration}</Text>
+          </View>
+          <View style={styles.listRight}>
+            <Text style={[styles.listValue, trade.pnl >= 0 ? styles.greenText : styles.redText]}>
+              {formatSignedMoney(trade.pnl)}
+            </Text>
+            <Text style={styles.micro}>
+              {formatPercent(trade.pct)}
+            </Text>
+          </View>
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
 function Activity({ trades }: { trades: Trade[] }) {
   const pnl = trades.reduce((sum, trade) => sum + trade.pnl, 0);
 
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
-      <Text style={styles.pageTitle}>Activity</Text>
+      <Text style={styles.pageTitle}>History</Text>
       <View style={styles.bigStat}>
-        <Text style={styles.micro}>All-time result</Text>
+        <Text style={styles.micro}>Total result</Text>
         <Text style={[styles.bigStatValue, pnl >= 0 ? styles.greenText : styles.redText]}>
           {formatSignedMoney(pnl)}
         </Text>
@@ -762,14 +848,22 @@ function Wallet({
 function Profile({
   stake,
   multiplier,
+  balance,
+  position,
+  livePnl,
   onStake,
   onMultiplier
 }: {
   stake: number;
   multiplier: Multiplier;
+  balance: number;
+  position: Position | null;
+  livePnl: { usd: number; pct: number } | null;
   onStake: (stake: number) => void;
   onMultiplier: (multiplier: Multiplier) => void;
 }) {
+  const equity = balance + (position?.stake ?? 0) + (livePnl?.usd ?? 0);
+
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
       <Text style={styles.pageTitle}>Me</Text>
@@ -781,6 +875,19 @@ function Profile({
           <Text style={styles.profileName}>tick.tick</Text>
           <Text style={styles.micro}>Trading enabled</Text>
         </View>
+      </View>
+      <View style={styles.walletBox}>
+        <Text style={styles.micro}>TICK balance</Text>
+        <Text style={styles.walletAmount}>{formatMoney(equity)}</Text>
+        <Text style={styles.softText}>Available {formatMoney(balance)}</Text>
+      </View>
+      <View style={styles.walletActions}>
+        <Pressable style={styles.primaryAction}>
+          <Text style={styles.primaryActionText}>Deposit</Text>
+        </Pressable>
+        <Pressable style={styles.secondaryAction}>
+          <Text style={styles.secondaryActionText}>Withdraw</Text>
+        </Pressable>
       </View>
       <View style={styles.simpleBox}>
         <Text style={styles.boxTitle}>Preset</Text>
@@ -811,18 +918,33 @@ function Profile({
 }
 
 function BottomNav({ tab, onTab }: { tab: Tab; onTab: (tab: Tab) => void }) {
-  const items: { id: Tab; label: string }[] = [
-    { id: "trade", label: "Trade" },
-    { id: "activity", label: "History" },
-    { id: "wallet", label: "Wallet" },
+  const items: { id: Tab; label: string; primary?: boolean }[] = [
+    { id: "dashboard", label: "TICK" },
+    { id: "trade", label: "Trade", primary: true },
     { id: "profile", label: "Me" }
   ];
 
   return (
     <View style={styles.nav}>
       {items.map((item) => (
-        <Pressable key={item.id} style={[styles.navItem, tab === item.id && styles.navActive]} onPress={() => onTab(item.id)}>
-          <Text style={[styles.navText, tab === item.id && styles.navTextActive]}>{item.label}</Text>
+        <Pressable
+          key={item.id}
+          style={[
+            styles.navItem,
+            item.primary && styles.navTradeItem,
+            tab === item.id && (item.primary ? styles.navTradeActive : styles.navActive)
+          ]}
+          onPress={() => onTab(item.id)}
+        >
+          <Text
+            style={[
+              styles.navText,
+              item.primary && styles.navTradeText,
+              tab === item.id && (item.primary ? styles.navTradeTextActive : styles.navTextActive)
+            ]}
+          >
+            {item.label}
+          </Text>
         </Pressable>
       ))}
     </View>
@@ -876,15 +998,19 @@ function buildLineChart(points: number[], price: number, entryValue?: number) {
     const next = points[index + 1] ?? point;
     return previous * 0.22 + point * 0.56 + next * 0.22;
   });
-  const rawMin = Math.min(...smoothed, ...(entryValue === undefined ? [] : [entryValue]));
-  const rawMax = Math.max(...smoothed, ...(entryValue === undefined ? [] : [entryValue]));
+  const focusWindow = smoothed.slice(Math.max(0, smoothed.length - 128));
+  const rangeValues = entryValue === undefined ? focusWindow : [...focusWindow, entryValue];
+  const rawMin = Math.min(...rangeValues);
+  const rawMax = Math.max(...rangeValues);
   const rawSpan = Math.max(1, rawMax - rawMin);
-  const midpoint = (rawMax + rawMin) / 2;
-  const compressedSpan = rawSpan * 1.32;
-  const min = midpoint - compressedSpan / 2;
-  const max = midpoint + compressedSpan / 2;
+  const latestPoint = smoothed[smoothed.length - 1] ?? (rawMax + rawMin) / 2;
+  const latestPosition = clamp((latestPoint - rawMin) / rawSpan, 0, 1);
+  const bottomPad = rawSpan * (latestPosition < 0.22 ? 0.42 : 0.2) + 2;
+  const topPad = rawSpan * (latestPosition > 0.78 ? 0.42 : 0.2) + 2;
+  const min = rawMin - bottomPad;
+  const max = rawMax + topPad;
   const span = Math.max(1, max - min);
-  const toY = (value: number) => bottom - ((value - min) / span) * (bottom - top);
+  const toY = (value: number) => clamp(bottom - ((value - min) / span) * (bottom - top), top - 10, bottom + 10);
   const coords = smoothed.map((point, index) => ({
     x: left + (index / Math.max(1, smoothed.length - 1)) * (right - left),
     y: toY(point)
@@ -895,23 +1021,22 @@ function buildLineChart(points: number[], price: number, entryValue?: number) {
   const last = coords[coords.length - 1] ?? { x: right, y: bottom };
   const first = coords[0] ?? { x: left, y: bottom };
   const areaPath = `${linePath} L ${last.x.toFixed(2)} ${bottom.toFixed(2)} L ${first.x.toFixed(2)} ${bottom.toFixed(2)} Z`;
-  const lastPoint = smoothed[smoothed.length - 1] ?? midpoint;
+  const lastPoint = latestPoint;
   const bars: { x: number; y: number; width: number; height: number; up: boolean; opacity: number }[] = [];
-  const barStart = Math.max(1, smoothed.length - 60);
 
-  for (let index = barStart; index < smoothed.length; index += 3) {
+  for (let index = 1; index < smoothed.length; index += 3) {
     const delta = smoothed[index] - (smoothed[index - 1] ?? smoothed[index]);
-    const magnitude = clamp(Math.abs(delta) / 2.1, 0.1, 1);
+    const magnitude = clamp(Math.abs(delta) / 2.3, 0.08, 1);
     const x = left + (index / Math.max(1, smoothed.length - 1)) * (right - left);
-    const height = 4 + magnitude * 22;
+    const height = 3 + magnitude * 18;
 
     bars.push({
-      x: x - 1.35,
-      y: bottom - 5 - height,
-      width: 2.7,
+      x: x - 1.15,
+      y: bottom - 1.5 - height,
+      width: 2.3,
       height,
       up: delta >= 0,
-      opacity: 0.07 + magnitude * 0.17
+      opacity: 0.045 + magnitude * 0.13
     });
   }
 
@@ -924,7 +1049,7 @@ function buildLineChart(points: number[], price: number, entryValue?: number) {
       label: formatAxisPrice(estimatedPrice)
     };
   });
-  const entry = entryValue === undefined ? undefined : { x: right, y: toY(entryValue) };
+  const entry = entryValue === undefined ? undefined : { x: right, y: clamp(toY(entryValue), top + 4, bottom - 4) };
   const priceTag = {
     y: clamp(last.y - 9.5, top + 1, bottom - 19),
     label: formatAxisPrice(price)
@@ -1020,7 +1145,9 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "100%",
     maxWidth: 430,
-    backgroundColor: c.bg
+    backgroundColor: c.bg,
+    position: "relative",
+    overflow: "hidden"
   },
   tradeScreen: {
     flex: 1,
@@ -1255,8 +1382,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 14,
     right: 14,
-    bottom: 42,
-    minHeight: 76,
+    bottom: 116,
+    minHeight: 70,
     borderRadius: 18,
     backgroundColor: "rgba(12,19,21,0.72)",
     borderWidth: 1,
@@ -1325,8 +1452,8 @@ const styles = StyleSheet.create({
     gap: 8
   },
   cashButton: {
-    width: 108,
-    height: 58,
+    width: 104,
+    height: 54,
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
@@ -1343,7 +1470,7 @@ const styles = StyleSheet.create({
   pageContent: {
     paddingHorizontal: 18,
     paddingTop: 22,
-    paddingBottom: 22
+    paddingBottom: 104
   },
   pageTitle: {
     color: c.text,
@@ -1365,6 +1492,57 @@ const styles = StyleSheet.create({
     fontSize: 42,
     fontWeight: "900",
     marginTop: 4
+  },
+  hotCard: {
+    minHeight: 132,
+    borderRadius: 10,
+    backgroundColor: c.panel,
+    borderWidth: 1,
+    borderColor: c.line,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12
+  },
+  hotSymbol: {
+    color: c.text,
+    fontSize: 45,
+    fontWeight: "900",
+    lineHeight: 49,
+    marginTop: 3
+  },
+  hotMove: {
+    fontSize: 25,
+    fontWeight: "900"
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 14
+  },
+  statTile: {
+    flex: 1,
+    minHeight: 76,
+    borderRadius: 10,
+    backgroundColor: c.panel,
+    borderWidth: 1,
+    borderColor: c.line,
+    padding: 13,
+    justifyContent: "center"
+  },
+  statValue: {
+    color: c.text,
+    fontSize: 23,
+    fontWeight: "900",
+    marginTop: 4
+  },
+  sectionHead: {
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
   },
   listItem: {
     minHeight: 72,
@@ -1398,7 +1576,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: c.line,
     padding: 18,
-    justifyContent: "center"
+    justifyContent: "center",
+    marginTop: 12
   },
   walletAmount: {
     color: c.text,
@@ -1525,25 +1704,43 @@ const styles = StyleSheet.create({
     marginBottom: 14
   },
   nav: {
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: "rgba(22,32,36,0.82)",
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 10,
+    height: 62,
+    borderRadius: 31,
+    backgroundColor: "rgba(8,14,15,0.42)",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    borderColor: "rgba(255,255,255,0.045)",
     flexDirection: "row",
-    padding: 5,
-    marginHorizontal: 32,
-    marginBottom: 10,
-    flexShrink: 0
+    alignItems: "center",
+    padding: 6,
+    marginHorizontal: 34,
+    zIndex: 20,
+    elevation: 20
   },
   navItem: {
     flex: 1,
-    borderRadius: 20,
+    height: 46,
+    borderRadius: 23,
     alignItems: "center",
     justifyContent: "center"
   },
   navActive: {
-    backgroundColor: c.text
+    backgroundColor: "rgba(255,255,255,0.1)"
+  },
+  navTradeItem: {
+    flex: 1.28,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: c.text,
+    borderWidth: 1,
+    borderColor: "rgba(244,251,250,0.86)",
+    marginHorizontal: 4
+  },
+  navTradeActive: {
+    transform: [{ scale: 1.03 }]
   },
   navText: {
     color: "rgba(148,168,161,0.58)",
@@ -1551,6 +1748,14 @@ const styles = StyleSheet.create({
     fontWeight: "900"
   },
   navTextActive: {
+    color: c.text
+  },
+  navTradeText: {
+    color: c.bg,
+    fontSize: 15,
+    fontWeight: "900"
+  },
+  navTradeTextActive: {
     color: c.bg
   }
 });
