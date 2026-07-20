@@ -20,6 +20,8 @@ QUOTE_TTL_SECONDS = float(os.getenv("TICK_QUOTE_TTL_SECONDS", "5"))
 STALE_EXECUTION_SECONDS = float(os.getenv("TICK_STALE_EXECUTION_SECONDS", "120"))
 MONITOR_INTERVAL_SECONDS = float(os.getenv("TICK_MONITOR_INTERVAL_SECONDS", "0.75"))
 POSITION_ABSENT_CONFIRM_SECONDS = float(os.getenv("TICK_POSITION_ABSENT_CONFIRM_SECONDS", "1.0"))
+BALANCE_RECONCILE_TIMEOUT_SECONDS = float(os.getenv("TICK_BALANCE_RECONCILE_TIMEOUT_SECONDS", "8"))
+BALANCE_RECONCILE_POLL_SECONDS = float(os.getenv("TICK_BALANCE_RECONCILE_POLL_SECONDS", "0.35"))
 
 
 class ExecutionError(Exception):
@@ -529,6 +531,7 @@ class ExecutionService:
         positions = account.get("positions") or []
         pending = self.store.pending_executions()
         self._reconcile_open_positions(account, positions, pending)
+        self._repair_latest_closed_balance(account, positions, pending)
         now = time.time()
         for execution in pending:
             if execution["id"] in self._running:
@@ -791,7 +794,12 @@ class ExecutionService:
     ) -> None:
         reconcile_started = time.perf_counter()
         try:
-            exact_balance_after = self._fresh_usdc_balance()
+            closing = self.store.get_execution(execution_id)
+            close_balance_before = (closing or {}).get("balanceBefore")
+            exact_balance_after = self._wait_for_post_close_balance(
+                close_balance_before,
+                completed_result,
+            )
             exact_realized = (
                 exact_balance_after - float(balance_before)
                 if exact_balance_after is not None and balance_before is not None
@@ -853,6 +861,72 @@ class ExecutionService:
                     self._account.setdefault("balances", {})["usdc"] = value
             return float(value)
         return _usdc_balance(self._account_snapshot(max_age=0))
+
+    def _wait_for_post_close_balance(
+        self,
+        close_balance_before: Any,
+        completed_result: dict[str, Any],
+    ) -> float | None:
+        deadline = time.monotonic() + max(0.0, BALANCE_RECONCILE_TIMEOUT_SECONDS)
+        last_balance: float | None = None
+        should_wait_for_move = (
+            _is_successful_close(completed_result)
+            and close_balance_before is not None
+        )
+        while True:
+            balance = self._fresh_usdc_balance()
+            last_balance = balance
+            if not should_wait_for_move or not _same_amount(balance, close_balance_before):
+                return balance
+            if time.monotonic() >= deadline:
+                return last_balance
+            time.sleep(max(0.05, BALANCE_RECONCILE_POLL_SECONDS))
+
+    def _repair_latest_closed_balance(
+        self,
+        account: dict[str, Any],
+        positions: list[dict[str, Any]],
+        pending: list[dict[str, Any]],
+    ) -> None:
+        if positions or pending:
+            return
+        latest = self.store.latest_execution()
+        if not latest or latest["action"] != "close" or latest["status"] != "closed":
+            return
+        result = latest.get("result") or {}
+        if not _is_successful_close(result):
+            return
+        current_balance = _usdc_balance(account)
+        if current_balance is None or _same_amount(current_balance, latest.get("balanceAfter")):
+            return
+        position = latest.get("position") or (result.get("position") or {})
+        if not position.get("pair"):
+            return
+        opening = self.store.latest_open_for_pair(position["pair"])
+        balance_before = opening.get("balanceBefore") if opening else None
+        realized = current_balance - float(balance_before) if balance_before is not None else None
+        repaired_result = {
+            **result,
+            "realizedWalletDelta": realized,
+            "balanceReconciled": True,
+            "balanceRepaired": True,
+        }
+        self.store.update_execution(
+            latest["id"],
+            balanceAfter=current_balance,
+            realizedWalletDelta=realized,
+            result=repaired_result,
+            error=None,
+        )
+        self._event(
+            latest["id"],
+            "balance_repaired",
+            {
+                "balanceAfter": current_balance,
+                "previousBalanceAfter": latest.get("balanceAfter"),
+                "realizedWalletDelta": realized,
+            },
+        )
 
     @staticmethod
     def _optimistic_position(quote: dict[str, Any]) -> dict[str, Any]:
@@ -936,6 +1010,21 @@ def _external_terminal_status(
     if ticket > 0 and realized <= -(ticket * 0.90):
         return "liquidated"
     return "external_closed"
+
+
+def _is_successful_close(result: dict[str, Any]) -> bool:
+    tx = result.get("tx") or {}
+    return (
+        result.get("closed") is True
+        and result.get("closeTxFailed") is not True
+        and int(tx.get("status", 1)) == 1
+    )
+
+
+def _same_amount(left: Any, right: Any, *, tolerance: float = 0.000001) -> bool:
+    if left is None or right is None:
+        return False
+    return abs(float(left) - float(right)) <= tolerance
 
 
 def _compact_external_event(event: dict[str, Any] | None) -> dict[str, Any] | None:

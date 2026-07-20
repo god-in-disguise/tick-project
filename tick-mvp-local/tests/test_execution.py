@@ -170,6 +170,32 @@ class ExecutionServiceTest(unittest.TestCase):
         self.assertEqual(closed["result"]["finalizationSource"], "position_absent_after_failed_close")
         self.assertEqual(closed["realizedWalletDelta"], -10.0)
 
+    def test_successful_close_waits_for_post_close_balance_to_move(self) -> None:
+        quote = self.service.quote("BTC-USD", "long", Decimal("20"), Decimal("100"))
+        opened = self.service.open(quote["quoteId"], "open-before-delayed-balance")
+        wait_for(lambda: self.service.execution(opened["id"]), "open")
+
+        def delayed_balance_close(pair, position=None):
+            with self.connector._lock:
+                self.connector.position = None
+
+            def settle_balance():
+                time.sleep(0.15)
+                with self.connector._lock:
+                    self.connector.balance = 102.0
+
+            threading.Thread(target=settle_balance, daemon=True).start()
+            return {"status": "closed", "closed": True, "tx": {"txHash": "0xdelayedclose", "status": 1}}
+
+        self.connector.close_position = delayed_balance_close  # type: ignore[method-assign]
+        closing = self.service.close("BTC-USD", "close-delayed-balance")
+        closed = wait_for(lambda: self.service.execution(closing["id"]), "closed")
+        closed = wait_for_result(lambda: self.service.execution(closed["id"]), timeout=5)
+
+        self.assertEqual(closed["realizedWalletDelta"], 2.0)
+        self.assertEqual(closed["balanceAfter"], 102.0)
+        self.assertTrue(closed["result"]["balanceReconciled"])
+
     def test_open_position_disappearance_is_caught_without_user_close(self) -> None:
         quote = self.service.quote("BTC-USD", "long", Decimal("20"), Decimal("100"))
         opened = self.service.open(quote["quoteId"], "open-before-liquidation")
