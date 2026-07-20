@@ -215,6 +215,26 @@ class ExecutionServiceTest(unittest.TestCase):
         self.assertEqual(finalized["realizedWalletDelta"], -20.0)
         self.assertEqual(self.service.state()["positions"], [])
 
+    def test_indexing_position_is_not_closed_by_rest_absence_inside_grace(self) -> None:
+        quote = self.service.quote("BTC-USD", "long", Decimal("20"), Decimal("100"))
+        opened = self.service.open(quote["quoteId"], "open-indexing-grace")
+        opened = wait_for(lambda: self.service.execution(opened["id"]), "open")
+        position = {**opened["position"], "indexing": True}
+        self.service.store.update_execution(opened["id"], position=position)
+
+        with self.connector._lock:
+            self.connector.position = None
+            self.connector.balance = 80.0
+        with self.service._state_lock:
+            self.service._account_updated_at = 0.0
+
+        with patch("backend.execution.POSITION_INDEXING_GRACE_SECONDS", 60):
+            self.service._reconcile_pending()
+
+        still_open = self.service.execution(opened["id"])
+        self.assertEqual(still_open["status"], "open")
+        self.assertTrue(still_open["position"]["indexing"])
+
 
 def wait_for(reader, status: str, timeout: float = 3.0):
     deadline = time.time() + timeout

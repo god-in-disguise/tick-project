@@ -57,6 +57,8 @@ export type Position = {
   roePct: number;
   openedAt: number;
   optimistic?: boolean;
+  venueConfirmed?: boolean;
+  indexing?: boolean;
   closeAvailable?: boolean;
 };
 

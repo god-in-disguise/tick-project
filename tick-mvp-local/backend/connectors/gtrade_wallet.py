@@ -237,11 +237,18 @@ class GTradeWallet:
             initiation_tx_hash=tx["txHash"],
         )
         position = wait["position"]
+        public_position = None
+        if position:
+            public_position = (
+                _position_public(position, {pair.pair_index: pair.pair}, {pair.pair: {"mid": float(price)}})
+                if _has_full_position_payload(position)
+                else _callback_position_public(position, pair, side, ticket_usd, leverage, price)
+            )
         return {
             "status": "open" if position else "pending_execution",
             "tx": tx,
             "wait": {key: value for key, value in wait.items() if key != "position"},
-            "position": _position_public(position, {pair.pair_index: pair.pair}, {pair.pair: {"mid": float(price)}}) if position else None,
+            "position": public_position,
             "rawPosition": position,
         }
 
@@ -631,6 +638,7 @@ class GTradeWallet:
                             if not event:
                                 continue
                             trade = event.get("trade") or {}
+                            position_usable = execution_open and trade.get("index") is not None
 
                         self._annotate_callback_timing(
                             log_web3,
@@ -657,8 +665,11 @@ class GTradeWallet:
                                 "secondsAfterInitiationBlock": event.get("secondsAfterInitiationBlock"),
                                 "pollCount": polls,
                                 "elapsedMs": _elapsed_ms(started),
+                                "positionUsable": position_usable,
                             },
                         )
+                        if execution_open and not position_usable:
+                            continue
                         return {
                             "source": source,
                             "event": event,
@@ -746,8 +757,11 @@ class GTradeWallet:
             "user": Web3.to_checksum_address(owner),
             "pairIndex": pair_index,
         }
-        if position_index is not None:
-            trade["index"] = position_index
+        inferred_index = position_index
+        if inferred_index is None and execution_open:
+            inferred_index = _infer_trade_index_from_topics(topics, owner=owner, pair_index=pair_index)
+        if inferred_index is not None:
+            trade["index"] = inferred_index
         return {
             "name": "RawTradeTopicLog",
             "matchKind": "raw_topic",
@@ -1414,6 +1428,57 @@ def _position_public(
     }
 
 
+def _has_full_position_payload(item: dict[str, Any]) -> bool:
+    trade = item.get("trade") or {}
+    return all(key in trade for key in ("index", "pairIndex", "openPrice", "collateralAmount", "leverage", "long"))
+
+
+def _callback_position_public(
+    item: dict[str, Any],
+    pair: GTradePair,
+    side: str,
+    ticket_usd: Decimal,
+    leverage: Decimal,
+    price: Decimal,
+) -> dict[str, Any]:
+    trade = item.get("trade") or {}
+    raw = item.get("raw") or {}
+    entry = _event_price(raw) or price
+    idx = trade.get("index")
+    return {
+        "pair": normalize_pair(pair.pair),
+        "pairId": pair.pair_index,
+        "idx": int(idx) if idx is not None else None,
+        "side": side,
+        "entry": float(entry),
+        "mark": float(entry),
+        "collateral": float(ticket_usd),
+        "leverage": float(leverage),
+        "pnl": 0.0,
+        "roePct": 0.0,
+        "openedAt": int(raw.get("blockTimestamp") or time.time()),
+        "closeAvailable": idx is not None,
+        "venueConfirmed": True,
+        "indexing": True,
+        "callbackTxHash": raw.get("transactionHash"),
+        "callbackBlock": raw.get("blockNumber"),
+    }
+
+
+def _event_price(event: dict[str, Any]) -> Decimal | None:
+    for key in ("marketPrice", "oraclePrice"):
+        value = event.get(key)
+        if value is None:
+            continue
+        try:
+            price = Decimal(str(value)) / Decimal(10**10)
+        except Exception:
+            continue
+        if price > 0:
+            return price
+    return None
+
+
 def _trade_from_event_args(value: Any) -> dict[str, Any]:
     if value is None:
         return {}
@@ -1465,6 +1530,25 @@ def _topic_u256(value: int | None) -> str:
     if value is None:
         return ""
     return "0x" + hex(int(value))[2:].rjust(64, "0")
+
+
+def _infer_trade_index_from_topics(topics: list[str], *, owner: str, pair_index: int) -> int | None:
+    owner_topic = _topic_address(owner).lower()
+    pair_topic = _topic_u256(pair_index).lower()
+    candidates: list[int] = []
+    for topic in topics[1:]:
+        normalized = topic.lower()
+        if normalized in {owner_topic, pair_topic}:
+            continue
+        try:
+            value = int(normalized, 16)
+        except ValueError:
+            continue
+        if value in {0, 1, 2, 3, pair_index}:
+            continue
+        if 0 <= value <= 1_000_000:
+            candidates.append(value)
+    return candidates[-1] if candidates else None
 
 
 def _tx_succeeded(tx: dict[str, Any]) -> bool:

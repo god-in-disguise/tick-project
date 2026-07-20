@@ -196,7 +196,7 @@ export function TradeScreen(props: Props) {
 
         {position ? (
           <View pointerEvents="none" style={styles.pnlBadge}>
-            <Text style={styles.pnlMeta}>{closing ? "CLOSING" : position.optimistic ? "PENDING" : position.side.toUpperCase()} · {position.leverage}x</Text>
+            <Text style={styles.pnlMeta}>{closing ? "CLOSING" : position.optimistic ? "PENDING" : position.indexing ? "LIVE" : position.side.toUpperCase()} · {position.leverage}x</Text>
             {closing ? (
               <Text style={styles.pendingValue}>Exiting</Text>
             ) : (
@@ -204,7 +204,7 @@ export function TradeScreen(props: Props) {
                 {formatSignedMoney(position.estimatedNetPnl)}
               </Text>
             )}
-            <Text style={styles.pnlEstimate}>{closing ? "market close sent" : position.optimistic ? "venue confirmation" : "estimated net"}</Text>
+            <Text style={styles.pnlEstimate}>{closing ? "market close sent" : position.optimistic ? "venue confirmation" : position.indexing ? "callback confirmed" : "estimated net"}</Text>
           </View>
         ) : execution?.status === "opening" || props.submitting === "long" || props.submitting === "short" ? (
           <View pointerEvents="none" style={styles.pnlBadge}>

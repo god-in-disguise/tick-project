@@ -20,6 +20,7 @@ QUOTE_TTL_SECONDS = float(os.getenv("TICK_QUOTE_TTL_SECONDS", "5"))
 STALE_EXECUTION_SECONDS = float(os.getenv("TICK_STALE_EXECUTION_SECONDS", "120"))
 MONITOR_INTERVAL_SECONDS = float(os.getenv("TICK_MONITOR_INTERVAL_SECONDS", "0.75"))
 POSITION_ABSENT_CONFIRM_SECONDS = float(os.getenv("TICK_POSITION_ABSENT_CONFIRM_SECONDS", "1.0"))
+POSITION_INDEXING_GRACE_SECONDS = float(os.getenv("TICK_POSITION_INDEXING_GRACE_SECONDS", "12"))
 BALANCE_RECONCILE_TIMEOUT_SECONDS = float(os.getenv("TICK_BALANCE_RECONCILE_TIMEOUT_SECONDS", "8"))
 BALANCE_RECONCILE_POLL_SECONDS = float(os.getenv("TICK_BALANCE_RECONCILE_POLL_SECONDS", "0.35"))
 
@@ -603,8 +604,14 @@ class ExecutionService:
                 self._missing_positions.pop(_position_key(opening), None)
                 continue
 
-            if _matching_position(positions, opening["pair"], previous):
+            matched_position = _matching_position(positions, opening["pair"], previous)
+            if matched_position:
+                if previous.get("indexing"):
+                    self.store.update_execution(opening["id"], position=matched_position)
                 self._missing_positions.pop(_position_key(opening), None)
+                continue
+
+            if previous.get("indexing") and now - float(opening["updatedAt"]) < POSITION_INDEXING_GRACE_SECONDS:
                 continue
 
             missing_key = _position_key(opening)
@@ -1082,7 +1089,11 @@ def _timing_report(execution: dict[str, Any], events: list[dict[str, Any]]) -> d
     result = execution.get("result") or {}
     tx = result.get("tx") or _first_payload_value(normalized_events, "tx_result", "tx") or {}
     wait = result.get("wait") or _first_payload_value(normalized_events, "tx_result", "wait") or {}
-    direct_log_wait = wait if wait.get("source") == "direct_rpc_log" else (wait.get("directLogWait") or {})
+    direct_log_wait = (
+        wait
+        if str(wait.get("source") or "") in {"direct_rpc_log", "direct_wss_log", "direct_http_log"}
+        else (wait.get("directLogWait") or {})
+    )
     direct_log_event = direct_log_wait.get("event") or {}
     return {
         "execution": execution,
