@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "TICK MVP Local",
+    "slug": "tick-mvp-local-expo",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "sdkVersion": "54.0.0",
+    "platforms": ["ios", "android", "web"]
+  }
+}

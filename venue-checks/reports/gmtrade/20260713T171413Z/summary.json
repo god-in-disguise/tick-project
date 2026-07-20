@@ -1,0 +1,20 @@
+{
+  "runs": 3,
+  "avgOpenRequestMs": "8960.4",
+  "avgOpenEndToEndMs": "14431.73333333333333333333333",
+  "avgStopRequestMs": "4628.533333333333333333333333",
+  "avgCloseRequestMs": "5467.3",
+  "avgCloseEndToEndMs": "9213.066666666666666666666667",
+  "totalSolDelta": "-0.000657558",
+  "totalUsdcDelta": "-1.473388",
+  "finalPositions": [
+    [],
+    [],
+    []
+  ],
+  "finalOrders": [
+    {},
+    {},
+    {}
+  ]
+}

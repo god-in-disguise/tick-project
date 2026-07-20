@@ -1,0 +1,42 @@
+{
+  "preview": {
+    "wallet": "6QjvpSYfWovaeHpEX85cDMdXf6BSBs6oYquu1Phh9EkR",
+    "side": "long",
+    "collateralUsd": "20",
+    "leverage": "100",
+    "notionalUsd": "2000",
+    "referencePrice": "62240.2",
+    "acceptableOpenPrice": "62426.9206",
+    "fallbackStopTrigger": "62022.35930",
+    "quote": {
+      "referencePrice": "62240.2",
+      "acceptablePrice": "62426.9206",
+      "stopPrice": "62022.35930",
+      "oracleTimestamp": 1783962249,
+      "oracleAgeSeconds": 1.894
+    },
+    "holdSeconds": 3,
+    "simulationUnits": 112058,
+    "startingBalances": {
+      "sol": "0.135642074",
+      "usdc": "44.138727"
+    },
+    "startupMs": 8186.9,
+    "phaseTimingsMs": {
+      "configuration": 2.9,
+      "readPositions": 1750.6,
+      "readOrders": 1550.8,
+      "keeperPrice": 700.0,
+      "buildOpen": 2032.8,
+      "signAndSimulate": 1159.3,
+      "readBalances": 990.5
+    },
+    "stopIsAtomic": false,
+    "execute": false,
+    "submitMode": "direct-rpc",
+    "priorityLamports": 25000,
+    "skipPreflight": false,
+    "maxQuoteAgeAtSubmitSeconds": 5.0,
+    "maxQuoteDriftBps": "10"
+  }
+}

@@ -1,0 +1,187 @@
+{
+  "preview": {
+    "wallet": "6QjvpSYfWovaeHpEX85cDMdXf6BSBs6oYquu1Phh9EkR",
+    "side": "long",
+    "collateralUsd": "20",
+    "leverage": "100",
+    "notionalUsd": "2000",
+    "referencePrice": "62211.46",
+    "acceptableOpenPrice": "62398.09438",
+    "fallbackStopTrigger": "61993.719890",
+    "quote": {
+      "referencePrice": "62211.46",
+      "acceptablePrice": "62398.09438",
+      "stopPrice": "61993.719890",
+      "oracleTimestamp": 1783962962,
+      "oracleAgeSeconds": 1.25
+    },
+    "holdSeconds": 3.0,
+    "simulationUnits": 109058,
+    "startingBalances": {
+      "sol": "0.135076550",
+      "usdc": "42.069747"
+    },
+    "startupMs": 7770.2,
+    "phaseTimingsMs": {
+      "configuration": 1.3,
+      "readPositions": 1485.7,
+      "readOrders": 1603.7,
+      "keeperPrice": 663.8,
+      "buildOpen": 1980.5,
+      "signAndSimulate": 1011.2,
+      "readBalances": 1023.8
+    },
+    "stopIsAtomic": false,
+    "execute": true,
+    "submitMode": "direct-rpc",
+    "priorityLamports": 25000,
+    "skipPreflight": false,
+    "maxQuoteAgeAtSubmitSeconds": 5.0,
+    "maxQuoteDriftBps": "10"
+  },
+  "startedAt": 1783962967.266739,
+  "openQuote": {
+    "referencePrice": "62214.93",
+    "acceptablePrice": "62401.57479",
+    "stopPrice": "61997.177745",
+    "oracleTimestamp": 1783962966,
+    "oracleAgeSeconds": 1.766
+  },
+  "openRequest": {
+    "signature": "676RDRvMkEz7ytWPjnLzA7rb9SqUuafQvZg558TCMcyRzgRbZap6unMZSTLQBgMeakHSAnwpRWZcW8GqLhNb39pw",
+    "order": "CKwPPyC4FizkhSwGJjuRYh6x6ZncPuMqcAC19UyyaKtw",
+    "buildMs": 1947.4,
+    "signMs": 544.0,
+    "sendRpcMs": 506.6,
+    "signatureConfirmMs": 14749.2,
+    "requestConfirmationMs": 17747.3,
+    "confirmationSlot": 432685347,
+    "positionVisibleMs": 5263.9,
+    "endToEndMs": 23011.2,
+    "position": [
+      {
+        "pubkey": "vfZU99cS8N7bZZGzr9oFx5FEWeA7GsATn6wdx6EVxpn",
+        "store": "CTDLvGGXnoxvqLyTpGzdGLg9pD6JexKxKXSV8tqqo8bN",
+        "is_long": true,
+        "owner": "6QjvpSYfWovaeHpEX85cDMdXf6BSBs6oYquu1Phh9EkR",
+        "market_token": "Dqq58gS1TgRMDouUbdvhhzc51XXTNHG921WLxH9X2eB8",
+        "collateral_token": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+        "is_collateral_long_token": true,
+        "state": {
+          "trade_id": 184270,
+          "increased_at": 1783962988,
+          "updated_at_slot": 432685356,
+          "decreased_at": 0,
+          "size_in_tokens": "0.03214825",
+          "collateral_amount": "19.759917",
+          "size_in_usd": "2000",
+          "borrowing_factor": "0.04898507746784099588",
+          "funding_fee_amount_per_size": "0.2701474866994020",
+          "long_token_claimable_funding_amount_per_size": "0.41022650687892580",
+          "short_token_claimable_funding_amount_per_size": "0.41022650687892580"
+        }
+      }
+    ]
+  },
+  "openQuoteGuard": {
+    "requestQuote": {
+      "referencePrice": "62214.93",
+      "acceptablePrice": "62401.57479",
+      "stopPrice": "61997.177745",
+      "oracleTimestamp": 1783962966,
+      "oracleAgeSeconds": 1.766
+    },
+    "submitQuote": {
+      "referencePrice": "62210.25",
+      "acceptablePrice": "62396.88075",
+      "stopPrice": "61992.514125",
+      "oracleTimestamp": 1783962969,
+      "oracleAgeSeconds": 1.265
+    },
+    "quoteToValidationMs": 2498.9,
+    "driftBps": "0.7522",
+    "maxQuoteAgeAtSubmitSeconds": 5.0,
+    "maxQuoteDriftBps": "10"
+  },
+  "stopQuote": {
+    "referencePrice": "62209.97",
+    "acceptablePrice": "62396.59991",
+    "stopPrice": "61992.235105",
+    "oracleTimestamp": 1783962991,
+    "oracleAgeSeconds": 0.899
+  },
+  "stopRequest": {
+    "signature": "44nLDqmFB3RCuvtLbUWSP7nkKaF4XjLegERWuVNWQz1iWMVu7sXaZNtr2Ltp5kffoQFPbnSHhVSkYTCNvecrbRp1",
+    "order": "6RBExcByYWEJTjTTNyFurZ1gnebTLePsAAd2WRc4GofW",
+    "buildMs": 2072.8,
+    "signMs": 477.1,
+    "sendRpcMs": 525.7,
+    "signatureConfirmMs": 1717.6,
+    "requestConfirmationMs": 4793.3,
+    "confirmationSlot": 432685372,
+    "triggerPrice": "61992.235105"
+  },
+  "closeRequest": {
+    "signature": "DcdghqG8VKsfZ4vC3nAt4nSiq8vqfyDeUeVLCkLPsHq5C7uPJBGhRa7LwLB5QAZbCJ14o1Cp8vu7iKXAR4tJBG7",
+    "order": "Ez6ovFhTQJEsX1xfb528H4KgdgQvYVa9NQhdGCNfCBQQ",
+    "buildMs": 2097.7,
+    "signMs": 501.1,
+    "sendRpcMs": 480.1,
+    "signatureConfirmMs": 1957.9,
+    "requestConfirmationMs": 5036.8,
+    "confirmationSlot": 432685402,
+    "quoteGuard": {
+      "requestQuote": {
+        "referencePrice": "62207.41",
+        "acceptablePrice": "62020.78777",
+        "stopPrice": "62020.78777",
+        "oracleTimestamp": 1783963003,
+        "oracleAgeSeconds": 1.089
+      },
+      "submitQuote": {
+        "referencePrice": "62206.28",
+        "acceptablePrice": "62019.66116",
+        "stopPrice": "62019.66116",
+        "oracleTimestamp": 1783963006,
+        "oracleAgeSeconds": 0.719
+      },
+      "quoteToValidationMs": 2630.1,
+      "driftBps": "0.1817",
+      "maxQuoteAgeAtSubmitSeconds": 5.0,
+      "maxQuoteDriftBps": "10"
+    },
+    "attempt": 1,
+    "quote": {
+      "referencePrice": "62207.41",
+      "acceptablePrice": "62020.78777",
+      "stopPrice": "62020.78777",
+      "oracleTimestamp": 1783963003,
+      "oracleAgeSeconds": 1.089
+    },
+    "acceptablePrice": "62020.78777",
+    "priorErrors": [],
+    "positionGoneMs": 3505.5,
+    "endToEndMs": 8542.2
+  },
+  "stopCancellation": {
+    "signature": "4ynv2FsMngpy3KUdYrHoJdNWnoH8e5WRtEyWHoeNhWUVkWbTuxxhjSeEbUKG9AiLJq3ZojTMGYQ1CEkZKX4NBqcP",
+    "order": null,
+    "buildMs": 973.6,
+    "signMs": 492.6,
+    "sendRpcMs": 486.0,
+    "signatureConfirmMs": 1909.6,
+    "requestConfirmationMs": 3861.8,
+    "confirmationSlot": 432685423
+  },
+  "finishedAt": 1783963018.523957,
+  "endingBalances": {
+    "sol": "0.134826005",
+    "usdc": "41.545639"
+  },
+  "balanceDelta": {
+    "sol": "-0.000250545",
+    "usdc": "-0.524108"
+  },
+  "finalPositions": [],
+  "finalOrders": {}
+}
