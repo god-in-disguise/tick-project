@@ -1060,6 +1060,19 @@ class GTradeWallet:
                     },
                 )
                 tx_hash = web3.eth.send_raw_transaction(raw_tx)
+            elif _is_known_transaction_error(exc):
+                tx_hash = Web3.to_bytes(hexstr=_normalize_tx_hash(precomputed_tx_hash))
+                write_latency_event(
+                    "broadcast_already_known",
+                    {
+                        "label": label,
+                        "txHash": precomputed_tx_hash,
+                        "sender": Web3.to_checksum_address(address),
+                        "nonce": build_timing.get("nonce"),
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "elapsedMs": _elapsed_ms(send_started),
+                    },
+                )
             elif _is_nonce_error(exc):
                 self._invalidate_nonce(address)
                 tx, retry_build_timing = self._build_transaction(web3, address, fn, gas, fresh_nonce=True)
@@ -1477,6 +1490,20 @@ def _fee_params(web3: Web3, *, aggressive: bool = False) -> dict[str, int]:
 
 def _is_base_fee_error(exc: Exception) -> bool:
     return bool(re.search(r"max fee per gas less than block base fee|baseFee", str(exc), re.IGNORECASE))
+
+
+def _is_nonce_error(exc: Exception) -> bool:
+    return bool(
+        re.search(
+            r"nonce too low|nonce has already been used|invalid transaction nonce|account sequence mismatch",
+            str(exc),
+            re.IGNORECASE,
+        )
+    )
+
+
+def _is_known_transaction_error(exc: Exception) -> bool:
+    return bool(re.search(r"already known|already imported|known transaction", str(exc), re.IGNORECASE))
 
 
 def _usdc_units(value: Decimal) -> int:
