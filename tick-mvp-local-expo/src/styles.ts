@@ -190,7 +190,7 @@ export const styles = StyleSheet.create({
     position: "absolute",
     left: "25%",
     right: "25%",
-    top: "42%",
+    top: "38%",
     alignItems: "center",
     paddingVertical: 8,
     borderRadius: 8,
