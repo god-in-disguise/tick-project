@@ -65,6 +65,8 @@ export type Position = {
   ticketUsd: number;
   softStopLossUsd?: number | null;
   riskLeverage?: number | null;
+  stopLossPrice?: number | null;
+  venueStopLoss?: boolean;
   estimatedLiquidationPrice: number | null;
   pnlEstimated: boolean;
   roePct: number;
@@ -134,6 +136,10 @@ export type TradeQuote = {
   softStopLossUsd?: number;
   riskLeverage?: number;
   marketMoveBudgetUsd?: number;
+  venueStopLoss?: boolean;
+  stopLossValid?: boolean;
+  stopLossPrice?: number | null;
+  blockedReason?: string | null;
   estimatedLiquidationPrice: number | null;
   feeHurdlePct: number;
   slippageBps: number;

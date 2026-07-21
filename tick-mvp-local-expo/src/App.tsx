@@ -371,7 +371,7 @@ function TickApp() {
         quote = side === "long" ? refreshed.long : refreshed.short;
       }
       if (!quote) throw new Error("Live terms are unavailable");
-      if (!quote.openingAllowed) throw new Error("Market is closed");
+      if (!quote.openingAllowed) throw new Error(quote.blockedReason || "Market is closed");
       const next = await api.open(quote.quoteId, idempotencyKey("open", market.pair));
       accepted = true;
       setPendingExecution({ ...next, status: next.status === "created" ? "opening" : next.status });

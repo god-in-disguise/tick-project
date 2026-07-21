@@ -108,35 +108,17 @@ class ExecutionServiceTest(unittest.TestCase):
         self.assertEqual(quote["softStopLossUsd"], 10.0)
         self.assertEqual(quote["riskLeverage"], 500.0)
         self.assertAlmostEqual(quote["marketMoveBudgetUsd"], 9.8)
+        self.assertTrue(quote["venueStopLoss"])
+        self.assertTrue(quote["stopLossValid"])
+        self.assertLess(quote["stopLossPrice"], quote["price"])
 
-    def test_soft_stop_submits_single_close_when_net_pnl_crosses_stop(self) -> None:
-        quote = self.service.quote("BTC-USD", "long", Decimal("20"), Decimal("100"), Decimal("5"))
-        opened = self.service.open(quote["quoteId"], "open-before-soft-stop")
-        opened = wait_for(lambda: self.service.execution(opened["id"]), "open")
+    def test_quote_blocks_stop_below_cost_floor(self) -> None:
+        quote = self.service.quote("BTC-USD", "long", Decimal("1"), Decimal("100"), Decimal("0.01"))
 
-        with self.connector._lock:
-            if self.connector.position is None:
-                raise AssertionError("expected fake position")
-            self.connector.position = {
-                **self.connector.position,
-                "mark": 63900.0,
-                "pnl": -6.0,
-                "roePct": -30.0,
-                "closeAvailable": True,
-            }
-        with self.service._state_lock:
-            self.service._account_updated_at = 0.0
-
-        self.service._reconcile_pending()
-        closed = wait_for(
-            lambda: self.service.store.latest_execution(),
-            "closed",
-            timeout=4.5,
-        )
-
-        self.assertEqual(closed["action"], "close")
-        self.assertTrue(closed["idempotencyKey"].startswith(f"soft-stop-{opened['id']}"))
-        self.assertEqual(self.service.state()["positions"], [])
+        self.assertFalse(quote["openingAllowed"])
+        self.assertFalse(quote["stopLossValid"])
+        self.assertIsNone(quote["stopLossPrice"])
+        self.assertIn("cost floor", quote["blockedReason"])
 
     def test_pending_close_keeps_position_until_venue_disappears(self) -> None:
         quote = self.service.quote("BTC-USD", "long", Decimal("20"), Decimal("100"))
@@ -173,6 +155,7 @@ class ExecutionServiceTest(unittest.TestCase):
         }
         closing = self.service.close("BTC-USD", "stale-close")
         wait_for(lambda: self.service.execution(closing["id"]), "closing")
+        wait_until(lambda: closing["id"] not in self.service._running)
 
         with patch("backend.execution.STALE_EXECUTION_SECONDS", -1):
             self.service._reconcile_pending()
@@ -293,6 +276,15 @@ def wait_for(reader, status: str, timeout: float = 3.0):
             return latest
         time.sleep(0.02)
     raise AssertionError(f"execution did not reach {status}: {latest}")
+
+
+def wait_until(reader, timeout: float = 3.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if reader():
+            return
+        time.sleep(0.02)
+    raise AssertionError("condition did not become true")
 
 
 def wait_for_result(reader, timeout: float = 3.0):

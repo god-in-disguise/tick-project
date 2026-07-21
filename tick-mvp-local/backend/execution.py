@@ -93,24 +93,42 @@ class ExecutionService:
         tradability = float((opportunity or {}).get("tradability") or 0)
         tradeable = bool(opportunity) and not bool(opportunity.get("cooling")) and activity_surplus > 0 and tradability >= 24
         market_open = bool(estimate.get("marketOpen", True))
-        local_override = market_open and not tradeable
         now = time.time()
+        stop_loss_usd = soft_stop_loss_usd if soft_stop_loss_usd is not None else ticket_usd
+        effective_leverage = Decimal(str(estimate["leverage"]))
+        estimated_all_in_cost = Decimal(str(estimate.get("estimatedAllInCostUsd") or 0))
+        market_move_budget = stop_loss_usd - estimated_all_in_cost
+        stop_loss_valid = market_move_budget > 0
+        stop_loss_price = (
+            _stop_loss_price(
+                Decimal(str(estimate["price"])),
+                side,
+                ticket_usd * effective_leverage,
+                market_move_budget,
+            )
+            if stop_loss_valid
+            else None
+        )
+        blocked_reason = None if stop_loss_valid else (
+            f"stop {float(stop_loss_usd):.2f} is below estimated cost floor {float(estimated_all_in_cost):.2f}"
+        )
+        opening_allowed = market_open and stop_loss_valid
+        local_override = opening_allowed and not tradeable
         quote = {
             **estimate,
             "quoteId": uuid.uuid4().hex,
             "createdAt": now,
             "expiresAt": now + QUOTE_TTL_SECONDS,
-            "softStopLossUsd": float(soft_stop_loss_usd) if soft_stop_loss_usd is not None else float(ticket_usd),
-            "riskLeverage": float((ticket_usd * Decimal(str(estimate["leverage"]))) / soft_stop_loss_usd)
-            if soft_stop_loss_usd and soft_stop_loss_usd > 0
-            else float(estimate["leverage"]),
-            "marketMoveBudgetUsd": float(
-                max(
-                    Decimal("0"),
-                    (soft_stop_loss_usd or ticket_usd) - Decimal(str(estimate.get("estimatedAllInCostUsd") or 0)),
-                )
-            ),
-            "openingAllowed": market_open,
+            "softStopLossUsd": float(stop_loss_usd),
+            "venueStopLoss": stop_loss_valid,
+            "stopLossValid": stop_loss_valid,
+            "stopLossPrice": float(stop_loss_price) if stop_loss_price is not None else None,
+            "blockedReason": blocked_reason,
+            "riskLeverage": float((ticket_usd * effective_leverage) / stop_loss_usd)
+            if stop_loss_usd > 0
+            else float(effective_leverage),
+            "marketMoveBudgetUsd": float(max(Decimal("0"), market_move_budget)),
+            "openingAllowed": opening_allowed,
             "marketTradeable": tradeable,
             "localTestOverride": local_override,
             "activitySurplusPct": activity_surplus,
@@ -144,7 +162,7 @@ class ExecutionService:
         if float(quote["expiresAt"]) < time.time():
             raise ExecutionError("quote expired")
         if not quote.get("openingAllowed"):
-            raise ExecutionError("market is watching; opening is not allowed")
+            raise ExecutionError(str(quote.get("blockedReason") or "market is watching; opening is not allowed"))
 
         with self._state_lock:
             existing = self.store.get_execution_by_idempotency(idempotency_key)
@@ -701,8 +719,6 @@ class ExecutionService:
                 if _position_changed(previous, decorated):
                     self.store.update_execution(opening["id"], position=decorated)
                     self._notify_state()
-                if self._should_soft_stop(opening, decorated):
-                    self._submit_soft_stop_close(opening, decorated, account)
                 self._missing_positions.pop(_position_key(opening), None)
                 continue
 
@@ -955,6 +971,7 @@ class ExecutionService:
         quote = self.store.get_quote(opening["quoteId"]) if opening and opening.get("quoteId") else None
         opening_cost = float(position.get("estimatedOpenCostUsd") or (quote or {}).get("estimatedOpenCostUsd") or 0)
         closing_cost = float(position.get("estimatedCloseCostUsd") or (quote or {}).get("estimatedCloseCostUsd") or 0)
+        all_in_cost = float(position.get("estimatedAllInCostUsd") or (quote or {}).get("estimatedAllInCostUsd") or opening_cost + closing_cost)
         gross_pnl = float(position.get("pnl") or 0)
         ticket = float(position.get("ticketUsd") or (quote or {}).get("ticketUsd") or position.get("collateral") or 0)
         soft_stop = float(position.get("softStopLossUsd") or (quote or {}).get("softStopLossUsd") or ticket or 0)
@@ -962,14 +979,16 @@ class ExecutionService:
         return {
             **position,
             "grossPnl": gross_pnl,
-            "estimatedNetPnl": gross_pnl - opening_cost - closing_cost,
+            "estimatedNetPnl": gross_pnl - all_in_cost,
             "estimatedOpenCostUsd": opening_cost,
             "estimatedCloseCostUsd": closing_cost,
-            "estimatedAllInCostUsd": opening_cost + closing_cost,
+            "estimatedAllInCostUsd": all_in_cost,
             "ticketUsd": ticket,
             "softStopLossUsd": soft_stop,
             "riskLeverage": (ticket * leverage / soft_stop) if soft_stop > 0 else leverage,
             "estimatedLiquidationPrice": position.get("estimatedLiquidationPrice") or (quote or {}).get("estimatedLiquidationPrice"),
+            "stopLossPrice": position.get("stopLossPrice") or (quote or {}).get("stopLossPrice"),
+            "venueStopLoss": bool(position.get("venueStopLoss") or (quote or {}).get("venueStopLoss")),
             "pnlEstimated": True,
         }
 
@@ -1073,6 +1092,8 @@ class ExecutionService:
             "estimatedCloseCostUsd": float(quote.get("estimatedCloseCostUsd") or 0),
             "estimatedAllInCostUsd": float(quote.get("estimatedAllInCostUsd") or 0),
             "estimatedLiquidationPrice": quote.get("estimatedLiquidationPrice"),
+            "stopLossPrice": quote.get("stopLossPrice"),
+            "venueStopLoss": bool(quote.get("venueStopLoss")),
         }
 
     def _position_with_quote_risk(self, position: dict[str, Any], quote_or_execution: dict[str, Any]) -> dict[str, Any]:
@@ -1093,66 +1114,13 @@ class ExecutionService:
             "estimatedCloseCostUsd",
             "estimatedAllInCostUsd",
             "estimatedLiquidationPrice",
+            "stopLossPrice",
+            "venueStopLoss",
+            "stopLossValid",
         ):
             if key not in next_position and quote.get(key) is not None:
                 next_position[key] = quote[key]
         return next_position
-
-    def _should_soft_stop(self, opening: dict[str, Any], position: dict[str, Any]) -> bool:
-        if not position.get("closeAvailable", True):
-            return False
-        soft_stop = float(position.get("softStopLossUsd") or 0)
-        if soft_stop <= 0:
-            return False
-        estimated_net = position.get("estimatedNetPnl")
-        if estimated_net is None:
-            estimated_net = float(position.get("pnl") or 0) - float(position.get("estimatedAllInCostUsd") or 0)
-        return float(estimated_net) <= -soft_stop
-
-    def _submit_soft_stop_close(
-        self,
-        opening: dict[str, Any],
-        position: dict[str, Any],
-        account: dict[str, Any],
-    ) -> None:
-        close_key = f"soft-stop-{opening['id']}-{position.get('idx')}"
-        if self.store.get_execution_by_idempotency(close_key):
-            return
-        execution = {
-            "id": uuid.uuid4().hex,
-            "idempotencyKey": close_key,
-            "action": "close",
-            "venue": self.connector.name,
-            "pair": position["pair"],
-            "side": position.get("side"),
-            "quoteId": None,
-            "ticketUsd": None,
-            "leverage": position.get("leverage"),
-            "status": "created",
-            "balanceBefore": _usdc_balance(account),
-            "position": position,
-            "result": {
-                "status": "soft_stop_triggered",
-                "position": position,
-                "softStopLossUsd": position.get("softStopLossUsd"),
-            },
-        }
-        persisted, created = self.store.create_execution(execution)
-        if not created:
-            return
-        self._event(
-            persisted["id"],
-            "soft_stop_triggered",
-            {
-                "openingExecutionId": opening["id"],
-                "pair": position.get("pair"),
-                "idx": position.get("idx"),
-                "estimatedNetPnl": position.get("estimatedNetPnl"),
-                "softStopLossUsd": position.get("softStopLossUsd"),
-            },
-        )
-        self._running.add(persisted["id"])
-        self._executor.submit(self._run_close, persisted["id"], position["pair"], position)
 
     def _notify_state(self) -> None:
         with self._version_condition:
@@ -1187,6 +1155,15 @@ def _price_move_bps(old: float, new: float) -> float:
     return round(abs(new - old) / old * 10000, 4) if old else 0.0
 
 
+def _stop_loss_price(price: Decimal, side: str, notional_usd: Decimal, market_loss_budget_usd: Decimal) -> Decimal:
+    if price <= 0 or notional_usd <= 0 or market_loss_budget_usd <= 0:
+        return Decimal(0)
+    move = market_loss_budget_usd / notional_usd
+    if side == "long":
+        return price * (Decimal(1) - move)
+    return price * (Decimal(1) + move)
+
+
 def _matching_position(positions: list[dict[str, Any]], pair: str, previous: dict[str, Any]) -> dict[str, Any] | None:
     previous_idx = previous.get("idx")
     for position in positions:
@@ -1213,6 +1190,8 @@ def _position_changed(previous: dict[str, Any], current: dict[str, Any]) -> bool
         "indexing",
         "softStopLossUsd",
         "riskLeverage",
+        "stopLossPrice",
+        "venueStopLoss",
     )
     return any(_changed(previous.get(key), current.get(key)) for key in keys)
 

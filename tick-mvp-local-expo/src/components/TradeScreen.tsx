@@ -62,6 +62,11 @@ export function TradeScreen(props: Props) {
   const marginUsd = openingQuote?.ticketUsd ?? props.marginUsd;
   const softStopUsd = openingQuote?.softStopLossUsd ?? props.softStopUsd;
   const riskLeverage = openingQuote?.riskLeverage ?? (softStopUsd > 0 ? marginUsd * props.leverage / softStopUsd : props.leverage);
+  const stopValue = openingQuote?.stopLossValid === false
+    ? "Below cost"
+    : openingQuote?.stopLossPrice
+      ? `${formatMoney(softStopUsd)} / ${formatPrice(openingQuote.stopLossPrice)}`
+      : `${formatMoney(softStopUsd)} · ${formatCompactLeverage(riskLeverage)}`;
   const tape = market.activeTapePct ?? 0;
   const marketState = market.feedLabel === "Watching" ? "Live tape" : market.feedLabel;
   const showClosedBreakdown = Boolean(
@@ -306,7 +311,7 @@ export function TradeScreen(props: Props) {
                 <Term label="Margin" value={formatMoney(marginUsd)} />
                 <Term label="Exposure" value={compactMoney(openingQuote?.notionalUsd ?? marginUsd * props.leverage)} />
                 <Term label="Cost" value={openingQuote ? formatMoney(openingQuote.estimatedAllInCostUsd) : "--"} />
-                <Term label="Stop" value={`${formatMoney(softStopUsd)} · ${formatCompactLeverage(riskLeverage)}`} />
+                <Term label="Stop" value={stopValue} />
               </>
             )}
           </View>

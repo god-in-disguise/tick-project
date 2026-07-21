@@ -99,6 +99,11 @@ class GTradeConnector:
             execution_leverage,
             price,
             slippage_bps=int((quote or {}).get("slippageBps") or 100),
+            stop_loss_price=(
+                Decimal(str((quote or {}).get("stopLossPrice")))
+                if (quote or {}).get("stopLossPrice") is not None
+                else None
+            ),
         )
 
     def estimate_close(self, pair: str) -> dict[str, Any]:

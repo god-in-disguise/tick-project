@@ -117,6 +117,68 @@ class GTradeWalletErrorClassifierTest(unittest.TestCase):
         self.assertTrue(position["indexing"])
         self.assertEqual(position["idx"], 17)
 
+    def test_open_trade_encodes_native_stop_loss_price(self) -> None:
+        wallet = GTradeWallet()
+        owner = "0xeD1fa479504Ec60DB8a314BfF2DbbD1bB481Db78"
+        captured: dict[str, object] = {}
+        pair = GTradePair(
+            pair_index=300,
+            pair="BTCDEGEN-USD",
+            raw_symbol="BTCDEGEN/USD",
+            symbol="BTC",
+            name="Bitcoin",
+            group="crypto",
+            asset_class="CRYPTO",
+            max_leverage=Decimal("500"),
+            open_fee_pct=Decimal("0.02"),
+            min_position_usd=Decimal("0"),
+            min_collateral_usd=Decimal("10"),
+            spread_pct=Decimal("0"),
+        )
+
+        class FakeEvents:
+            def start(self) -> None:
+                pass
+
+        class FakeFunctions:
+            def openTrade(self, trade, slippage_bps, referrer):  # noqa: N802, ANN001
+                captured["trade"] = trade
+                captured["slippageBps"] = slippage_bps
+                captured["referrer"] = referrer
+                return "openTrade"
+
+        class FakeTrading:
+            functions = FakeFunctions()
+
+        wallet._load = lambda: (object(), owner, object())  # type: ignore[method-assign]
+        wallet._events = lambda address: FakeEvents()  # type: ignore[method-assign]
+        wallet._trading = lambda web3: FakeTrading()  # type: ignore[method-assign]
+        wallet._send_trading_action = lambda web3, account, address, trading, fn, label: {  # type: ignore[method-assign]
+            "status": 1,
+            "blockNumber": 100,
+            "txHash": "0xopen",
+        }
+        wallet._wait_for_position_with_events = lambda *args, **kwargs: {  # type: ignore[method-assign]
+            "position": None,
+            "source": "test",
+        }
+
+        result = wallet.open_position(
+            pair,
+            "long",
+            Decimal("50"),
+            Decimal("500"),
+            Decimal("100"),
+            slippage_bps=100,
+            stop_loss_price=Decimal("99.5"),
+            wait_seconds=0,
+        )
+
+        self.assertEqual(captured["trade"][11], 995000000000)
+        self.assertEqual(captured["slippageBps"], 100)
+        self.assertEqual(result["stopLossPrice"], 99.5)
+        self.assertTrue(result["venueStopLoss"])
+
 
 if __name__ == "__main__":
     unittest.main()

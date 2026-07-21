@@ -203,12 +203,14 @@ class GTradeWallet:
         price: Decimal,
         *,
         slippage_bps: int,
+        stop_loss_price: Decimal | None = None,
         wait_seconds: float = 9,
     ) -> dict[str, Any]:
         account, address, web3 = self._load()
         events = self._events(address)
         listen_since = time.time()
         events.start()
+        stop_loss_units = _price_units(stop_loss_price) if stop_loss_price and stop_loss_price > 0 else 0
         trade = (
             address,
             0,
@@ -221,7 +223,7 @@ class GTradeWallet:
             _usdc_units(ticket_usd),
             _price_units(price),
             0,
-            0,
+            stop_loss_units,
             False,
             0,
             0,
@@ -257,12 +259,16 @@ class GTradeWallet:
                 if _has_full_position_payload(position)
                 else _callback_position_public(position, pair, side, ticket_usd, leverage, price)
             )
+            if stop_loss_price and stop_loss_price > 0:
+                public_position["stopLossPrice"] = float(stop_loss_price)
         return {
             "status": "open" if position else "pending_execution",
             "tx": tx,
             "wait": {key: value for key, value in wait.items() if key != "position"},
             "position": public_position,
             "rawPosition": position,
+            "stopLossPrice": float(stop_loss_price) if stop_loss_price and stop_loss_price > 0 else None,
+            "venueStopLoss": bool(stop_loss_price and stop_loss_price > 0),
         }
 
     def close_position(
@@ -1499,6 +1505,7 @@ def _position_public(
     pair_index = int(trade["pairIndex"])
     pair = normalize_pair(pair_names.get(pair_index, str(pair_index)))
     entry = Decimal(str(trade["openPrice"])) / Decimal(10**10)
+    stop_loss = Decimal(str(trade.get("sl") or 0)) / Decimal(10**10)
     collateral = Decimal(str(trade["collateralAmount"])) / Decimal(10**6)
     leverage = Decimal(str(trade["leverage"])) / Decimal(1000)
     side = "long" if trade["long"] else "short"
@@ -1518,6 +1525,8 @@ def _position_public(
         "roePct": float((pnl / collateral) * Decimal(100)) if collateral else 0.0,
         "openedAt": int(item.get("tradeInfo", {}).get("lastOiUpdateTs") or time.time()),
         "closeAvailable": True,
+        "stopLossPrice": float(stop_loss) if stop_loss > 0 else None,
+        "venueStopLoss": stop_loss > 0,
     }
 
 
@@ -1538,6 +1547,7 @@ def _callback_position_public(
     raw = item.get("raw") or {}
     entry = _event_price(raw) or price
     idx = trade.get("index")
+    stop_loss = Decimal(str(trade.get("sl") or 0)) / Decimal(10**10)
     return {
         "pair": normalize_pair(pair.pair),
         "pairId": pair.pair_index,
@@ -1555,6 +1565,8 @@ def _callback_position_public(
         "indexing": True,
         "callbackTxHash": raw.get("transactionHash"),
         "callbackBlock": raw.get("blockNumber"),
+        "stopLossPrice": float(stop_loss) if stop_loss > 0 else None,
+        "venueStopLoss": stop_loss > 0,
     }
 
 
