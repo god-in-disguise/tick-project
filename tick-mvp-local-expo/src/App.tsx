@@ -180,6 +180,7 @@ function TickApp() {
     try {
       const next = await api.state(force);
       setAccount(next);
+      setSubmitting(null);
       if (next.execution) setPendingExecution(next.execution);
       if (!next.execution && next.lastExecution && ["closed", "failed"].includes(next.lastExecution.status)) {
         setPendingExecution((current) => current?.id === next.lastExecution?.id ? null : current);
@@ -220,7 +221,7 @@ function TickApp() {
           }))
           .filter((point) => Number.isFinite(point.price) && point.price > 0 && Number.isFinite(point.time)) ?? [];
         const tickPoints = chartPointsFromTicks(chart.ticks);
-        const source = observationPoints.length ? observationPoints : tickPoints.length ? tickPoints : seedChartPoints(chart.points, item.price, 240);
+        const source = observationPoints.length ? observationPoints : tickPoints.length ? tickPoints : seedChartPoints(chart.points, item.price);
         const chartPoints = compactChartPoints(source);
         const lastSequence = chart.lastSeq ?? chart.ticks[chart.ticks.length - 1]?.sequence ?? item.sequence;
         tapeSequence.current[normalized] = Math.max(tapeSequence.current[normalized] ?? 0, lastSequence);
@@ -304,6 +305,7 @@ function TickApp() {
     const side = sideForDirection(direction);
     actionInFlight.current = true;
     setSubmitting(side);
+    let accepted = false;
     try {
       let quote = side === "long" ? quotes.long : quotes.short;
       if (!quote || quote.pair !== market.pair || !quoteMatchesLeverage(quote, leverage) || quote.expiresAt < Date.now() / 1000 + 0.6) {
@@ -313,6 +315,7 @@ function TickApp() {
       if (!quote) throw new Error("Live terms are unavailable");
       if (!quote.openingAllowed) throw new Error("Market is closed");
       const next = await api.open(quote.quoteId, idempotencyKey("open", market.pair));
+      accepted = true;
       setPendingExecution({ ...next, status: next.status === "created" ? "opening" : next.status });
       scheduleStateRefresh(120);
     } catch (cause) {
@@ -320,7 +323,7 @@ function TickApp() {
       await refreshState(true);
     } finally {
       actionInFlight.current = false;
-      setSubmitting(null);
+      if (!accepted) setSubmitting(null);
     }
   }
 
@@ -329,9 +332,11 @@ function TickApp() {
     clearError();
     actionInFlight.current = true;
     setSubmitting("close");
+    let accepted = false;
     try {
       const closingPosition = position;
       const next = await api.close(position.pair, idempotencyKey("close", position.pair));
+      accepted = true;
       setPendingExecution({
         ...next,
         status: next.status === "created" ? "closing" : next.status,
@@ -343,7 +348,7 @@ function TickApp() {
       await refreshState(true);
     } finally {
       actionInFlight.current = false;
-      setSubmitting(null);
+      if (!accepted) setSubmitting(null);
     }
   }
 
@@ -374,7 +379,7 @@ function TickApp() {
     );
     if ((last.action === "close" || externalOpenFinalized) && last.status === "closed") {
       if (closedResultTimer.current) clearTimeout(closedResultTimer.current);
-      const liquidated = isLiquidatedResult(last, result);
+      const liquidated = isLiquidatedResult(result);
       const closedLabel = liquidated
         ? "Liquidated"
         : last.realizedWalletDelta === null
@@ -391,7 +396,7 @@ function TickApp() {
       });
       closedResultTimer.current = setTimeout(
         () => setClosedResult((current) => current?.id === last.id ? null : current),
-        last.realizedWalletDelta === null ? 9000 : 5200
+        last.realizedWalletDelta === null ? 15000 : 8500
       );
       refreshHistory();
     }
@@ -483,12 +488,8 @@ function isBusy(execution: Execution | null): boolean {
   return execution?.status === "created" || execution?.status === "opening" || execution?.status === "closing" || execution?.status === "unknown";
 }
 
-function isLiquidatedResult(last: Execution, result: { status?: string } | null): boolean {
-  if (result?.status === "liquidated") return true;
-  if (result?.status !== "external_closed" || last.realizedWalletDelta === null) return false;
-  const position = last.position ?? (last.result?.position as Partial<{ collateral: number; ticketUsd: number }> | undefined);
-  const ticket = Number(position?.ticketUsd ?? last.ticketUsd ?? position?.collateral ?? 0);
-  return ticket > 0 && last.realizedWalletDelta <= -(ticket * 0.90);
+function isLiquidatedResult(result: { status?: string } | null): boolean {
+  return result?.status === "liquidated";
 }
 
 function isAbortError(cause: unknown): boolean {

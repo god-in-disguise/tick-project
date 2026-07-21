@@ -77,14 +77,14 @@ export function TradeScreen(props: Props) {
   };
 
   useEffect(() => {
-    if (!props.closedResult) return;
+    if (!props.closedResult) {
+      resultOpacity.stopAnimation();
+      resultOpacity.setValue(0);
+      return;
+    }
     resultOpacity.stopAnimation();
     resultOpacity.setValue(0);
-    Animated.sequence([
-      Animated.timing(resultOpacity, { toValue: 1, duration: 130, useNativeDriver: true }),
-      Animated.delay(900),
-      Animated.timing(resultOpacity, { toValue: 0, duration: 220, useNativeDriver: true })
-    ]).start();
+    Animated.timing(resultOpacity, { toValue: 1, duration: 130, useNativeDriver: true }).start();
   }, [props.closedResult, resultOpacity]);
 
   function flash(next: Cue) {
@@ -263,11 +263,11 @@ export function TradeScreen(props: Props) {
               <>
                 <Term label="Entry" value={formatPrice(position.entry)} />
                 <Term label="Now" value={formatPrice(position.mark)} />
-                <Term label="Cost" value={formatMoney(position.estimatedAllInCostUsd || position.estimatedOpenCostUsd)} />
                 <Term
                   label="Liq"
                   value={position.estimatedLiquidationPrice ? formatPrice(position.estimatedLiquidationPrice) : liquidationDistance(position.entry, position.estimatedLiquidationPrice)}
                 />
+                <Term label="Away" value={liquidationDistance(position.entry, position.estimatedLiquidationPrice)} />
               </>
             ) : (
               <>

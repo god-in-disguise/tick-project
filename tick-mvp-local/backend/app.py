@@ -192,7 +192,7 @@ def chart(pair: str | None = None, minutes: int = Query(default=20, ge=5, le=180
     historical = _safe(lambda: connector.chart(selected, minutes=minutes))
     live_seconds = min(requested_seconds, 180)
     live_ticks = ticks.recent(selected, seconds=live_seconds)
-    live_ticks = _thin_ticks(live_ticks, max_points=240)
+    live_ticks = _thin_ticks(live_ticks, max_points=540)
     latest_tick = ticks.snapshot(selected).get("latest")
     live_points = [float(item["mid"]) for item in live_ticks if float(item.get("mid") or 0) > 0]
     points = live_points if len(live_points) >= 8 else historical.get("points", [])

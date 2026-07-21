@@ -16,7 +16,11 @@ type Props = {
 
 export function PriceChart({ market, entry, liquidation, direction }: Props) {
   const displayPrice = useRenderedPrice(market.price);
-  const chart = buildChart(market.chartPoints, market.points, market.price, displayPrice, entry, liquidation);
+  const domainRef = useRef<StableDomain | null>(null);
+  useEffect(() => {
+    domainRef.current = null;
+  }, [market.pair]);
+  const chart = buildChart(market.chartPoints, market.points, market.price, displayPrice, entry, liquidation, domainRef);
   const movementColor = market.move >= 0 ? "#38d39f" : "#ff6070";
 
   return (
@@ -134,7 +138,8 @@ function buildChart(
   currentPrice: number,
   displayPrice: number,
   entry?: number,
-  liquidation?: number | null
+  liquidation?: number | null,
+  domainRef?: React.MutableRefObject<StableDomain | null>
 ) {
   const top = 24;
   const bottom = 406;
@@ -169,6 +174,11 @@ function buildChart(
   const padding = (max - min) * 0.16;
   min -= padding;
   max += padding;
+  if (domainRef) {
+    const domain = stabilizeDomain({ min, max }, domainRef);
+    min = domain.min;
+    max = domain.max;
+  }
   const span = Math.max(max - min, minimumSpan);
   const rawY = (value: number) => bottom - ((value - min) / span) * (bottom - top);
   const toY = (value: number) => clamp(rawY(value), top, bottom);
@@ -201,6 +211,28 @@ function buildChart(
     liquidationEdge: liquidationOverlay.edge,
     priceTagY: clamp(last.y - 9, top, bottom - 18)
   };
+}
+
+type StableDomain = {
+  min: number;
+  max: number;
+  updatedAt: number;
+};
+
+function stabilizeDomain(next: { min: number; max: number }, ref: React.MutableRefObject<StableDomain | null>) {
+  const now = Date.now();
+  const current = ref.current;
+  if (!current || !Number.isFinite(next.min) || !Number.isFinite(next.max) || next.max <= next.min) {
+    ref.current = { ...next, updatedAt: now };
+    return next;
+  }
+
+  const elapsed = Math.max(16, now - current.updatedAt);
+  const contraction = clamp(elapsed / 3200, 0, 1);
+  const min = next.min < current.min ? next.min : current.min + (next.min - current.min) * contraction;
+  const max = next.max > current.max ? next.max : current.max + (next.max - current.max) * contraction;
+  ref.current = { min, max, updatedAt: now };
+  return { min, max };
 }
 
 function linePath(points: { x: number; y: number }[]) {

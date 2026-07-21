@@ -59,6 +59,17 @@ The current renderer still keeps a simple line chart. It preserves source
 prices, draws a flat held-price tail when no new price arrives, and keeps entry
 and liquidation as overlays instead of forcing them into the y-domain.
 
+July 21 hardening:
+
+- local chart density increased from `240` to roughly `520` points so a `90s`
+  high-frequency tape does not constantly downsample and reshape itself
+- current-price animation remains render-only
+- the y-domain now expands immediately for real moves but contracts slowly, so
+  render frames do not make old peaks appear to fall or rewrite chart scale
+- result cards stay visible long enough to read final/settling state
+- liquidation display is explicit; the UI no longer infers liquidation from a
+  large `external_closed` wallet loss
+
 Remaining chart work:
 
 - server-side `1s` OHLC price bars for true longer history

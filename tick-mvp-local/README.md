@@ -1,14 +1,14 @@
 # TICK One-Wallet Canary
 
-Local Python backend for testing the complete TICK loop against real Ostium execution on Arbitrum.
+Local Python backend for testing the complete TICK loop against real gTrade/Gains execution on Arbitrum.
 
 It is intentionally limited to:
 
 - one hardcoded test wallet
 - one concurrent isolated position
-- one live venue connector
+- one live venue connector, currently gTrade/Gains
 - a `$20` default ticket
-- `25x`, `50x`, or `100x`, subject to the venue cap
+- leverage presets subject to the selected market and venue cap
 - nine crypto feed markets by default
 
 ## Required Environment
@@ -32,7 +32,7 @@ Optional local settings:
 TICK_LOCAL_API_TOKEN=tick-local-one-wallet
 TICK_FEED_PAIRS=BTC-USD,ETH-USD,SOL-USD,HYPE-USD,BNB-USD,XRP-USD,LINK-USD,ADA-USD,TRX-USD
 TICK_DEFAULT_TICKET_USD=20
-TICK_DEFAULT_LEVERAGE=100
+TICK_DEFAULT_LEVERAGE=500
 ```
 
 Every venue-open market is executable in the canary. Scanner state changes ranking and labels, not order eligibility.
@@ -60,7 +60,7 @@ price sampler -> volatility ranking -> long/short preflights
 -> same-direction swipe -> closing -> closed -> reconciled wallet result
 ```
 
-Opening and closing run in a background execution worker. The API returns the durable execution state instead of keeping the phone request open while Ostium indexes the order.
+Opening and closing run in a background execution worker. The API returns the durable execution state instead of keeping the phone request open while gTrade indexes and executes the order.
 
 State is stored in:
 

@@ -416,8 +416,9 @@ class ExecutionService:
                 {
                     "pair": pair,
                     "idx": position.get("idx"),
-                    "source": "cached_position",
-                    "postAnswerRevalidation": True,
+                    "source": "cached_position_fast_close",
+                    "blockingRevalidationSkipped": True,
+                    "postAnswerRevalidation": "async_reconcile_after_submit",
                 },
             )
             self._event(

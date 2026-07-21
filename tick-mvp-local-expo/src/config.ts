@@ -6,5 +6,5 @@ export const TAPE_POLL_MS = 200;
 export const STATE_POLL_MS = 250;
 export const MARKET_REFRESH_MS = 8000;
 export const QUOTE_REFRESH_MS = 3000;
-export const MAX_CHART_POINTS = 240;
+export const MAX_CHART_POINTS = 520;
 export const CHART_WINDOW_SECONDS = 90;
