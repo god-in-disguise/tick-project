@@ -59,6 +59,12 @@ export function TradeScreen(props: Props) {
   const cost = openingQuote?.estimatedAllInCostUsd ?? 0;
   const tape = market.activeTapePct ?? 0;
   const marketState = market.feedLabel === "Watching" ? "Live tape" : market.feedLabel;
+  const showClosedBreakdown = Boolean(
+    props.closedResult
+    && props.closedResult.grossPnl !== null
+    && props.closedResult.costDrag !== null
+    && props.closedResult.costDrag >= -0.005
+  );
   const gestureContext = useRef({
     position,
     busy,
@@ -249,23 +255,25 @@ export function TradeScreen(props: Props) {
             >
               {props.closedResult.pnl === null ? "Settling" : formatSignedMoney(props.closedResult.pnl)}
             </Text>
-            <View style={styles.closedBreakdown}>
-              <ResultMetric
-                label="Gross"
-                value={props.closedResult.grossPnl === null ? "--" : formatSignedMoney(props.closedResult.grossPnl)}
-                tone={props.closedResult.grossPnl}
-              />
-              <ResultMetric
-                label="Costs"
-                value={formatCostDrag(props.closedResult.costDrag)}
-                tone={props.closedResult.costDrag === null ? null : -Math.abs(props.closedResult.costDrag)}
-              />
-              <ResultMetric
-                label="Net"
-                value={props.closedResult.pnl === null ? "--" : formatSignedMoney(props.closedResult.pnl)}
-                tone={props.closedResult.pnl}
-              />
-            </View>
+            {showClosedBreakdown ? (
+              <View style={styles.closedBreakdown}>
+                <ResultMetric
+                  label="Gross"
+                  value={formatSignedMoney(props.closedResult.grossPnl ?? 0)}
+                  tone={props.closedResult.grossPnl}
+                />
+                <ResultMetric
+                  label="Costs"
+                  value={formatCostDrag(props.closedResult.costDrag)}
+                  tone={-Math.abs(props.closedResult.costDrag ?? 0)}
+                />
+                <ResultMetric
+                  label="Net"
+                  value={props.closedResult.pnl === null ? "--" : formatSignedMoney(props.closedResult.pnl)}
+                  tone={props.closedResult.pnl}
+                />
+              </View>
+            ) : null}
             <Text style={styles.closedMeta}>{props.closedResult.pair} · {formatDuration(props.closedResult.durationSeconds)}</Text>
           </Animated.View>
         ) : null}

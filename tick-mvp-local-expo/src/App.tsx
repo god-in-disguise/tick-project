@@ -339,6 +339,7 @@ function TickApp() {
   async function open(direction: Direction) {
     if (!market || position || isBusy(execution) || actionInFlight.current) return;
     clearError();
+    clearClosedResult();
     const side = sideForDirection(direction);
     actionInFlight.current = true;
     setSubmitting(side);
@@ -367,6 +368,7 @@ function TickApp() {
   async function close() {
     if (!position || isBusy(execution) || actionInFlight.current) return;
     clearError();
+    clearClosedResult();
     actionInFlight.current = true;
     setSubmitting("close");
     let accepted = false;
@@ -391,12 +393,14 @@ function TickApp() {
 
   function selectMarket(pair: string) {
     if (position || isBusy(execution) || actionInFlight.current) return;
+    clearClosedResult();
     setActivePair(pair);
     setTab("trade");
   }
 
   function shiftMarket(offset: number) {
     if (!market || position || isBusy(execution) || actionInFlight.current) return;
+    clearClosedResult();
     const index = markets.findIndex((item) => item.pair === market.pair);
     const next = markets[(index + offset + markets.length) % markets.length];
     if (next) setActivePair(next.pair);
@@ -438,12 +442,21 @@ function TickApp() {
         durationSeconds: result?.durationSeconds ?? 0,
         label: closedLabel
       });
+      const visibleMs = last.realizedWalletDelta === null ? 10000 : liquidated ? 5600 : 3200;
       closedResultTimer.current = setTimeout(
         () => setClosedResult((current) => current?.id === last.id ? null : current),
-        last.realizedWalletDelta === null ? 15000 : 8500
+        visibleMs
       );
       refreshHistory();
     }
+  }
+
+  function clearClosedResult() {
+    if (closedResultTimer.current) {
+      clearTimeout(closedResultTimer.current);
+      closedResultTimer.current = null;
+    }
+    setClosedResult(null);
   }
 
   function scheduleStateRefresh(delayMs: number) {
