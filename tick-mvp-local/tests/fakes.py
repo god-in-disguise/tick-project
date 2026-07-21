@@ -14,6 +14,7 @@ class FakeConnector:
         self.balance = 100.0
         self.position: dict[str, Any] | None = None
         self.price_value = 64000.0
+        self.last_open_quote: dict[str, Any] | None = None
 
     def wallet_address(self) -> str:
         return "0x0000000000000000000000000000000000000001"
@@ -69,6 +70,7 @@ class FakeConnector:
         quote: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         with self._lock:
+            self.last_open_quote = dict(quote or {})
             self.balance -= float(ticket_usd)
             self.position = {
                 "pair": pair,
@@ -82,6 +84,8 @@ class FakeConnector:
                 "pnl": 0.0,
                 "roePct": 0.0,
                 "openedAt": 1,
+                "stopLossPrice": (quote or {}).get("stopLossPrice"),
+                "venueStopLoss": bool((quote or {}).get("venueStopLoss")),
             }
             return {"status": "opened", "tx": {"txHash": "0xopen"}, "position": dict(self.position)}
 

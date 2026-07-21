@@ -112,6 +112,17 @@ class ExecutionServiceTest(unittest.TestCase):
         self.assertTrue(quote["stopLossValid"])
         self.assertLess(quote["stopLossPrice"], quote["price"])
 
+    def test_open_refresh_preserves_native_stop_loss_for_submission(self) -> None:
+        quote = self.service.quote("BTC-USD", "short", Decimal("50"), Decimal("100"), Decimal("10"))
+        opened = self.service.open(quote["quoteId"], "open-with-native-stop")
+        opened = wait_for(lambda: self.service.execution(opened["id"]), "open")
+
+        submitted = self.connector.last_open_quote or {}
+        self.assertTrue(submitted["venueStopLoss"])
+        self.assertGreater(submitted["stopLossPrice"], submitted["price"])
+        self.assertEqual(opened["position"]["stopLossPrice"], submitted["stopLossPrice"])
+        self.assertTrue(opened["position"]["venueStopLoss"])
+
     def test_quote_blocks_stop_below_cost_floor(self) -> None:
         quote = self.service.quote("BTC-USD", "long", Decimal("1"), Decimal("100"), Decimal("0.01"))
 

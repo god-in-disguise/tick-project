@@ -233,6 +233,8 @@ class ExecutionService:
                 if active and active["action"] == "open" and active["pair"] == normalized:
                     return self.store.update_execution(active["id"], status="closed", position=None)
                 raise ExecutionError(f"no open position for {normalized}")
+            if active and active["action"] == "open" and active["pair"] == normalized:
+                position = self._position_with_quote_risk(position, active)
 
             execution = {
                 "id": uuid.uuid4().hex,
@@ -381,6 +383,7 @@ class ExecutionService:
             except ConnectorError as exc:
                 raise ExecutionError(str(exc)) from exc
             self._validate_quote_move(quote, refreshed)
+            submission_quote = _submission_quote_with_native_stop(quote, refreshed)
 
             self._event(
                 execution_id,
@@ -391,7 +394,9 @@ class ExecutionService:
                     "side": quote["side"],
                     "ticketUsd": quote["ticketUsd"],
                     "leverage": quote["leverage"],
-                    "price": refreshed["price"],
+                    "price": submission_quote["price"],
+                    "stopLossPrice": submission_quote.get("stopLossPrice"),
+                    "venueStopLoss": submission_quote.get("venueStopLoss"),
                     "quoteAgeMs": round((time.time() - float(quote["createdAt"])) * 1000, 1),
                 },
             )
@@ -400,7 +405,7 @@ class ExecutionService:
                 quote["side"],
                 Decimal(str(quote["ticketUsd"])),
                 Decimal(str(quote["leverage"])),
-                refreshed,
+                submission_quote,
             )
             self._event(execution_id, "tx_result", _compact_result_timing(result))
             tx_hash = ((result.get("tx") or {}).get("txHash"))
@@ -540,6 +545,8 @@ class ExecutionService:
             except Exception:
                 balance_after = None
         opening = self.store.latest_open_for_pair(position["pair"])
+        if opening:
+            position = self._position_with_quote_risk(position, opening)
         balance_before = opening.get("balanceBefore") if opening else None
         realized = balance_after - balance_before if balance_after is not None and balance_before is not None else None
         completed_result = {
@@ -1118,7 +1125,9 @@ class ExecutionService:
             "venueStopLoss",
             "stopLossValid",
         ):
-            if key not in next_position and quote.get(key) is not None:
+            existing = next_position.get(key)
+            should_copy = key not in next_position or existing is None or (key == "venueStopLoss" and not existing)
+            if should_copy and quote.get(key) is not None:
                 next_position[key] = quote[key]
         return next_position
 
@@ -1162,6 +1171,36 @@ def _stop_loss_price(price: Decimal, side: str, notional_usd: Decimal, market_lo
     if side == "long":
         return price * (Decimal(1) - move)
     return price * (Decimal(1) + move)
+
+
+def _submission_quote_with_native_stop(original: dict[str, Any], refreshed: dict[str, Any]) -> dict[str, Any]:
+    submission = {**original, **refreshed}
+    stop_loss_usd = Decimal(str(original.get("softStopLossUsd") or original["ticketUsd"]))
+    estimated_all_in_cost = Decimal(
+        str(refreshed.get("estimatedAllInCostUsd") or original.get("estimatedAllInCostUsd") or 0)
+    )
+    market_move_budget = stop_loss_usd - estimated_all_in_cost
+    if market_move_budget <= 0:
+        raise ExecutionError(
+            f"stop {float(stop_loss_usd):.2f} is below estimated cost floor {float(estimated_all_in_cost):.2f}"
+        )
+    price = Decimal(str(refreshed["price"]))
+    leverage = Decimal(str(refreshed.get("leverage") or original["leverage"]))
+    ticket_usd = Decimal(str(original["ticketUsd"]))
+    side = str(original["side"])
+    stop_loss_price = _stop_loss_price(price, side, ticket_usd * leverage, market_move_budget)
+    submission.update(
+        {
+            "softStopLossUsd": float(stop_loss_usd),
+            "estimatedAllInCostUsd": float(estimated_all_in_cost),
+            "marketMoveBudgetUsd": float(market_move_budget),
+            "stopLossValid": True,
+            "stopLossPrice": float(stop_loss_price),
+            "venueStopLoss": True,
+            "blockedReason": None,
+        }
+    )
+    return submission
 
 
 def _matching_position(positions: list[dict[str, Any]], pair: str, previous: dict[str, Any]) -> dict[str, Any] | None:
