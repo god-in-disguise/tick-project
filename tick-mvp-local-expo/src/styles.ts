@@ -231,9 +231,9 @@ export const styles = StyleSheet.create({
   },
   closedCard: {
     position: "absolute",
-    top: "27%",
-    left: "22%",
-    right: "22%",
+    top: "25%",
+    left: "13%",
+    right: "13%",
     alignItems: "center",
     backgroundColor: "rgba(11,22,23,0.94)",
     borderWidth: 1,
@@ -260,6 +260,31 @@ export const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
     marginTop: 3
+  },
+  closedBreakdown: {
+    alignSelf: "stretch",
+    flexDirection: "row",
+    marginTop: 8,
+    paddingTop: 7,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.line
+  },
+  resultMetric: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center"
+  },
+  resultMetricLabel: {
+    color: color.muted,
+    fontSize: 8,
+    fontWeight: "800"
+  },
+  resultMetricValue: {
+    color: color.text,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: "900",
+    marginTop: 1
   },
   errorToast: {
     position: "absolute",

@@ -25,6 +25,8 @@ type ClosedResult = {
   id: string;
   pair: string;
   pnl: number | null;
+  grossPnl: number | null;
+  costDrag: number | null;
   durationSeconds: number;
   label: string;
 } | null;
@@ -371,7 +373,11 @@ function TickApp() {
     if (key === lastExecutionRef.current) return;
     lastExecutionRef.current = key;
     if (last.status === "failed" || last.status === "unknown") showError(new Error(last.error || `Execution ${last.status}`));
-    const result = last.result as { status?: string; durationSeconds?: number } | null;
+    const result = last.result as {
+      status?: string;
+      durationSeconds?: number;
+      position?: Partial<Pick<Position, "pnl" | "grossPnl" | "estimatedAllInCostUsd">>;
+    } | null;
     const externalOpenFinalized = (
       last.action === "open"
       && last.status === "closed"
@@ -380,6 +386,7 @@ function TickApp() {
     if ((last.action === "close" || externalOpenFinalized) && last.status === "closed") {
       if (closedResultTimer.current) clearTimeout(closedResultTimer.current);
       const liquidated = isLiquidatedResult(result);
+      const grossPnl = liquidated ? null : realizedGrossPnl(result, last.position);
       const closedLabel = liquidated
         ? "Liquidated"
         : last.realizedWalletDelta === null
@@ -391,6 +398,8 @@ function TickApp() {
         id: last.id,
         pair: last.pair,
         pnl: last.realizedWalletDelta,
+        grossPnl,
+        costDrag: liquidated ? null : costDrag(last.realizedWalletDelta, grossPnl, result, last.position),
         durationSeconds: result?.durationSeconds ?? 0,
         label: closedLabel
       });
@@ -490,6 +499,29 @@ function isBusy(execution: Execution | null): boolean {
 
 function isLiquidatedResult(result: { status?: string } | null): boolean {
   return result?.status === "liquidated";
+}
+
+function realizedGrossPnl(
+  result: { position?: Partial<Pick<Position, "pnl" | "grossPnl">> } | null,
+  position: Position | null
+): number | null {
+  const raw = result?.position?.pnl ?? result?.position?.grossPnl ?? position?.pnl ?? position?.grossPnl;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+function costDrag(
+  netPnl: number | null,
+  grossPnl: number | null,
+  result: { position?: Partial<Pick<Position, "estimatedAllInCostUsd">> } | null,
+  position: Position | null
+): number | null {
+  if (netPnl !== null && grossPnl !== null) {
+    const drag = grossPnl - netPnl;
+    return Number.isFinite(drag) ? drag : null;
+  }
+  const estimate = Number(result?.position?.estimatedAllInCostUsd ?? position?.estimatedAllInCostUsd);
+  return Number.isFinite(estimate) ? estimate : null;
 }
 
 function isAbortError(cause: unknown): boolean {

@@ -18,6 +18,8 @@ type ClosedResult = {
   id: string;
   pair: string;
   pnl: number | null;
+  grossPnl: number | null;
+  costDrag: number | null;
   durationSeconds: number;
   label: string;
 } | null;
@@ -247,6 +249,23 @@ export function TradeScreen(props: Props) {
             >
               {props.closedResult.pnl === null ? "Settling" : formatSignedMoney(props.closedResult.pnl)}
             </Text>
+            <View style={styles.closedBreakdown}>
+              <ResultMetric
+                label="Gross"
+                value={props.closedResult.grossPnl === null ? "--" : formatSignedMoney(props.closedResult.grossPnl)}
+                tone={props.closedResult.grossPnl}
+              />
+              <ResultMetric
+                label="Costs"
+                value={formatCostDrag(props.closedResult.costDrag)}
+                tone={props.closedResult.costDrag === null ? null : -Math.abs(props.closedResult.costDrag)}
+              />
+              <ResultMetric
+                label="Net"
+                value={props.closedResult.pnl === null ? "--" : formatSignedMoney(props.closedResult.pnl)}
+                tone={props.closedResult.pnl}
+              />
+            </View>
             <Text style={styles.closedMeta}>{props.closedResult.pair} · {formatDuration(props.closedResult.durationSeconds)}</Text>
           </Animated.View>
         ) : null}
@@ -300,6 +319,23 @@ function Term({ label, value }: { label: string; value: string }) {
   );
 }
 
+function ResultMetric({ label, value, tone }: { label: string; value: string; tone: number | null }) {
+  return (
+    <View style={styles.resultMetric}>
+      <Text style={styles.resultMetricLabel}>{label}</Text>
+      <Text
+        numberOfLines={1}
+        style={[
+          styles.resultMetricValue,
+          tone === null ? undefined : tone >= 0 ? styles.positive : styles.negative
+        ]}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
 function tapeBadge(status: FeedStatus): string {
   if (status === "delayed") return "DELAYED";
   if (status === "disconnected") return "NO TAPE";
@@ -319,4 +355,10 @@ function compactMoney(value: number): string {
 function formatDuration(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   return `${String(minutes).padStart(2, "0")}:${String(Math.max(0, seconds % 60)).padStart(2, "0")}`;
+}
+
+function formatCostDrag(value: number | null): string {
+  if (value === null) return "--";
+  if (Math.abs(value) < 0.005) return "$0.00";
+  return value >= 0 ? `-${formatMoney(value)}` : `+${formatMoney(Math.abs(value))}`;
 }

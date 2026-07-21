@@ -15,11 +15,13 @@ type Props = {
 };
 
 export function PriceChart({ market, entry, liquidation, direction }: Props) {
-  const displayPrice = useRenderedPrice(market.price);
+  const displayPrice = useRenderedPrice(market.price, market.pair);
   const domainRef = useRef<StableDomain | null>(null);
-  useEffect(() => {
+  const domainPairRef = useRef(market.pair);
+  if (domainPairRef.current !== market.pair) {
+    domainPairRef.current = market.pair;
     domainRef.current = null;
-  }, [market.pair]);
+  }
   const chart = buildChart(market.chartPoints, market.points, market.price, displayPrice, entry, liquidation, domainRef);
   const movementColor = market.move >= 0 ? "#38d39f" : "#ff6070";
 
@@ -100,10 +102,20 @@ export function PriceChart({ market, entry, liquidation, direction }: Props) {
   );
 }
 
-function useRenderedPrice(targetPrice: number) {
+function useRenderedPrice(targetPrice: number, resetKey: string) {
   const [displayPrice, setDisplayPrice] = useState(targetPrice);
   const currentRef = useRef(targetPrice);
+  const keyRef = useRef(resetKey);
   const frameRef = useRef<number | null>(null);
+  const reset = keyRef.current !== resetKey;
+  if (reset) {
+    keyRef.current = resetKey;
+    currentRef.current = targetPrice;
+    if (frameRef.current !== null) {
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+  }
 
   useEffect(() => {
     if (!Number.isFinite(targetPrice) || targetPrice <= 0) return;
@@ -127,9 +139,9 @@ function useRenderedPrice(targetPrice: number) {
     return () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
     };
-  }, [targetPrice]);
+  }, [targetPrice, resetKey]);
 
-  return displayPrice;
+  return reset ? targetPrice : displayPrice;
 }
 
 function buildChart(
