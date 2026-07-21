@@ -49,6 +49,8 @@ class ExecutionService:
         self._running: set[str] = set()
         self._closed_pairs: set[str] = set()
         self._missing_positions: dict[str, float] = {}
+        self._version = 0
+        self._version_condition = threading.Condition()
         self._stop = threading.Event()
         self._monitor: threading.Thread | None = None
 
@@ -255,7 +257,22 @@ class ExecutionService:
             "lastExecution": self.store.latest_execution(),
             "localTestOverrideEnabled": True,
             "accountUpdatedAt": self._account_updated_at or None,
+            "stateVersion": self.state_version(),
         }
+
+    def state_version(self) -> int:
+        with self._version_condition:
+            return self._version
+
+    def wait_for_state_change(self, after_version: int, timeout: float = 15.0) -> int:
+        deadline = time.monotonic() + max(0.0, timeout)
+        with self._version_condition:
+            while self._version <= after_version:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                self._version_condition.wait(timeout=remaining)
+            return self._version
 
     def execution(self, execution_id: str) -> dict[str, Any]:
         value = self.store.get_execution(execution_id)
@@ -372,6 +389,7 @@ class ExecutionService:
                     position=position,
                     result=result,
                 )
+                self._notify_state()
                 self._schedule_refresh_account()
             elif result.get("status") in {"pending_execution", "pending_index"}:
                 current = self.store.get_execution(execution_id)
@@ -383,6 +401,7 @@ class ExecutionService:
                     position=(current or {}).get("position"),
                     result=result,
                 )
+                self._notify_state()
             else:
                 self.store.update_execution(
                     execution_id,
@@ -391,12 +410,14 @@ class ExecutionService:
                     result=result,
                     error=f"open ended in {result.get('status') or 'unknown'}",
                 )
+                self._notify_state()
             if not position:
                 self._refresh_account()
         except Exception as exc:
             LOGGER.exception("open execution failed")
             self._event(execution_id, "failed", {"action": "open", "error": f"{type(exc).__name__}: {exc}"})
             self.store.update_execution(execution_id, status="failed", error=f"{type(exc).__name__}: {exc}")
+            self._notify_state()
             self._safe_refresh_account()
         finally:
             with self._state_lock:
@@ -441,6 +462,7 @@ class ExecutionService:
                 self._finish_close(execution_id, position, result, tx_hash)
             elif result.get("status") in {"pending_execution", "pending_index"}:
                 self.store.update_execution(execution_id, status="closing", txHash=tx_hash, result=result)
+                self._notify_state()
             else:
                 self.store.update_execution(
                     execution_id,
@@ -449,10 +471,12 @@ class ExecutionService:
                     result=result,
                     error=f"close ended in {result.get('status') or 'unknown'}",
                 )
+                self._notify_state()
         except Exception as exc:
             LOGGER.exception("close execution failed")
             self._event(execution_id, "failed", {"action": "close", "error": f"{type(exc).__name__}: {exc}"})
             self.store.update_execution(execution_id, status="unknown", error=f"{type(exc).__name__}: {exc}")
+            self._notify_state()
             self._safe_refresh_account()
         finally:
             with self._state_lock:
@@ -511,6 +535,7 @@ class ExecutionService:
             result=completed_result,
             error=None,
         )
+        self._notify_state()
         self._event(
             execution_id,
             "position_gone",
@@ -556,6 +581,7 @@ class ExecutionService:
                     {"status": "open", "pair": position.get("pair"), "idx": position.get("idx")},
                 )
                 self.store.update_execution(execution["id"], status="open", position=position)
+                self._notify_state()
                 continue
             if execution["action"] == "close" and not position:
                 previous = (execution.get("result") or {}).get("position") or {
@@ -575,6 +601,7 @@ class ExecutionService:
                 status=status,
                 error=f"{execution['action']} did not reconcile within {int(STALE_EXECUTION_SECONDS)} seconds",
             )
+            self._notify_state()
 
     def _reconcile_external_position_events(self) -> None:
         pending_close_pairs = {
@@ -654,6 +681,7 @@ class ExecutionService:
             if matched_position:
                 if previous.get("indexing"):
                     self.store.update_execution(opening["id"], position=matched_position)
+                    self._notify_state()
                 self._missing_positions.pop(_position_key(opening), None)
                 continue
 
@@ -761,6 +789,7 @@ class ExecutionService:
             result=completed_result,
             error=None,
         )
+        self._notify_state()
         self._event(
             current["id"],
             "position_gone",
@@ -779,6 +808,17 @@ class ExecutionService:
         data = dict(payload or {})
         data.setdefault("at", time.time())
         self.store.add_event(execution_id, event_type, data)
+        if event_type in {
+            "api_accepted",
+            "tx_result",
+            "position_visible",
+            "external_position_event",
+            "position_gone",
+            "balance_reconciled",
+            "balance_repaired",
+            "failed",
+        }:
+            self._notify_state()
 
     def _account_snapshot(self, *, max_age: float, allow_stale: bool = False) -> dict[str, Any]:
         with self._state_lock:
@@ -809,6 +849,7 @@ class ExecutionService:
             self._account_updated_at = time.time()
             open_pairs = {item["pair"] for item in account.get("positions") or []}
             self._closed_pairs.intersection_update(open_pairs)
+        self._notify_state()
         return account
 
     def _safe_refresh_account(self) -> None:
@@ -870,6 +911,7 @@ class ExecutionService:
                 result=reconciled_result,
                 error=None,
             )
+            self._notify_state()
             self._event(
                 execution_id,
                 "balance_reconciled",
@@ -971,6 +1013,7 @@ class ExecutionService:
             result=repaired_result,
             error=None,
         )
+        self._notify_state()
         self._event(
             latest["id"],
             "balance_repaired",
@@ -1003,6 +1046,11 @@ class ExecutionService:
             "estimatedAllInCostUsd": float(quote.get("estimatedAllInCostUsd") or 0),
             "estimatedLiquidationPrice": quote.get("estimatedLiquidationPrice"),
         }
+
+    def _notify_state(self) -> None:
+        with self._version_condition:
+            self._version += 1
+            self._version_condition.notify_all()
 
     @staticmethod
     def _validate_quote_move(quote: dict[str, Any], refreshed: dict[str, Any]) -> None:

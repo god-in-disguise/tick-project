@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 import time
 import uuid
 from contextlib import asynccontextmanager
 from decimal import Decimal
 from typing import Any, Callable
 
-from fastapi import FastAPI, Header, HTTPException, Query, status
+from fastapi import FastAPI, Header, HTTPException, Query, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -111,6 +112,30 @@ def health() -> dict[str, Any]:
 @app.get("/api/state")
 def state(force: bool = False) -> dict[str, Any]:
     return _safe(lambda: execution_service.state(force=force))
+
+
+@app.websocket("/ws/state")
+async def state_stream(websocket: WebSocket, token: str | None = Query(default=None)) -> None:
+    if token != LOCAL_API_TOKEN:
+        await websocket.close(code=1008)
+        return
+    await websocket.accept()
+    version = execution_service.state_version()
+    try:
+        await websocket.send_json({"type": "state", "state": execution_service.state(force=False)})
+        while True:
+            next_version = await asyncio.to_thread(
+                execution_service.wait_for_state_change,
+                version,
+                15.0,
+            )
+            if next_version == version:
+                await websocket.send_json({"type": "heartbeat", "stateVersion": version, "timestamp": time.time()})
+                continue
+            version = next_version
+            await websocket.send_json({"type": "state", "state": execution_service.state(force=False)})
+    except WebSocketDisconnect:
+        return
 
 
 @app.get("/api/status")

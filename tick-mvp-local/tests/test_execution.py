@@ -76,6 +76,17 @@ class ExecutionServiceTest(unittest.TestCase):
         release.set()
         wait_for(lambda: self.service.execution(execution["id"]), "open")
 
+    def test_state_version_wakes_on_execution_updates(self) -> None:
+        version = self.service.state_version()
+        quote = self.service.quote("BTC-USD", "long", Decimal("20"), Decimal("100"))
+        opened = self.service.open(quote["quoteId"], "version-open")
+
+        changed = self.service.wait_for_state_change(version, timeout=1)
+        self.assertGreater(changed, version)
+
+        wait_for(lambda: self.service.execution(opened["id"]), "open")
+        self.assertGreater(self.service.state_version(), changed)
+
     def test_venue_open_market_remains_executable_when_tape_is_quiet(self) -> None:
         quiet = {
             **FakeMarkets.opportunity(),

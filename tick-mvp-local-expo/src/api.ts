@@ -33,6 +33,7 @@ async function request<T>(path: string, options?: RequestInit, timeoutMs = 10000
 }
 
 export const api = {
+  stateStreamUrl: () => `${API_BASE.replace(/^http/, "ws")}/ws/state?token=${encodeURIComponent(API_TOKEN)}`,
   markets: () => request<MarketsResponse>("/api/markets", undefined, 20000),
   state: (force = false) => request<AccountState>(`/api/state${force ? "?force=true" : ""}`, undefined, force ? 20000 : 8000),
   chart: (pair: string) => request<ChartResponse>(`/api/chart?pair=${encodeURIComponent(pair)}&minutes=20`, undefined, 20000),

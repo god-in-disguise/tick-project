@@ -62,6 +62,9 @@ function TickApp() {
   const chartLoads = useRef<Record<string, { status: "loading" | "loaded"; at: number }>>({});
   const tapeSequence = useRef<Record<string, number>>({});
   const stateInFlight = useRef(false);
+  const stateSocket = useRef<WebSocket | null>(null);
+  const stateSocketReconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stateSocketClosed = useRef(false);
   const quotesRef = useRef<Quotes>(emptyQuotes);
   const lastExecutionRef = useRef("");
   const actionInFlight = useRef(false);
@@ -113,12 +116,17 @@ function TickApp() {
   }, [market?.pair]);
 
   useEffect(() => {
+    stateSocketClosed.current = false;
     refreshMarkets();
     refreshState();
     refreshHistory();
+    connectStateStream();
     const marketTimer = setInterval(refreshMarkets, MARKET_REFRESH_MS);
     const stateTimer = setInterval(refreshState, STATE_POLL_MS);
     return () => {
+      stateSocketClosed.current = true;
+      if (stateSocketReconnectTimer.current) clearTimeout(stateSocketReconnectTimer.current);
+      stateSocket.current?.close();
       clearInterval(marketTimer);
       clearInterval(stateTimer);
       if (errorTimer.current) clearTimeout(errorTimer.current);
@@ -181,18 +189,45 @@ function TickApp() {
     stateInFlight.current = true;
     try {
       const next = await api.state(force);
-      setAccount(next);
-      setSubmitting(null);
-      if (next.execution) setPendingExecution(next.execution);
-      if (!next.execution && next.lastExecution && ["closed", "failed"].includes(next.lastExecution.status)) {
-        setPendingExecution((current) => current?.id === next.lastExecution?.id ? null : current);
-      }
-      handleLastExecution(next.lastExecution);
+      applyAccountState(next);
     } catch (cause) {
       showError(cause, false);
     } finally {
       stateInFlight.current = false;
     }
+  }
+
+  function applyAccountState(next: AccountState) {
+    setAccount(next);
+    setSubmitting(null);
+    if (next.execution) setPendingExecution(next.execution);
+    if (!next.execution && next.lastExecution && ["closed", "failed"].includes(next.lastExecution.status)) {
+      setPendingExecution((current) => current?.id === next.lastExecution?.id ? null : current);
+    }
+    handleLastExecution(next.lastExecution);
+  }
+
+  function connectStateStream() {
+    if (stateSocketClosed.current) return;
+    if (stateSocket.current && stateSocket.current.readyState <= 1) return;
+    const socket = new WebSocket(api.stateStreamUrl());
+    stateSocket.current = socket;
+
+    socket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(String(event.data)) as { type?: string; state?: AccountState };
+        if (message.type === "state" && message.state) applyAccountState(message.state);
+      } catch (cause) {
+        showError(cause, false);
+      }
+    };
+    socket.onerror = () => undefined;
+    socket.onclose = () => {
+      if (stateSocket.current === socket) stateSocket.current = null;
+      if (stateSocketClosed.current) return;
+      if (stateSocketReconnectTimer.current) clearTimeout(stateSocketReconnectTimer.current);
+      stateSocketReconnectTimer.current = setTimeout(connectStateStream, 900);
+    };
   }
 
   async function refreshHistory() {

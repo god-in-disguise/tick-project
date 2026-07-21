@@ -110,6 +110,7 @@ export type AccountState = {
   lastExecution: Execution | null;
   localTestOverrideEnabled: boolean;
   accountUpdatedAt: number | null;
+  stateVersion?: number;
 };
 
 export type TradeQuote = {
