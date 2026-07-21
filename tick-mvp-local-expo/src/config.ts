@@ -1,7 +1,9 @@
 export const API_BASE = process.env.EXPO_PUBLIC_API_BASE ?? "http://172.20.10.4:8787";
 export const API_TOKEN = process.env.EXPO_PUBLIC_TICK_TOKEN ?? "tick-local-one-wallet";
 
-export const TICKET_USD = 10;
+export const DEFAULT_MARGIN_USD = 10;
+export const DEFAULT_SOFT_STOP_USD = 10;
+export const TICKET_USD = DEFAULT_MARGIN_USD;
 export const TAPE_POLL_MS = 200;
 export const STATE_POLL_MS = 250;
 export const MARKET_REFRESH_MS = 8000;

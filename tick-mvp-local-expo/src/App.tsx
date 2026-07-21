@@ -3,7 +3,14 @@ import { StatusBar, Text, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import { api } from "./api";
-import { MARKET_REFRESH_MS, QUOTE_REFRESH_MS, STATE_POLL_MS, TAPE_POLL_MS, TICKET_USD } from "./config";
+import {
+  DEFAULT_MARGIN_USD,
+  DEFAULT_SOFT_STOP_USD,
+  MARKET_REFRESH_MS,
+  QUOTE_REFRESH_MS,
+  STATE_POLL_MS,
+  TAPE_POLL_MS
+} from "./config";
 import {
   allowedLeverage,
   chartPointsFromTicks,
@@ -49,9 +56,12 @@ function TickApp() {
   const [quotes, setQuotes] = useState<Quotes>(emptyQuotes);
   const [history, setHistory] = useState<Execution[]>([]);
   const [leveragePreset, setLeveragePreset] = useState(100);
+  const [marginUsd, setMarginUsd] = useState(DEFAULT_MARGIN_USD);
+  const [softStopUsd, setSoftStopUsd] = useState(DEFAULT_SOFT_STOP_USD);
   const [pendingExecution, setPendingExecution] = useState<Execution | null>(null);
   const [closedResult, setClosedResult] = useState<ClosedResult>(null);
   const [submitting, setSubmitting] = useState<"long" | "short" | "close" | null>(null);
+  const [approving, setApproving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tapeStale, setTapeStale] = useState(false);
   const [tapeStatus, setTapeStatus] = useState<FeedStatus>("resyncing");
@@ -107,7 +117,7 @@ function TickApp() {
   const execution = account?.execution ?? pendingExecution;
   const maxLeverage = market?.maxLeverage ?? 25;
   const leverage = allowedLeverage(leveragePreset, maxLeverage);
-  currentQuoteKey.current = market ? `${market.pair}:${leverage}` : "";
+  currentQuoteKey.current = market ? quoteKey(market.pair, leverage, marginUsd, softStopUsd) : "";
   activePairRef.current = market?.pair ?? "";
 
   useEffect(() => {
@@ -156,10 +166,10 @@ function TickApp() {
     if (!market || position || isBusy(execution)) return;
     quotesRef.current = emptyQuotes;
     setQuotes(emptyQuotes);
-    refreshQuotes(market.pair, leverage);
-    const timer = setInterval(() => refreshQuotes(market.pair, leverage), QUOTE_REFRESH_MS);
+    refreshQuotes(market.pair, leverage, marginUsd, softStopUsd);
+    const timer = setInterval(() => refreshQuotes(market.pair, leverage, marginUsd, softStopUsd), QUOTE_REFRESH_MS);
     return () => clearInterval(timer);
-  }, [market?.pair, leverage, position?.pair, execution?.status]);
+  }, [market?.pair, leverage, marginUsd, softStopUsd, position?.pair, execution?.status]);
 
   useEffect(() => {
     if (position && activePair !== position.pair) setActivePair(position.pair);
@@ -309,14 +319,19 @@ function TickApp() {
     }
   }
 
-  async function refreshQuotes(pair: string, selectedLeverage: number): Promise<Quotes> {
-    const key = `${pair}:${selectedLeverage}`;
+  async function refreshQuotes(
+    pair: string,
+    selectedLeverage: number,
+    selectedMarginUsd: number,
+    selectedSoftStopUsd: number
+  ): Promise<Quotes> {
+    const key = quoteKey(pair, selectedLeverage, selectedMarginUsd, selectedSoftStopUsd);
     const pending = quoteRequests.current[key];
     if (pending) return pending;
 
     const request = Promise.all([
-      api.quote(pair, "long", TICKET_USD, selectedLeverage),
-      api.quote(pair, "short", TICKET_USD, selectedLeverage)
+      api.quote(pair, "long", selectedMarginUsd, selectedLeverage, selectedSoftStopUsd),
+      api.quote(pair, "short", selectedMarginUsd, selectedLeverage, selectedSoftStopUsd)
     ]).then(([long, short]) => {
       const next = { long, short };
       if (currentQuoteKey.current === key) {
@@ -346,8 +361,13 @@ function TickApp() {
     let accepted = false;
     try {
       let quote = side === "long" ? quotes.long : quotes.short;
-      if (!quote || quote.pair !== market.pair || !quoteMatchesLeverage(quote, leverage) || quote.expiresAt < Date.now() / 1000 + 0.6) {
-        const refreshed = await refreshQuotes(market.pair, leverage);
+      if (
+        !quote
+        || quote.pair !== market.pair
+        || !quoteMatchesTerms(quote, leverage, marginUsd, softStopUsd)
+        || quote.expiresAt < Date.now() / 1000 + 0.6
+      ) {
+        const refreshed = await refreshQuotes(market.pair, leverage, marginUsd, softStopUsd);
         quote = side === "long" ? refreshed.long : refreshed.short;
       }
       if (!quote) throw new Error("Live terms are unavailable");
@@ -388,6 +408,20 @@ function TickApp() {
     } finally {
       actionInFlight.current = false;
       if (!accepted) setSubmitting(null);
+    }
+  }
+
+  async function approveMaxAllowance() {
+    if (approving || actionInFlight.current) return;
+    clearError();
+    setApproving(true);
+    try {
+      await api.approve();
+      await refreshState(true);
+    } catch (cause) {
+      showError(cause);
+    } finally {
+      setApproving(false);
     }
   }
 
@@ -503,6 +537,8 @@ function TickApp() {
               market={marketForScreen}
               balance={account?.balances.usdc ?? 0}
               leverage={leverage}
+              marginUsd={marginUsd}
+              softStopUsd={softStopUsd}
               position={livePosition}
               execution={execution}
               submitting={submitting}
@@ -521,9 +557,14 @@ function TickApp() {
           {tab === "profile" ? (
             <Profile
               state={account}
-              ticketUsd={TICKET_USD}
+              marginUsd={marginUsd}
+              softStopUsd={softStopUsd}
               leverage={leverage}
               maxLeverage={maxLeverage}
+              onMargin={setMarginUsd}
+              onSoftStop={setSoftStopUsd}
+              approving={approving}
+              onApproveMax={approveMaxAllowance}
               onLeverage={setLeveragePreset}
             />
           ) : null}
@@ -534,11 +575,29 @@ function TickApp() {
   );
 }
 
-function quoteMatchesLeverage(quote: TradeQuote, requestedLeverage: number): boolean {
-  return (
+function quoteKey(pair: string, leverage: number, marginUsd: number, softStopUsd: number): string {
+  return `${pair}:${leverage}:${marginUsd}:${softStopUsd}`;
+}
+
+function quoteMatchesTerms(
+  quote: TradeQuote,
+  requestedLeverage: number,
+  requestedMarginUsd: number,
+  requestedSoftStopUsd: number
+): boolean {
+  const leverageMatches = (
     quote.leverage === requestedLeverage
     || (quote.leverageNormalized === true && quote.requestedLeverage === requestedLeverage)
   );
+  return (
+    leverageMatches
+    && sameNumber(quote.ticketUsd, requestedMarginUsd)
+    && sameNumber(quote.softStopLossUsd ?? requestedMarginUsd, requestedSoftStopUsd)
+  );
+}
+
+function sameNumber(left: number, right: number): boolean {
+  return Math.abs(left - right) < 0.000001;
 }
 
 function isBusy(execution: Execution | null): boolean {

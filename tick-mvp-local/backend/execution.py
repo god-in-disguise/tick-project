@@ -69,7 +69,14 @@ class ExecutionService:
         self._executor.shutdown(wait=True, cancel_futures=False)
         self._refresh_executor.shutdown(wait=True, cancel_futures=False)
 
-    def quote(self, pair: str, side: str, ticket_usd: Decimal, leverage: Decimal) -> dict[str, Any]:
+    def quote(
+        self,
+        pair: str,
+        side: str,
+        ticket_usd: Decimal,
+        leverage: Decimal,
+        soft_stop_loss_usd: Decimal | None = None,
+    ) -> dict[str, Any]:
         started = time.perf_counter()
         started_at = time.time()
         try:
@@ -93,6 +100,16 @@ class ExecutionService:
             "quoteId": uuid.uuid4().hex,
             "createdAt": now,
             "expiresAt": now + QUOTE_TTL_SECONDS,
+            "softStopLossUsd": float(soft_stop_loss_usd) if soft_stop_loss_usd is not None else float(ticket_usd),
+            "riskLeverage": float((ticket_usd * Decimal(str(estimate["leverage"]))) / soft_stop_loss_usd)
+            if soft_stop_loss_usd and soft_stop_loss_usd > 0
+            else float(estimate["leverage"]),
+            "marketMoveBudgetUsd": float(
+                max(
+                    Decimal("0"),
+                    (soft_stop_loss_usd or ticket_usd) - Decimal(str(estimate.get("estimatedAllInCostUsd") or 0)),
+                )
+            ),
             "openingAllowed": market_open,
             "marketTradeable": tradeable,
             "localTestOverride": local_override,
@@ -371,6 +388,7 @@ class ExecutionService:
             tx_hash = ((result.get("tx") or {}).get("txHash"))
             position = result.get("position")
             if position:
+                position = self._position_with_quote_risk(position, quote)
                 self._event(
                     execution_id,
                     "position_visible",
@@ -679,9 +697,12 @@ class ExecutionService:
 
             matched_position = _matching_position(positions, opening["pair"], previous)
             if matched_position:
-                if previous.get("indexing"):
-                    self.store.update_execution(opening["id"], position=matched_position)
+                decorated = self._position_with_quote_risk(self._decorate_position(matched_position), opening)
+                if _position_changed(previous, decorated):
+                    self.store.update_execution(opening["id"], position=decorated)
                     self._notify_state()
+                if self._should_soft_stop(opening, decorated):
+                    self._submit_soft_stop_close(opening, decorated, account)
                 self._missing_positions.pop(_position_key(opening), None)
                 continue
 
@@ -935,6 +956,9 @@ class ExecutionService:
         opening_cost = float(position.get("estimatedOpenCostUsd") or (quote or {}).get("estimatedOpenCostUsd") or 0)
         closing_cost = float(position.get("estimatedCloseCostUsd") or (quote or {}).get("estimatedCloseCostUsd") or 0)
         gross_pnl = float(position.get("pnl") or 0)
+        ticket = float(position.get("ticketUsd") or (quote or {}).get("ticketUsd") or position.get("collateral") or 0)
+        soft_stop = float(position.get("softStopLossUsd") or (quote or {}).get("softStopLossUsd") or ticket or 0)
+        leverage = float(position.get("leverage") or (quote or {}).get("leverage") or 0)
         return {
             **position,
             "grossPnl": gross_pnl,
@@ -942,7 +966,9 @@ class ExecutionService:
             "estimatedOpenCostUsd": opening_cost,
             "estimatedCloseCostUsd": closing_cost,
             "estimatedAllInCostUsd": opening_cost + closing_cost,
-            "ticketUsd": float(position.get("ticketUsd") or (quote or {}).get("ticketUsd") or position.get("collateral") or 0),
+            "ticketUsd": ticket,
+            "softStopLossUsd": soft_stop,
+            "riskLeverage": (ticket * leverage / soft_stop) if soft_stop > 0 else leverage,
             "estimatedLiquidationPrice": position.get("estimatedLiquidationPrice") or (quote or {}).get("estimatedLiquidationPrice"),
             "pnlEstimated": True,
         }
@@ -1041,11 +1067,92 @@ class ExecutionService:
             "optimistic": True,
             "closeAvailable": False,
             "ticketUsd": float(quote["ticketUsd"]),
+            "softStopLossUsd": float(quote.get("softStopLossUsd") or quote["ticketUsd"]),
+            "riskLeverage": float(quote.get("riskLeverage") or quote["leverage"]),
             "estimatedOpenCostUsd": float(quote.get("estimatedOpenCostUsd") or 0),
             "estimatedCloseCostUsd": float(quote.get("estimatedCloseCostUsd") or 0),
             "estimatedAllInCostUsd": float(quote.get("estimatedAllInCostUsd") or 0),
             "estimatedLiquidationPrice": quote.get("estimatedLiquidationPrice"),
         }
+
+    def _position_with_quote_risk(self, position: dict[str, Any], quote_or_execution: dict[str, Any]) -> dict[str, Any]:
+        quote = quote_or_execution
+        if quote_or_execution.get("quoteId") and "softStopLossUsd" not in quote_or_execution:
+            quote = self.store.get_quote(quote_or_execution["quoteId"]) or quote_or_execution
+        ticket = float(position.get("ticketUsd") or quote.get("ticketUsd") or position.get("collateral") or 0)
+        soft_stop = float(position.get("softStopLossUsd") or quote.get("softStopLossUsd") or ticket or 0)
+        leverage = float(position.get("leverage") or quote.get("leverage") or 0)
+        next_position = {
+            **position,
+            "ticketUsd": ticket,
+            "softStopLossUsd": soft_stop,
+            "riskLeverage": (ticket * leverage / soft_stop) if soft_stop > 0 else leverage,
+        }
+        for key in (
+            "estimatedOpenCostUsd",
+            "estimatedCloseCostUsd",
+            "estimatedAllInCostUsd",
+            "estimatedLiquidationPrice",
+        ):
+            if key not in next_position and quote.get(key) is not None:
+                next_position[key] = quote[key]
+        return next_position
+
+    def _should_soft_stop(self, opening: dict[str, Any], position: dict[str, Any]) -> bool:
+        if not position.get("closeAvailable", True):
+            return False
+        soft_stop = float(position.get("softStopLossUsd") or 0)
+        if soft_stop <= 0:
+            return False
+        estimated_net = position.get("estimatedNetPnl")
+        if estimated_net is None:
+            estimated_net = float(position.get("pnl") or 0) - float(position.get("estimatedAllInCostUsd") or 0)
+        return float(estimated_net) <= -soft_stop
+
+    def _submit_soft_stop_close(
+        self,
+        opening: dict[str, Any],
+        position: dict[str, Any],
+        account: dict[str, Any],
+    ) -> None:
+        close_key = f"soft-stop-{opening['id']}-{position.get('idx')}"
+        if self.store.get_execution_by_idempotency(close_key):
+            return
+        execution = {
+            "id": uuid.uuid4().hex,
+            "idempotencyKey": close_key,
+            "action": "close",
+            "venue": self.connector.name,
+            "pair": position["pair"],
+            "side": position.get("side"),
+            "quoteId": None,
+            "ticketUsd": None,
+            "leverage": position.get("leverage"),
+            "status": "created",
+            "balanceBefore": _usdc_balance(account),
+            "position": position,
+            "result": {
+                "status": "soft_stop_triggered",
+                "position": position,
+                "softStopLossUsd": position.get("softStopLossUsd"),
+            },
+        }
+        persisted, created = self.store.create_execution(execution)
+        if not created:
+            return
+        self._event(
+            persisted["id"],
+            "soft_stop_triggered",
+            {
+                "openingExecutionId": opening["id"],
+                "pair": position.get("pair"),
+                "idx": position.get("idx"),
+                "estimatedNetPnl": position.get("estimatedNetPnl"),
+                "softStopLossUsd": position.get("softStopLossUsd"),
+            },
+        )
+        self._running.add(persisted["id"])
+        self._executor.submit(self._run_close, persisted["id"], position["pair"], position)
 
     def _notify_state(self) -> None:
         with self._version_condition:
@@ -1088,6 +1195,35 @@ def _matching_position(positions: list[dict[str, Any]], pair: str, previous: dic
         if previous_idx is None or position.get("idx") == previous_idx:
             return position
     return None
+
+
+def _position_changed(previous: dict[str, Any], current: dict[str, Any]) -> bool:
+    if not previous:
+        return True
+    keys = (
+        "idx",
+        "entry",
+        "mark",
+        "pnl",
+        "grossPnl",
+        "estimatedNetPnl",
+        "roePct",
+        "estimatedLiquidationPrice",
+        "closeAvailable",
+        "indexing",
+        "softStopLossUsd",
+        "riskLeverage",
+    )
+    return any(_changed(previous.get(key), current.get(key)) for key in keys)
+
+
+def _changed(left: Any, right: Any) -> bool:
+    if left is None or right is None:
+        return left is not right
+    try:
+        return abs(float(left) - float(right)) > 0.000001
+    except (TypeError, ValueError):
+        return left != right
 
 
 def _position_key(execution: dict[str, Any]) -> str:

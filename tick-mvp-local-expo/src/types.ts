@@ -63,6 +63,8 @@ export type Position = {
   estimatedCloseCostUsd: number;
   estimatedAllInCostUsd: number;
   ticketUsd: number;
+  softStopLossUsd?: number | null;
+  riskLeverage?: number | null;
   estimatedLiquidationPrice: number | null;
   pnlEstimated: boolean;
   roePct: number;
@@ -127,7 +129,11 @@ export type TradeQuote = {
   collateralAtRiskUsd: number;
   price: number;
   estimatedOpenCostUsd: number;
+  estimatedCloseCostUsd?: number;
   estimatedAllInCostUsd: number;
+  softStopLossUsd?: number;
+  riskLeverage?: number;
+  marketMoveBudgetUsd?: number;
   estimatedLiquidationPrice: number | null;
   feeHurdlePct: number;
   slippageBps: number;

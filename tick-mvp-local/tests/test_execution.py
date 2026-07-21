@@ -101,6 +101,43 @@ class ExecutionServiceTest(unittest.TestCase):
         self.assertTrue(quote["openingAllowed"])
         self.assertFalse(quote["marketTradeable"])
 
+    def test_quote_tracks_soft_stop_and_derived_risk_leverage(self) -> None:
+        quote = self.service.quote("BTC-USD", "long", Decimal("50"), Decimal("100"), Decimal("10"))
+
+        self.assertEqual(quote["ticketUsd"], 50.0)
+        self.assertEqual(quote["softStopLossUsd"], 10.0)
+        self.assertEqual(quote["riskLeverage"], 500.0)
+        self.assertAlmostEqual(quote["marketMoveBudgetUsd"], 9.8)
+
+    def test_soft_stop_submits_single_close_when_net_pnl_crosses_stop(self) -> None:
+        quote = self.service.quote("BTC-USD", "long", Decimal("20"), Decimal("100"), Decimal("5"))
+        opened = self.service.open(quote["quoteId"], "open-before-soft-stop")
+        opened = wait_for(lambda: self.service.execution(opened["id"]), "open")
+
+        with self.connector._lock:
+            if self.connector.position is None:
+                raise AssertionError("expected fake position")
+            self.connector.position = {
+                **self.connector.position,
+                "mark": 63900.0,
+                "pnl": -6.0,
+                "roePct": -30.0,
+                "closeAvailable": True,
+            }
+        with self.service._state_lock:
+            self.service._account_updated_at = 0.0
+
+        self.service._reconcile_pending()
+        closed = wait_for(
+            lambda: self.service.store.latest_execution(),
+            "closed",
+            timeout=4.5,
+        )
+
+        self.assertEqual(closed["action"], "close")
+        self.assertTrue(closed["idempotencyKey"].startswith(f"soft-stop-{opened['id']}"))
+        self.assertEqual(self.service.state()["positions"], [])
+
     def test_pending_close_keeps_position_until_venue_disappears(self) -> None:
         quote = self.service.quote("BTC-USD", "long", Decimal("20"), Decimal("100"))
         opened = self.service.open(quote["quoteId"], "open-pending-close")

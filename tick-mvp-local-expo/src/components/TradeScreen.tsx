@@ -28,6 +28,8 @@ type Props = {
   market: Market;
   balance: number;
   leverage: number;
+  marginUsd: number;
+  softStopUsd: number;
   position: Position | null;
   execution: Execution | null;
   submitting: "long" | "short" | "close" | null;
@@ -57,6 +59,9 @@ export function TradeScreen(props: Props) {
   };
   const openingQuote = marketQuotes.long ?? marketQuotes.short;
   const cost = openingQuote?.estimatedAllInCostUsd ?? 0;
+  const marginUsd = openingQuote?.ticketUsd ?? props.marginUsd;
+  const softStopUsd = openingQuote?.softStopLossUsd ?? props.softStopUsd;
+  const riskLeverage = openingQuote?.riskLeverage ?? (softStopUsd > 0 ? marginUsd * props.leverage / softStopUsd : props.leverage);
   const tape = market.activeTapePct ?? 0;
   const marketState = market.feedLabel === "Watching" ? "Live tape" : market.feedLabel;
   const showClosedBreakdown = Boolean(
@@ -298,10 +303,10 @@ export function TradeScreen(props: Props) {
               </>
             ) : (
               <>
-                <Term label="Ticket" value={formatMoney(openingQuote?.ticketUsd ?? 20)} />
-                <Term label="Exposure" value={compactMoney(openingQuote?.notionalUsd ?? 20 * props.leverage)} />
+                <Term label="Margin" value={formatMoney(marginUsd)} />
+                <Term label="Exposure" value={compactMoney(openingQuote?.notionalUsd ?? marginUsd * props.leverage)} />
                 <Term label="Cost" value={openingQuote ? formatMoney(openingQuote.estimatedAllInCostUsd) : "--"} />
-                <Term label="Risk" value={formatMoney(openingQuote?.collateralAtRiskUsd ?? 20)} />
+                <Term label="Stop" value={`${formatMoney(softStopUsd)} · ${formatCompactLeverage(riskLeverage)}`} />
               </>
             )}
           </View>
@@ -358,6 +363,11 @@ function costToMove(quote: Quotes["long"]): number {
 function compactMoney(value: number): string {
   if (value >= 1000) return `$${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}k`;
   return formatMoney(value);
+}
+
+function formatCompactLeverage(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "--";
+  return `${Math.round(value)}x`;
 }
 
 function formatDuration(seconds: number): string {

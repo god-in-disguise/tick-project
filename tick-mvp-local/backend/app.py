@@ -64,6 +64,7 @@ class QuoteRequest(BaseModel):
     side: str
     ticketUsd: float = Field(default=DEFAULT_TICKET_USD, gt=0)
     leverage: float = Field(default=DEFAULT_LEVERAGE, gt=0)
+    softStopLossUsd: float | None = Field(default=None, gt=0)
 
 
 class OpenRequest(BaseModel):
@@ -285,6 +286,7 @@ def quote(body: QuoteRequest, x_tick_token: str | None = Header(default=None)) -
             body.side.lower(),
             Decimal(str(body.ticketUsd)),
             Decimal(str(body.leverage)),
+            Decimal(str(body.softStopLossUsd)) if body.softStopLossUsd is not None else None,
         )
     )
 

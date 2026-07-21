@@ -553,6 +553,24 @@ export const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800"
   },
+  profileAction: {
+    height: 48,
+    marginTop: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 7,
+    backgroundColor: "rgba(255,159,46,0.14)",
+    borderWidth: 1,
+    borderColor: color.orange
+  },
+  profileActionDisabled: {
+    opacity: 0.55
+  },
+  profileActionText: {
+    color: color.orange,
+    fontSize: 14,
+    fontWeight: "900"
+  },
   controlLabel: {
     color: color.text,
     fontSize: 14,

@@ -7,13 +7,30 @@ import { styles } from "../styles";
 
 type Props = {
   state: AccountState | null;
-  ticketUsd: number;
+  marginUsd: number;
+  softStopUsd: number;
   leverage: number;
   maxLeverage: number;
+  approving: boolean;
+  onMargin: (value: number) => void;
+  onSoftStop: (value: number) => void;
+  onApproveMax: () => void;
   onLeverage: (value: number) => void;
 };
 
-export function Profile({ state, ticketUsd, leverage, maxLeverage, onLeverage }: Props) {
+export function Profile({
+  state,
+  marginUsd,
+  softStopUsd,
+  leverage,
+  maxLeverage,
+  approving,
+  onMargin,
+  onSoftStop,
+  onApproveMax,
+  onLeverage
+}: Props) {
+  const riskLeverage = softStopUsd > 0 ? (marginUsd * leverage) / softStopUsd : leverage;
   return (
     <ScrollView style={styles.page} contentContainerStyle={styles.pageContent} showsVerticalScrollIndicator={false}>
       <Text style={styles.pageTitle}>Me</Text>
@@ -25,9 +42,47 @@ export function Profile({ state, ticketUsd, leverage, maxLeverage, onLeverage }:
 
       <View style={styles.settingsPanel}>
         <Setting label="Venue" value={(state?.venue ?? "ostium").toUpperCase()} />
-        <Setting label="Ticket" value={formatMoney(ticketUsd)} />
-        <Setting label="Margin" value="Isolated" />
+        <Setting label="Margin" value={formatMoney(marginUsd)} />
+        <Setting label="Soft stop" value={formatMoney(softStopUsd)} />
+        <Setting label="Risk speed" value={`${Math.round(riskLeverage)}x`} />
         <Setting label="Allowance" value={String(state?.balances.allowance ?? "--")} />
+      </View>
+      <Pressable
+        disabled={approving}
+        onPress={onApproveMax}
+        style={[styles.profileAction, approving && styles.profileActionDisabled]}
+      >
+        <Text style={styles.profileActionText}>{approving ? "Approving" : "Max allowance"}</Text>
+      </Pressable>
+
+      <Text style={styles.controlLabel}>Margin preset</Text>
+      <View style={styles.leverageRow}>
+        {[10, 20, 50, 100].map((value) => (
+          <Pressable
+            key={value}
+            onPress={() => onMargin(value)}
+            style={[styles.leverageButton, marginUsd === value && styles.leverageButtonActive]}
+          >
+            <Text style={[styles.leverageButtonText, marginUsd === value && styles.leverageButtonTextActive]}>
+              {formatMoney(value)}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={styles.controlLabel}>Stop rail</Text>
+      <View style={styles.leverageRow}>
+        {[10, 20, 50].map((value) => (
+          <Pressable
+            key={value}
+            onPress={() => onSoftStop(value)}
+            style={[styles.leverageButton, softStopUsd === value && styles.leverageButtonActive]}
+          >
+            <Text style={[styles.leverageButtonText, softStopUsd === value && styles.leverageButtonTextActive]}>
+              {formatMoney(value)}
+            </Text>
+          </Pressable>
+        ))}
       </View>
 
       <Text style={styles.controlLabel}>Leverage preset</Text>

@@ -39,10 +39,10 @@ export const api = {
   chart: (pair: string) => request<ChartResponse>(`/api/chart?pair=${encodeURIComponent(pair)}&minutes=20`, undefined, 20000),
   tape: (pair: string, since: number) =>
     request<TapeResponse>(`/api/tape?pair=${encodeURIComponent(pair)}&since=${since}`, undefined, 4000),
-  quote: (pair: string, side: Side, ticketUsd: number, leverage: number) =>
+  quote: (pair: string, side: Side, ticketUsd: number, leverage: number, softStopLossUsd?: number) =>
     request<TradeQuote>(
       "/api/trade/quote",
-      { method: "POST", body: JSON.stringify({ pair, side, ticketUsd, leverage }) },
+      { method: "POST", body: JSON.stringify({ pair, side, ticketUsd, leverage, softStopLossUsd }) },
       12000
     ),
   open: (quoteId: string, idempotencyKey: string) =>
@@ -56,6 +56,12 @@ export const api = {
       "/api/trade/close",
       { method: "POST", body: JSON.stringify({ pair, idempotencyKey }) },
       12000
+    ),
+  approve: (amount?: number) =>
+    request<Record<string, unknown>>(
+      "/api/approve",
+      { method: "POST", body: JSON.stringify(amount === undefined ? {} : { amount }) },
+      20000
     ),
   history: () => request<HistoryResponse>("/api/history")
 };
