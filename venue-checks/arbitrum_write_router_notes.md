@@ -99,6 +99,28 @@ Observed shapes:
 - Several legacy type-0 transactions called `0x8A1Ba3d5B7864621A6214627A85A3f252B2E6180` (`DEXRebalancer`) with selector-like calldata beginning `0x00000000`, high gas limits, and `timeboosted = true`.
 - At least one DEX-style parent transaction carried top-level ETH value, but the dominant active pattern is still: call strategy/router contract, then pay Kairos internally.
 
+Direct RPC verification of sampled landed parents:
+
+```text
+0xad2a126c6a6127460d7772e0352813f039762793f0e453a9fb3eab97fd372aaf
+  to 0xEa84593154D5834EF39b832Bf9745126771861A2, type 2, value 0,
+  gas 400,000, gasUsed 145,059, selector 0x755f317c,
+  maxPriorityFeePerGas 1 wei, timeboosted true
+
+0x55dbce5d3bf29dc37323f99b31052fb9b079d9191c57c1a1cb7b321888400c68
+  same 0xEa845... pattern, gasUsed 178,078, timeboosted true
+
+0xf1c342fe41a111b571d4b52d3a02621790cce4973eefcb2e95f92bd432d50413
+  same 0xEa845... pattern, gasUsed 145,021, timeboosted true
+
+0xf2aaf20fff493fb39d4e8dbe9cd3b260e586b2f214014e9d18f34872725472b2
+  to 0x8A1Ba3d5B7864621A6214627A85A3f252B2E6180, type 0, value 0,
+  gas 7,500,002, gasUsed 307,940, selector 0x00000000,
+  gasPrice 45,000,000 wei, timeboosted true
+```
+
+The closest cheap pattern for TICK is the first group, not the DEXRebalancer high-gas legacy route.
+
 This means the right production shape is probably not "separate useful tx plus separate payment tx". It is closer to:
 
 ```text
@@ -171,6 +193,92 @@ receipts:                none
 ```
 
 So we have not landed a TICK transaction through Kairos yet. The remaining gap is likely an exact contract/call-shape requirement, a Kairos simulation assumption, or an undocumented API/payment rule. The next useful step is to inspect or obtain a known-good minimal contract pattern from Kairos, not keep randomly changing payment size.
+
+We then tested the user's concern that self-transfers might be a special bad canary by sending a tiny amount to the delegated gTrade agent instead:
+
+```text
+Sender:    0xeD1fa479504Ec60DB8a314BfF2DbbD1bB481Db78
+Recipient: 0x12Aa0ED4adCbF83C0aC46bAF8218d757555A9C38
+Value:     0.000001 ETH
+Route:     kairos-standard / eth_sendRawTransaction
+Report:    venue-checks/reports/arbitrum-write-router/20260721T095912Z.jsonl
+Tx hash:   0x26dfa7f41e832c9e7e36d02014d5a2b39c9ad16a97a1ab3a191c374bb1b82ddd
+Result:    Kairos returned the tx hash, but no receipt appeared after 12s.
+Nonce:     unchanged at 54
+ETH delta: 0
+```
+
+The exact same signed transaction hash was then sent through the normal primary RPC:
+
+```text
+Report:    venue-checks/reports/arbitrum-write-router/20260721T095942Z.jsonl
+Tx hash:   0x26dfa7f41e832c9e7e36d02014d5a2b39c9ad16a97a1ab3a191c374bb1b82ddd
+Block:     486147483
+Status:    1
+Gas used:  21,302
+Timeboost: false
+Nonce:     advanced to 55
+```
+
+This is the cleanest isolation test so far. The transaction was valid and did not depend on self-transfer behavior. Kairos standard returned a hash but did not relay it; the primary RPC landed the same raw transaction.
+
+We also matched the active real Kairos transaction shape more closely:
+
+```text
+Wrapper kind:       fixed-funded-2300
+Wrapper:            0x5FCf917B8EA528Ba65Eab3d153206DbFfC6d4b72
+Deploy tx:          0x827e48e22f5206aa239161880502e02184a5efa5ef8a7e22de5002bc5ec879f9
+Funding tx:         0xa25b86d3463613642efc660c687cdd1eb9672fee4e906705018dc09da9a9c275
+Primary proof tx:   0xdd64f91a996b94810596f3a57b03db522fcb40e573641afdbf870cf22202c450
+Call shape:         top-level value 0, selector 0x755f317c, 292-byte calldata, gas 400,000
+Internal payment:   0.000003 ETH to Kairos with 2,300 gas
+Report, proof:      venue-checks/reports/kairos-wrapper/20260721T100306Z.jsonl
+Report, Kairos:     venue-checks/reports/kairos-wrapper/20260721T100322Z.jsonl
+```
+
+The primary proof call succeeded. The Kairos version still did not land:
+
+```text
+Samples attempted:        36
+Controller-true samples:  present
+payment_initial_sim:      0
+payment_block_sim:        0
+sim_status:               false
+sent_to_sequencer:        false
+nonce:                    unchanged at 68
+```
+
+This rules out the obvious transaction-shape issues:
+
+```text
+not a self-transfer issue
+not an invalid transaction issue
+not a top-level value issue
+not a selector/calldata-length issue
+not an internal payment gas-stipend issue
+not simply underpaying versus sampled medians
+```
+
+The remaining likely explanations are now narrower:
+
+```text
+1. Kairos public intake is allowlisted or requires integration registration.
+2. Kairos payment recognition supports only known router/strategy contracts.
+3. Arbitrary contracts are not simulated the same way as sampled production routers.
+4. kairos-standard's documented eth_sendRawTransaction endpoint may not be a general relay path from our sender.
+5. The endpoint requires an extra payment/order field not reflected in the public docs or current examples.
+```
+
+The new useful artifacts to send Kairos are:
+
+```text
+User wallet:          0xeD1fa479504Ec60DB8a314BfF2DbbD1bB481Db78
+Delegate/agent:       0x12Aa0ED4adCbF83C0aC46bAF8218d757555A9C38
+2300 wrapper:         0x5FCf917B8EA528Ba65Eab3d153206DbFfC6d4b72
+Primary proof tx:     0xdd64f91a996b94810596f3a57b03db522fcb40e573641afdbf870cf22202c450
+Delegate transfer tx: 0x26dfa7f41e832c9e7e36d02014d5a2b39c9ad16a97a1ab3a191c374bb1b82ddd
+Symptom:              same tx lands through primary RPC, while Kairos returns a hash/order but does not sequence.
+```
 
 ## Fresh Kairos Pending-State Canaries
 
@@ -283,7 +391,19 @@ nonce unchanged
 balance unchanged
 ```
 
-Conclusion: we have not landed any TICK-originated transaction through Kairos. The failure is no longer explained by stale deployment/funding state, bad wrapper code, or payment size. Even a top-level payment to the Kairos address was not recognized as a paid order from this path. This now looks like either an undocumented Kairos intake rule, an allowlist/access issue, or a specific known-good contract/order shape that we do not yet have.
+Finally, we tested Kairos's documented standard `eth_sendRawTransaction` path with a plain 0-value self-transfer:
+
+```text
+Report:     venue-checks/reports/arbitrum-write-router/20260721T095239Z.jsonl
+Method:     eth_sendRawTransaction
+Route:      https://rpc.kairos-timeboost.xyz
+Tx hash:    0x21b0b5e70349ee0922db79b1879f467a9a28d05632566e4fe72e239265436968
+Result:     Kairos returned the tx hash, but no receipt appeared.
+Nonce:      unchanged at 65
+ETH delta:  0
+```
+
+Conclusion: we have not landed any TICK-originated transaction through Kairos. The failure is no longer explained by stale deployment/funding state, bad wrapper code, payment size, or a too-specific wrapper transaction. Even a top-level payment to the Kairos address was not recognized as a paid order, and a plain `eth_sendRawTransaction` self-transfer through Kairos did not relay on-chain. This now looks like either an undocumented Kairos intake rule, an allowlist/access issue, or a public endpoint behavior that differs from the docs.
 
 The useful artifacts to send Kairos are:
 
@@ -291,6 +411,7 @@ The useful artifacts to send Kairos are:
 Agent:              0x12Aa0ED4adCbF83C0aC46bAF8218d757555A9C38
 Canary contract:    0x233B180124715e15346D04239ee35d0F71E56F94
 Normal proof tx:    0xb5445d548f77981483065905c65a81b96f45c22f4bece0bf3c0152ac5de29101
+Standard relay fail: 0x21b0b5e70349ee0922db79b1879f467a9a28d05632566e4fe72e239265436968
 Failed direct IDs:  73a23a2a-3bf7-426f-a2e4-2cd33fef492d,
                     036c90a0-f39f-4c5e-9667-be7d2b80ba4a,
                     855d4444-1081-49d8-a6d3-4356cfbf037f

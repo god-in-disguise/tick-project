@@ -36,7 +36,7 @@ def main() -> None:
     parser.add_argument("--account-env", default="GTRADE_AGENT_PK")
     parser.add_argument("--wrapper", default=os.getenv("KAIROS_PAYMENT_WRAPPER", ""))
     parser.add_argument("--deploy", action="store_true")
-    parser.add_argument("--wrapper-kind", choices=["msg-value", "fixed-funded"], default="msg-value")
+    parser.add_argument("--wrapper-kind", choices=["msg-value", "fixed-funded", "fixed-funded-2300"], default="msg-value")
     parser.add_argument("--samples", type=int, default=3)
     parser.add_argument("--payment-wei", type=int, default=3_000_000_000_000)
     parser.add_argument("--fund-wrapper-wei", type=int, default=0)
@@ -92,7 +92,7 @@ def main() -> None:
     wrapper = resolve_wrapper(web3, account, args, output_path)
     print(json.dumps({"type": "wrapper_ready", "wrapper": wrapper}, indent=2))
     if args.fund_wrapper_wei:
-        if args.wrapper_kind != "fixed-funded":
+        if not args.wrapper_kind.startswith("fixed-funded"):
             raise SystemExit("--fund-wrapper-wei is only valid with --wrapper-kind fixed-funded")
         fund_wrapper(web3, account, wrapper, args, output_path)
 
@@ -356,7 +356,7 @@ def sign_wrapper_payment(
         {
             "from": address,
             "to": Web3.to_checksum_address(wrapper),
-            "value": 0 if args.wrapper_kind == "fixed-funded" else int(args.payment_wei),
+            "value": 0 if args.wrapper_kind.startswith("fixed-funded") else int(args.payment_wei),
             "data": args.call_data,
             "chainId": CHAIN_ID,
             "nonce": nonce,
@@ -439,13 +439,15 @@ def kairos_order_info(session: requests.Session, order_id: str) -> dict[str, Any
 
 def wrapper_runtime_bytecode(payment_address: str, *, kind: str, payment_wei: int) -> str:
     if kind == "fixed-funded":
-        return fixed_funded_wrapper_runtime(payment_address, payment_wei)
+        return fixed_funded_wrapper_runtime(payment_address, payment_wei, call_gas=None)
+    if kind == "fixed-funded-2300":
+        return fixed_funded_wrapper_runtime(payment_address, payment_wei, call_gas=2300)
     # Runtime: payable fallback forwards msg.value to Kairos, reverts if the internal payment fails.
     address_bytes = payment_address.lower().removeprefix("0x")
     return f"0x60006000600060003473{address_bytes}5af11560295760006000f35b60006000fd"
 
 
-def fixed_funded_wrapper_runtime(payment_address: str, payment_wei: int) -> str:
+def fixed_funded_wrapper_runtime(payment_address: str, payment_wei: int, *, call_gas: int | None) -> str:
     address_bytes = bytes.fromhex(payment_address.lower().removeprefix("0x"))
     payment_bytes = int(payment_wei).to_bytes(max(1, (int(payment_wei).bit_length() + 7) // 8), "big")
     if len(payment_bytes) > 32:
@@ -458,7 +460,13 @@ def fixed_funded_wrapper_runtime(payment_address: str, payment_wei: int) -> str:
     code.extend(payment_bytes)
     code.append(0x73)
     code.extend(address_bytes)
-    code.extend([0x5A, 0xF1, 0x15, 0x60, 0x00, 0x57])
+    if call_gas is None:
+        code.append(0x5A)  # GAS
+    else:
+        gas_bytes = int(call_gas).to_bytes(max(1, (int(call_gas).bit_length() + 7) // 8), "big")
+        code.append(0x5F + len(gas_bytes))
+        code.extend(gas_bytes)
+    code.extend([0xF1, 0x15, 0x60, 0x00, 0x57])
     fail_placeholder = len(code) - 2
     code.extend([0x60, 0x00, 0x60, 0x00, 0xF3])
     fail_dest = len(code)
