@@ -73,18 +73,22 @@ class GTradePublicClient:
 
     def prices(self, pairs: Iterable[str] | None = None) -> dict[str, dict[str, Any]]:
         selected = tuple(normalize_pair(pair) for pair in (pairs or self.feed_pairs))
+        now = time.time()
+        out: dict[str, dict[str, Any]] = {}
         with self._lock:
-            fresh = time.time() - max((item.get("_receivedAt", 0) for item in self._latest.values()), default=0) < 2.5
-            if fresh:
-                out = {pair: _clean_price(value) for pair, value in self._latest.items() if pair in selected}
-                if len(out) == len(selected):
-                    return out
+            for pair in selected:
+                value = self._latest.get(pair)
+                if value and now - float(value.get("_receivedAt", 0)) < 2.5:
+                    out[pair] = _clean_price(value)
+            if len(out) == len(selected):
+                return out
 
         charts = self._charts()
         rows = self.pairs()
-        out: dict[str, dict[str, Any]] = {}
         closes = charts.get("closes") or []
         for pair_name in selected:
+            if pair_name in out:
+                continue
             row = rows.get(pair_name)
             if not row or row.pair_index >= len(closes) or closes[row.pair_index] is None:
                 continue

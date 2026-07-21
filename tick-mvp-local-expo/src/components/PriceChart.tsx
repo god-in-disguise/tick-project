@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
 
+import { CHART_WINDOW_SECONDS } from "../config";
 import { clamp, formatAxisPrice } from "../market";
-import type { Direction, Market } from "../types";
+import type { ChartPoint, Direction, Market } from "../types";
 import { styles } from "../styles";
 
 type Props = {
@@ -14,7 +15,8 @@ type Props = {
 };
 
 export function PriceChart({ market, entry, liquidation, direction }: Props) {
-  const chart = buildChart(market.points, market.price, entry, liquidation);
+  const displayPrice = useRenderedPrice(market.price);
+  const chart = buildChart(market.chartPoints, market.points, market.price, displayPrice, entry, liquidation);
   const movementColor = market.move >= 0 ? "#38d39f" : "#ff6070";
 
   return (
@@ -45,27 +47,37 @@ export function PriceChart({ market, entry, liquidation, direction }: Props) {
           <Line key={x} x1={x} y1="22" x2={x} y2="408" stroke="rgba(255,255,255,0.025)" strokeWidth="1" />
         ))}
 
-        {chart.entryY !== null ? (
+        {chart.entryLine ? (
           <Line
             x1={chart.left}
-            y1={chart.entryY}
+            y1={chart.entryLine.y}
             x2={chart.right}
-            y2={chart.entryY}
+            y2={chart.entryLine.y}
             stroke={direction === "up" ? "rgba(56,211,159,0.42)" : "rgba(255,96,112,0.42)"}
             strokeDasharray="5 7"
             strokeWidth="1.15"
           />
         ) : null}
-        {chart.liquidationY !== null ? (
+        {chart.liquidationLine ? (
           <Line
             x1={chart.left}
-            y1={chart.liquidationY}
+            y1={chart.liquidationLine.y}
             x2={chart.right}
-            y2={chart.liquidationY}
+            y2={chart.liquidationLine.y}
             stroke="rgba(255,96,112,0.26)"
             strokeDasharray="2 8"
             strokeWidth="0.8"
           />
+        ) : null}
+        {chart.entryEdge ? (
+          <SvgText x={chart.left + 2} y={chart.entryEdge.y} fill="rgba(225,235,232,0.46)" fontSize="7" fontWeight="900">
+            ENTRY {chart.entryEdge.direction}
+          </SvgText>
+        ) : null}
+        {chart.liquidationEdge ? (
+          <SvgText x={chart.left + 2} y={chart.liquidationEdge.y} fill="rgba(255,96,112,0.58)" fontSize="7" fontWeight="900">
+            LIQ {chart.liquidationEdge.direction}
+          </SvgText>
         ) : null}
 
         <Path d={chart.areaPath} fill="url(#chart-area)" />
@@ -75,7 +87,7 @@ export function PriceChart({ market, entry, liquidation, direction }: Props) {
         <Line x1={chart.last.x} y1={chart.last.y} x2={chart.right + 1} y2={chart.last.y} stroke={movementColor} strokeOpacity="0.62" />
         <Rect x={chart.right + 1} y={chart.priceTagY} width="48" height="16" rx="8" fill={movementColor} />
         <SvgText x={chart.right + 25} y={chart.priceTagY + 10.8} textAnchor="middle" fill="#04110e" fontSize="6.8" fontWeight="900">
-          {formatAxisPrice(market.price, chart.span)}
+          {formatAxisPrice(displayPrice, chart.span)}
         </SvgText>
         <Circle cx={chart.last.x} cy={chart.last.y} r="6" fill={market.theme.accent} opacity="0.15" />
         <Circle cx={chart.last.x} cy={chart.last.y} r="3.2" fill={movementColor} />
@@ -84,36 +96,88 @@ export function PriceChart({ market, entry, liquidation, direction }: Props) {
   );
 }
 
-function buildChart(points: number[], currentPrice: number, entry?: number, liquidation?: number | null) {
+function useRenderedPrice(targetPrice: number) {
+  const [displayPrice, setDisplayPrice] = useState(targetPrice);
+  const currentRef = useRef(targetPrice);
+  const frameRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!Number.isFinite(targetPrice) || targetPrice <= 0) return;
+    const from = currentRef.current || targetPrice;
+    const started = Date.now();
+    const durationMs = 170;
+
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+
+    const step = () => {
+      const elapsed = Date.now() - started;
+      const progress = clamp(elapsed / durationMs, 0, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const next = from + (targetPrice - from) * eased;
+      currentRef.current = next;
+      setDisplayPrice(next);
+      if (progress < 1) frameRef.current = requestAnimationFrame(step);
+    };
+
+    frameRef.current = requestAnimationFrame(step);
+    return () => {
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    };
+  }, [targetPrice]);
+
+  return displayPrice;
+}
+
+function buildChart(
+  chartPoints: ChartPoint[],
+  fallbackPoints: number[],
+  currentPrice: number,
+  displayPrice: number,
+  entry?: number,
+  liquidation?: number | null
+) {
   const top = 24;
   const bottom = 406;
   const left = 6;
   const right = 310;
-  const clean = [...points, currentPrice].filter((point) => Number.isFinite(point) && point > 0).slice(-240);
-  const source = clean.length > 1 ? clean : [currentPrice, currentPrice];
-  const visible = source.length > 20 ? smooth(source) : source;
-  const range = [entry, liquidation].filter((value): value is number => Number.isFinite(value)).length
-    ? [...visible, currentPrice, ...(entry ? [entry] : []), ...(liquidation ? [liquidation] : [])]
-    : [...visible, currentPrice];
+  const renderNow = Date.now() / 1000;
+  const latestSourceTime = chartPoints.reduce((latest, point) => Math.max(latest, point.time), 0);
+  const now = Math.max(renderNow, latestSourceTime || renderNow);
+  const source = normalizeChartPoints(chartPoints, fallbackPoints, currentPrice, now);
+  const xMin = now - CHART_WINDOW_SECONDS;
+  const xMax = now;
+  const visible = source.filter((point) => point.time >= xMin && point.time <= xMax);
+  const display = visible.length >= 2 ? visible : source.slice(-2);
+  const lastSource = display[display.length - 1] ?? { time: now, price: currentPrice };
+  const lastDisplay = Math.abs(lastSource.price - displayPrice) > 0.0000001
+    ? { time: now, price: displayPrice }
+    : { time: now, price: lastSource.price, unchanged: true };
+  const displayPoints = [...display.filter((point) => point.time < now - 0.05), lastDisplay];
+  const domainPoints = [...display, { time: now, price: currentPrice }];
+  const range = domainPoints.map((point) => point.price);
   let min = Math.min(...range);
   let max = Math.max(...range);
-  const averageStep = visible.slice(1).reduce((sum, point, index) => sum + Math.abs(point - visible[index]), 0) / Math.max(1, visible.length - 1);
-  const minimumSpan = Math.max(currentPrice * 0.000025, averageStep * 6, 0.00001);
+  const averageStep = domainPoints
+    .slice(1)
+    .reduce((sum, point, index) => sum + Math.abs(point.price - domainPoints[index].price), 0) / Math.max(1, domainPoints.length - 1);
+  const minimumSpan = Math.max(currentPrice * 0.000018, averageStep * 7, 0.00001);
   if (max - min < minimumSpan) {
     const center = (max + min) / 2;
     min = center - minimumSpan / 2;
     max = center + minimumSpan / 2;
   }
-  const padding = (max - min) * 0.12;
+  const padding = (max - min) * 0.16;
   min -= padding;
   max += padding;
   const span = Math.max(max - min, minimumSpan);
-  const toY = (value: number) => clamp(bottom - ((value - min) / span) * (bottom - top), top, bottom);
-  const coordinates = visible.map((point, index) => ({
-    x: left + (index / Math.max(1, visible.length - 1)) * (right - left),
-    y: toY(point)
+  const rawY = (value: number) => bottom - ((value - min) / span) * (bottom - top);
+  const toY = (value: number) => clamp(rawY(value), top, bottom);
+  const toX = (time: number) => left + clamp((time - xMin) / Math.max(0.001, xMax - xMin), 0, 1) * (right - left);
+  const coordinates = displayPoints.map((point) => ({
+    x: toX(point.time),
+    y: toY(point.price)
   }));
-  const path = smoothPath(coordinates);
+  const path = linePath(coordinates);
   const first = coordinates[0] ?? { x: left, y: bottom };
   const last = coordinates[coordinates.length - 1] ?? { x: right, y: toY(currentPrice) };
   const areaPath = `${path} L ${last.x} ${bottom} L ${first.x} ${bottom} Z`;
@@ -121,6 +185,8 @@ function buildChart(points: number[], currentPrice: number, entry?: number, liqu
     const value = min + span * ratio;
     return { y: toY(value), label: formatAxisPrice(value, span) };
   });
+  const entryOverlay = overlay(entry, rawY(entry ?? NaN), top, bottom);
+  const liquidationOverlay = overlay(liquidation ?? undefined, rawY(liquidation ?? NaN), top, bottom);
   return {
     path,
     areaPath,
@@ -129,28 +195,40 @@ function buildChart(points: number[], currentPrice: number, entry?: number, liqu
     right,
     ticks,
     span,
-    entryY: entry ? toY(entry) : null,
-    liquidationY: liquidation ? toY(liquidation) : null,
+    entryLine: entryOverlay.line,
+    entryEdge: entryOverlay.edge,
+    liquidationLine: liquidationOverlay.line,
+    liquidationEdge: liquidationOverlay.edge,
     priceTagY: clamp(last.y - 9, top, bottom - 18)
   };
 }
 
-function smooth(points: number[]) {
-  return points.map((point, index) => {
-    const previous = points[index - 1] ?? point;
-    const next = points[index + 1] ?? point;
-    return previous * 0.025 + point * 0.95 + next * 0.025;
-  });
-}
-
-function smoothPath(points: { x: number; y: number }[]) {
+function linePath(points: { x: number; y: number }[]) {
   if (!points.length) return "";
   let path = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
-  for (let index = 1; index < points.length - 1; index += 1) {
-    const current = points[index];
-    const next = points[index + 1];
-    path += ` Q ${current.x.toFixed(2)} ${current.y.toFixed(2)}, ${((current.x + next.x) / 2).toFixed(2)} ${((current.y + next.y) / 2).toFixed(2)}`;
+  for (let index = 1; index < points.length; index += 1) {
+    path += ` L ${points[index].x.toFixed(2)} ${points[index].y.toFixed(2)}`;
   }
-  const last = points[points.length - 1];
-  return `${path} L ${last.x.toFixed(2)} ${last.y.toFixed(2)}`;
+  return path;
+}
+
+function overlay(value: number | undefined, y: number, top: number, bottom: number) {
+  if (!value || !Number.isFinite(value) || !Number.isFinite(y)) return { line: null, edge: null };
+  if (y < top) return { line: null, edge: { y: top + 11, direction: "UP" } };
+  if (y > bottom) return { line: null, edge: { y: bottom - 5, direction: "DOWN" } };
+  return { line: { y }, edge: null };
+}
+
+function normalizeChartPoints(chartPoints: ChartPoint[], fallbackPoints: number[], currentPrice: number, now: number): ChartPoint[] {
+  const clean = chartPoints
+    .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.price) && point.price > 0)
+    .sort((a, b) => a.time - b.time || (a.seq ?? 0) - (b.seq ?? 0));
+  if (clean.length >= 2) return clean;
+  const fallback = fallbackPoints.filter((point) => Number.isFinite(point) && point > 0);
+  const source = fallback.length >= 2 ? fallback : [currentPrice, currentPrice];
+  const count = Math.max(1, source.length - 1);
+  return source.map((price, index) => ({
+    time: now - CHART_WINDOW_SECONDS + (index / count) * CHART_WINDOW_SECONDS,
+    price
+  }));
 }

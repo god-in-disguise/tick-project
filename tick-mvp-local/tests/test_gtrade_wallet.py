@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import unittest
 from decimal import Decimal
+from unittest.mock import patch
 
 from backend.connectors.gtrade_wallet import (
+    DIRECT_SEQUENCER_URL,
+    KAIROS_RPC_URL,
     GTradeWallet,
     _callback_position_public,
     _is_base_fee_error,
@@ -11,6 +14,8 @@ from backend.connectors.gtrade_wallet import (
     _is_nonce_error,
     _topic_address,
     _topic_u256,
+    _write_endpoint_config,
+    _write_mode,
 )
 from backend.connectors.gtrade_public import GTradePair
 
@@ -32,6 +37,21 @@ class GTradeWalletErrorClassifierTest(unittest.TestCase):
         self.assertTrue(_is_known_transaction_error(Exception("already known")))
         self.assertTrue(_is_known_transaction_error(Exception("known transaction")))
         self.assertFalse(_is_known_transaction_error(Exception("nonce too low")))
+
+    def test_write_mode_defaults_to_primary_rpc(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            self.assertEqual(_write_mode(), "primary_rpc")
+            self.assertEqual(_write_endpoint_config(), (None, "primary_rpc"))
+
+    def test_write_mode_can_select_direct_sequencer_without_url(self) -> None:
+        with patch.dict("os.environ", {"ARB_WRITE_MODE": "direct"}, clear=True):
+            self.assertEqual(_write_mode(), "direct_sequencer")
+            self.assertEqual(_write_endpoint_config(), (DIRECT_SEQUENCER_URL, "arbitrum_direct_sequencer"))
+
+    def test_write_mode_can_select_kairos_express(self) -> None:
+        with patch.dict("os.environ", {"ARB_WRITE_MODE": "timeboost"}, clear=True):
+            self.assertEqual(_write_mode(), "kairos_express")
+            self.assertEqual(_write_endpoint_config(), (KAIROS_RPC_URL, "kairos_express"))
 
     def test_raw_trade_topic_match_infers_closeable_trade_index(self) -> None:
         wallet = GTradeWallet()

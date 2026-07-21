@@ -58,6 +58,7 @@ class TickService:
             last_success_at = self._last_success_at
             error = self._last_error
         now = time.time()
+        last_pair_tick_at = float(latest["time"]) if latest else 0.0
         return {
             "venue": self.connector.name,
             "pair": pair,
@@ -65,8 +66,9 @@ class TickService:
             "timestamp": now,
             "ticks": points,
             "latest": latest,
-            "stale": not last_success_at or now - last_success_at > 2.5,
+            "stale": not last_pair_tick_at or now - last_pair_tick_at > 2.5,
             "lastSuccessAt": last_success_at or None,
+            "lastPairTickAt": last_pair_tick_at or None,
             "error": error,
         }
 
@@ -83,6 +85,12 @@ class TickService:
             pair_count = len(self._latest)
             source = self._source
             message_count = self._message_count
+            now = time.time()
+            stale_pairs = {
+                pair: round((now - float(item["time"])) * 1000, 1)
+                for pair, item in self._latest.items()
+                if now - float(item["time"]) > 2.5
+            }
         return {
             "running": bool(self._thread and self._thread.is_alive()),
             "lastSuccessAt": last_success_at or None,
@@ -90,7 +98,33 @@ class TickService:
             "pairCount": pair_count,
             "source": source,
             "messageCount": message_count,
+            "stalePairs": stale_pairs,
             "error": error,
+        }
+
+    def diagnostics(self, seconds: float = 60) -> dict[str, Any]:
+        now = time.time()
+        cutoff = now - seconds
+        pairs: list[dict[str, Any]] = []
+        with self._lock:
+            for pair in self.pairs:
+                items = [dict(item) for item in self._ticks.get(pair, ()) if float(item["time"]) >= cutoff]
+                latest = dict(self._latest[pair]) if pair in self._latest else None
+                pairs.append(_pair_diagnostics(pair, items, latest, now))
+            last_success_at = self._last_success_at
+            source = self._source
+            message_count = self._message_count
+            error = self._last_error
+        pairs.sort(key=lambda item: (item["feedStatus"] != "live", -(item["tickCount"] or 0), item["pair"]))
+        return {
+            "source": source,
+            "windowSeconds": seconds,
+            "messageCount": message_count,
+            "lastSuccessAt": last_success_at or None,
+            "globalStale": not last_success_at or now - last_success_at > 2.5,
+            "error": error,
+            "pairs": pairs,
+            "timestamp": now,
         }
 
     def _run(self) -> None:
@@ -151,3 +185,37 @@ class TickService:
             self._last_success_at = sampled_at
             self._last_error = None
             self._message_count += 1
+
+
+def _pair_diagnostics(pair: str, items: list[dict[str, Any]], latest: dict[str, Any] | None, now: float) -> dict[str, Any]:
+    gaps = [float(items[index]["time"]) - float(items[index - 1]["time"]) for index in range(1, len(items))]
+    changed = [item for item in items if not item.get("unchanged")]
+    last_tick_age_ms = (now - float(latest["time"])) * 1000 if latest else None
+    last_change = changed[-1] if changed else None
+    last_change_age_ms = (now - float(last_change["time"])) * 1000 if last_change else None
+    return {
+        "pair": pair,
+        "feedStatus": _feed_status(last_tick_age_ms),
+        "tickCount": len(items),
+        "changedTickCount": len(changed),
+        "unchangedTickCount": len(items) - len(changed),
+        "unchangedRatio": round((len(items) - len(changed)) / len(items), 4) if items else None,
+        "lastTickAgeMs": round(last_tick_age_ms, 1) if last_tick_age_ms is not None else None,
+        "lastPriceChangeAgeMs": round(last_change_age_ms, 1) if last_change_age_ms is not None else None,
+        "avgGapMs": round((sum(gaps) / len(gaps)) * 1000, 1) if gaps else None,
+        "maxGapMs": round(max(gaps) * 1000, 1) if gaps else None,
+        "latestSequence": int(latest["sequence"]) if latest else None,
+        "latestMid": float(latest["mid"]) if latest else None,
+    }
+
+
+def _feed_status(last_tick_age_ms: float | None) -> str:
+    if last_tick_age_ms is None:
+        return "resyncing"
+    if last_tick_age_ms <= 1200:
+        return "live"
+    if last_tick_age_ms <= 2500:
+        return "delayed"
+    if last_tick_age_ms <= 8000:
+        return "stale"
+    return "disconnected"

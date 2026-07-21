@@ -2,6 +2,7 @@ export type Direction = "up" | "down";
 export type Side = "long" | "short";
 export type Tab = "dashboard" | "trade" | "profile";
 export type AssetClass = "CRYPTO" | "STOCK" | "INDEX" | "COMMODITY" | "FX";
+export type FeedStatus = "live" | "delayed" | "stale" | "disconnected" | "resyncing";
 
 export type Theme = {
   accent: string;
@@ -28,10 +29,20 @@ export type MarketSummary = {
   suggestedLeverage: number;
   open: boolean;
   points: number[];
+  feedStatus?: FeedStatus;
+  lastMarketTickAgeMs?: number | null;
+};
+
+export type ChartPoint = {
+  time: number;
+  price: number;
+  seq?: number;
+  unchanged?: boolean;
 };
 
 export type Market = MarketSummary & {
   points: number[];
+  chartPoints: ChartPoint[];
   sequence: number;
   theme: Theme;
 };
@@ -132,6 +143,7 @@ export type TradeQuote = {
 export type TapeTick = {
   sequence: number;
   time: number;
+  sourceTime?: number;
   mid: number;
   bid: number;
   ask: number;
@@ -145,6 +157,10 @@ export type TapeResponse = {
   ticks: TapeTick[];
   latest: TapeTick | null;
   stale: boolean;
+  resyncRequired?: boolean;
+  feedStatus?: FeedStatus;
+  lastMarketTickAgeMs?: number | null;
+  lastPriceChangeAgeMs?: number | null;
   error: string | null;
 };
 
@@ -152,6 +168,23 @@ export type ChartResponse = {
   pair: string;
   points: number[];
   ticks: TapeTick[];
+  observations?: Array<{
+    seq: number;
+    venueTs: number;
+    receivedTs: number;
+    price: string;
+    unchanged: boolean;
+  }>;
+  requestedWindowSeconds?: number;
+  actualWindowSeconds?: number | null;
+  serverNow?: number;
+  partial?: boolean;
+  lastSeq?: number | null;
+  feed?: {
+    feedStatus: FeedStatus;
+    lastMarketTickAgeMs: number | null;
+    lastPriceChangeAgeMs: number | null;
+  };
 };
 
 export type MarketsResponse = {

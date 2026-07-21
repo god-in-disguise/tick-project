@@ -52,6 +52,14 @@ MARKET_EXECUTED_TOPIC = "0x" + Web3.keccak(
         ")"
     )
 ).hex().removeprefix("0x")
+DIRECT_SEQUENCER_URL = "https://arb1-sequencer.arbitrum.io/rpc"
+KAIROS_RPC_URL = "https://rpc.kairos-timeboost.xyz"
+FIXED_GAS_LIMITS = {
+    "approve": 100_000,
+    "open": 2_300_000,
+    "close": 2_000_000,
+    "setDelegate": 120_000,
+}
 
 
 class GTradeWalletError(ConnectorError):
@@ -74,6 +82,7 @@ class GTradeWallet:
         self._trading_contract: Any | None = None
         self._usdc_contract: Any | None = None
         self._direct_log_connection: tuple[str, Web3] | None = None
+        self._write_connection: tuple[str, Web3] | None = None
 
     def start(self) -> None:
         if self._prewarm_thread and self._prewarm_thread.is_alive():
@@ -132,16 +141,20 @@ class GTradeWallet:
         self._prewarm_execution_cache(web3, address)
         event_health = self._event_stream.health() if self._event_stream else None
         agent = None
-        if os.getenv("GTRADE_DELEGATED", "0") == "1":
+        if _delegated_enabled():
             try:
                 agent = Web3.to_checksum_address(self._agent().address)
             except Exception as exc:
                 agent = {"error": f"{type(exc).__name__}: {exc}"}
         return {
-            "delegated": os.getenv("GTRADE_DELEGATED", "0") == "1",
-            "skipGasEstimate": os.getenv("GTRADE_SKIP_GAS_ESTIMATE", "0") == "1",
-            "nonceCache": os.getenv("GTRADE_NONCE_CACHE", "1") == "1",
-            "feeCache": os.getenv("GTRADE_FEE_CACHE", "1") == "1",
+            "delegated": _delegated_enabled(),
+            "gasMode": "rpc_estimate" if _estimate_gas_hot_path_enabled() else "fixed_hot_path",
+            "skipGasEstimate": not _estimate_gas_hot_path_enabled(),
+            "gasLimits": {key: _fixed_gas(key) for key in sorted(FIXED_GAS_LIMITS)},
+            "nonceCache": not _env_enabled("GTRADE_DISABLE_NONCE_CACHE", False),
+            "feeCache": not _env_enabled("GTRADE_DISABLE_FEE_CACHE", False),
+            "writeMode": _write_mode(),
+            "writeTransport": self._write_transport_label(),
             "agent": agent,
             "eventStream": event_health,
             "prewarm": {
@@ -968,6 +981,56 @@ class GTradeWallet:
             )
             return fallback_web3, "http"
 
+    def _write_web3(self, fallback_web3: Web3) -> tuple[Web3, str]:
+        load_dotenv(ROOT / ".env")
+        write_url, write_label = _write_endpoint_config()
+        if not write_url:
+            return fallback_web3, "primary_rpc"
+        if self._write_connection is not None and self._write_connection[0] == write_url:
+            return self._write_connection[1], write_label
+        web3 = Web3(Web3.HTTPProvider(write_url, request_kwargs={"timeout": 8}))
+        self._write_connection = (write_url, web3)
+        return web3, write_label
+
+    def _write_transport_label(self) -> str:
+        load_dotenv(ROOT / ".env")
+        return _write_endpoint_config()[1]
+
+    def _broadcast_raw_transaction(
+        self,
+        write_web3: Web3,
+        write_transport: str,
+        raw_tx: bytes,
+        precomputed_tx_hash: str,
+    ) -> tuple[bytes, dict[str, Any]]:
+        if write_transport != "kairos_express":
+            return write_web3.eth.send_raw_transaction(raw_tx), {
+                "method": "eth_sendRawTransaction",
+                "providerResult": None,
+            }
+
+        url, _ = _write_endpoint_config()
+        response = requests.post(
+            url or KAIROS_RPC_URL,
+            timeout=8,
+            headers={"content-type": "application/json", "user-agent": "tick-gtrade-mvp/0.1"},
+            json={
+                "jsonrpc": "2.0",
+                "id": int(time.time() * 1000),
+                "method": "timeboost_sendTransaction",
+                "params": [{"tx": _hex(raw_tx)}],
+            },
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if payload.get("error"):
+            raise GTradeWalletError(f"Kairos timeboost_sendTransaction failed: {payload['error']}")
+        result = payload.get("result")
+        return Web3.to_bytes(hexstr=_normalize_tx_hash(precomputed_tx_hash)), {
+            "method": "timeboost_sendTransaction",
+            "providerResult": _plain_value(result),
+        }
+
     def _run_prewarm(self) -> None:
         while not self._prewarm_stop.is_set():
             started = time.perf_counter()
@@ -999,10 +1062,11 @@ class GTradeWallet:
     def _send(self, web3: Web3, account: Any, address: str, fn: Any, label: str) -> dict[str, Any]:
         started_at = time.time()
         started = time.perf_counter()
-        skip_gas_estimate = os.getenv("GTRADE_SKIP_GAS_ESTIMATE", "0") == "1"
+        estimate_gas = _estimate_gas_hot_path_enabled()
         gas_started = time.perf_counter()
-        gas = _fixed_gas(label) if skip_gas_estimate else int(fn.estimate_gas({"from": address}))
-        gas_ms = 0.0 if skip_gas_estimate else _elapsed_ms(gas_started)
+        gas = int(fn.estimate_gas({"from": address})) if estimate_gas else _fixed_gas(label)
+        gas_ms = _elapsed_ms(gas_started) if estimate_gas else 0.0
+        gas_source = "rpc_estimate" if estimate_gas else "fixed_hot_path"
         gas_ready_at = time.time()
         tx, build_timing = self._build_transaction(web3, address, fn, gas)
         built_at = time.time()
@@ -1021,6 +1085,7 @@ class GTradeWallet:
                 "nonce": build_timing.get("nonce"),
                 "gas": gas,
                 "buildTiming": build_timing,
+                "gasSource": gas_source,
                 "gasEstimateMs": gas_ms,
                 "signMs": sign_ms,
                 "signedAt": signed_at,
@@ -1038,8 +1103,15 @@ class GTradeWallet:
                 "startedAt": time.time(),
             },
         )
+        write_web3, write_transport = self._write_web3(web3)
+        broadcast_meta: dict[str, Any] = {}
         try:
-            tx_hash = web3.eth.send_raw_transaction(raw_tx)
+            tx_hash, broadcast_meta = self._broadcast_raw_transaction(
+                write_web3,
+                write_transport,
+                raw_tx,
+                precomputed_tx_hash,
+            )
         except Exception as exc:
             if _is_base_fee_error(exc):
                 self._invalidate_fee_cache()
@@ -1073,9 +1145,18 @@ class GTradeWallet:
                         "signedAt": signed_at,
                     },
                 )
-                tx_hash = web3.eth.send_raw_transaction(raw_tx)
+                tx_hash, broadcast_meta = self._broadcast_raw_transaction(
+                    write_web3,
+                    write_transport,
+                    raw_tx,
+                    precomputed_tx_hash,
+                )
             elif _is_known_transaction_error(exc):
                 tx_hash = Web3.to_bytes(hexstr=_normalize_tx_hash(precomputed_tx_hash))
+                broadcast_meta = {
+                    "method": "eth_sendRawTransaction",
+                    "providerResult": "already_known",
+                }
                 write_latency_event(
                     "broadcast_already_known",
                     {
@@ -1111,7 +1192,12 @@ class GTradeWallet:
                         "signedAt": signed_at,
                     },
                 )
-                tx_hash = web3.eth.send_raw_transaction(raw_tx)
+                tx_hash, broadcast_meta = self._broadcast_raw_transaction(
+                    write_web3,
+                    write_transport,
+                    raw_tx,
+                    precomputed_tx_hash,
+                )
             else:
                 self._invalidate_nonce(address)
                 write_latency_event(
@@ -1139,6 +1225,9 @@ class GTradeWallet:
                 "sendMs": send_ms,
                 "sentAt": sent_at,
                 "retriedForBaseFee": retried_for_base_fee,
+                "writeTransport": write_transport,
+                "broadcastMethod": broadcast_meta.get("method"),
+                "providerResult": broadcast_meta.get("providerResult"),
             },
         )
         receipt_started = time.perf_counter()
@@ -1175,7 +1264,8 @@ class GTradeWallet:
             "precomputedTxHash": precomputed_tx_hash,
             "estimateGas": gas,
             "gasEstimateMs": gas_ms,
-            "gasEstimateSkipped": skip_gas_estimate,
+            "gasEstimateSkipped": not estimate_gas,
+            "gasSource": gas_source,
             "buildMs": round((built_at - gas_ready_at) * 1000, 1),
             "buildTiming": build_timing,
             "signMs": sign_ms,
@@ -1188,6 +1278,9 @@ class GTradeWallet:
             "gasUsed": int(receipt.gasUsed),
             "effectiveGasPrice": int(getattr(receipt, "effectiveGasPrice", 0) or receipt.get("effectiveGasPrice", 0) or 0),
             "retriedForBaseFee": retried_for_base_fee,
+            "writeTransport": write_transport,
+            "broadcastMethod": broadcast_meta.get("method"),
+            "providerResult": broadcast_meta.get("providerResult"),
             "timestamps": {
                 "startedAt": started_at,
                 "gasReadyAt": gas_ready_at,
@@ -1200,7 +1293,7 @@ class GTradeWallet:
         }
 
     def _send_trading_action(self, web3: Web3, trader_account: Any, trader_address: str, trading: Any, fn: Any, label: str) -> dict[str, Any]:
-        if os.getenv("GTRADE_DELEGATED", "0") != "1":
+        if not _delegated_enabled():
             return self._send(web3, trader_account, trader_address, fn, label)
 
         delegated_started = time.perf_counter()
@@ -1310,14 +1403,14 @@ class GTradeWallet:
         self._events(trader_address).start()
         self._prewarm_delegate(web3, trader_address)
         try:
-            sender = self._agent().address if os.getenv("GTRADE_DELEGATED", "0") == "1" else trader_address
+            sender = self._agent().address if _delegated_enabled() else trader_address
             self._prewarm_nonce(web3, sender)
             self._cached_fee_params(web3, aggressive=False)
         except Exception:
             pass
 
     def _prewarm_delegate(self, web3: Web3, trader_address: str) -> None:
-        if os.getenv("GTRADE_DELEGATED", "0") != "1":
+        if not _delegated_enabled():
             return
         try:
             agent = self._agent()
@@ -1333,7 +1426,7 @@ class GTradeWallet:
 
     def _next_nonce(self, web3: Web3, address: str, *, fresh: bool = False) -> tuple[int, dict[str, Any]]:
         checksum = Web3.to_checksum_address(address)
-        use_cache = os.getenv("GTRADE_NONCE_CACHE", "1") == "1"
+        use_cache = not _env_enabled("GTRADE_DISABLE_NONCE_CACHE", False)
         with self._tx_cache_lock:
             if use_cache and not fresh and checksum in self._nonce_cache:
                 nonce = self._nonce_cache[checksum]
@@ -1348,7 +1441,7 @@ class GTradeWallet:
             return nonce, {"elapsedMs": elapsed, "source": "rpc", "cacheHit": False}
 
     def _prewarm_nonce(self, web3: Web3, address: str) -> None:
-        if os.getenv("GTRADE_NONCE_CACHE", "1") != "1":
+        if _env_enabled("GTRADE_DISABLE_NONCE_CACHE", False):
             return
         checksum = Web3.to_checksum_address(address)
         with self._tx_cache_lock:
@@ -1362,7 +1455,7 @@ class GTradeWallet:
             self._nonce_cache.pop(Web3.to_checksum_address(address), None)
 
     def _cached_fee_params(self, web3: Web3, *, aggressive: bool = False) -> tuple[dict[str, int], dict[str, Any]]:
-        use_cache = os.getenv("GTRADE_FEE_CACHE", "1") == "1" and not aggressive
+        use_cache = not _env_enabled("GTRADE_DISABLE_FEE_CACHE", False) and not aggressive
         ttl = max(0.0, float(os.getenv("GTRADE_FEE_CACHE_MS", "5000")) / 1000)
         now = time.monotonic()
         with self._tx_cache_lock:
@@ -1590,6 +1683,69 @@ def _is_known_transaction_error(exc: Exception) -> bool:
     return bool(re.search(r"already known|already imported|known transaction", str(exc), re.IGNORECASE))
 
 
+def _write_label(url: str) -> str:
+    if "arb1-sequencer.arbitrum.io" in url:
+        return "arbitrum_direct_sequencer"
+    if "kairos-timeboost.xyz" in url:
+        mode = _write_mode()
+        if mode == "kairos_express":
+            return "kairos_express"
+        return "kairos_standard"
+    return "write_rpc"
+
+
+def _write_mode() -> str:
+    raw = os.getenv("ARB_WRITE_MODE", "primary_rpc")
+    normalized = raw.strip().lower().replace("-", "_")
+    aliases = {
+        "primary": "primary_rpc",
+        "rpc": "primary_rpc",
+        "default": "primary_rpc",
+        "direct": "direct_sequencer",
+        "sequencer": "direct_sequencer",
+        "direct_sequencer": "direct_sequencer",
+        "kairos": "kairos_standard",
+        "kairos_rpc": "kairos_standard",
+        "kairos_standard": "kairos_standard",
+        "kairos_express": "kairos_express",
+        "timeboost": "kairos_express",
+        "timeboost_express": "kairos_express",
+    }
+    return aliases.get(normalized, "primary_rpc")
+
+
+def _write_endpoint_config() -> tuple[str | None, str]:
+    mode = _write_mode()
+    explicit = os.getenv("ARB_WRITE_RPC_URL")
+    if explicit:
+        if "kairos-timeboost.xyz" in explicit and mode == "kairos_express":
+            return explicit, "kairos_express"
+        return explicit, _write_label(explicit)
+    if mode == "direct_sequencer":
+        return DIRECT_SEQUENCER_URL, "arbitrum_direct_sequencer"
+    if mode in {"kairos_standard", "kairos_express"}:
+        return KAIROS_RPC_URL, mode
+    return None, "primary_rpc"
+
+
+def _env_enabled(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off", ""}
+
+
+def _delegated_enabled() -> bool:
+    load_dotenv(ROOT / ".env")
+    if os.getenv("GTRADE_DELEGATED") is not None:
+        return _env_enabled("GTRADE_DELEGATED", False)
+    return bool(os.getenv("GTRADE_AGENT_PK"))
+
+
+def _estimate_gas_hot_path_enabled() -> bool:
+    return _env_enabled("GTRADE_ESTIMATE_GAS_HOT_PATH", False)
+
+
 def _usdc_units(value: Decimal) -> int:
     return int((value * Decimal(10**6)).to_integral_value(rounding=ROUND_DOWN))
 
@@ -1603,11 +1759,5 @@ def _elapsed_ms(started: float) -> float:
 
 
 def _fixed_gas(label: str) -> int:
-    defaults = {
-        "approve": 100_000,
-        "open": 2_300_000,
-        "close": 2_000_000,
-        "setDelegate": 120_000,
-    }
     key = f"GTRADE_{label.upper()}_GAS"
-    return int(os.getenv(key, str(defaults.get(label, 2_500_000))))
+    return int(os.getenv(key, str(FIXED_GAS_LIMITS.get(label, 2_500_000))))

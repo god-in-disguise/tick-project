@@ -4,8 +4,17 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import { api } from "./api";
 import { MARKET_REFRESH_MS, QUOTE_REFRESH_MS, STATE_POLL_MS, TAPE_POLL_MS, TICKET_USD } from "./config";
-import { allowedLeverage, idempotencyKey, mergeTicks, seedPoints, sideForDirection, toMarket } from "./market";
-import type { AccountState, Direction, Execution, Market, Quotes, Tab, TradeQuote } from "./types";
+import {
+  allowedLeverage,
+  chartPointsFromTicks,
+  compactChartPoints,
+  idempotencyKey,
+  mergeTicks,
+  seedChartPoints,
+  sideForDirection,
+  toMarket
+} from "./market";
+import type { AccountState, ChartPoint, Direction, Execution, FeedStatus, Market, Position, Quotes, Tab, TradeQuote } from "./types";
 import { BottomNav } from "./components/BottomNav";
 import { Dashboard } from "./components/Dashboard";
 import { Profile } from "./components/Profile";
@@ -43,6 +52,7 @@ function TickApp() {
   const [submitting, setSubmitting] = useState<"long" | "short" | "close" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tapeStale, setTapeStale] = useState(false);
+  const [tapeStatus, setTapeStatus] = useState<FeedStatus>("resyncing");
   const tapeInFlight = useRef<Record<string, boolean>>({});
   const quoteRequests = useRef<Record<string, Promise<Quotes>>>({});
   const currentQuoteKey = useRef("");
@@ -53,6 +63,8 @@ function TickApp() {
   const quotesRef = useRef<Quotes>(emptyQuotes);
   const lastExecutionRef = useRef("");
   const actionInFlight = useRef(false);
+  const positionRef = useRef<Position | null>(null);
+  const lastForcedMarkRefresh = useRef(0);
   const errorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closedResultTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -65,21 +77,28 @@ function TickApp() {
     ? pendingExecution.position
     : null;
   const position = account?.positions[0] ?? pendingPosition ?? null;
+  positionRef.current = position;
+  const marketForScreen = useMemo(() => {
+    if (!market || !position || position.pair !== market.pair || tapeStatus === "live") return market;
+    if (!Number.isFinite(position.mark) || position.mark <= 0) return market;
+    return { ...market, price: position.mark };
+  }, [market, position, tapeStatus]);
   const livePosition = useMemo(() => {
-    if (!position || !market || position.pair !== market.pair || !position.entry) return position;
+    if (!position || !marketForScreen || position.pair !== marketForScreen.pair || !position.entry) return position;
     const direction = position.side === "long" ? 1 : -1;
-    const move = ((market.price - position.entry) / position.entry) * direction;
+    const price = tapeStatus === "live" ? marketForScreen.price : position.mark;
+    const move = ((price - position.entry) / position.entry) * direction;
     const grossPnl = position.collateral * position.leverage * move;
     const estimatedAllInCostUsd = position.estimatedAllInCostUsd || position.estimatedOpenCostUsd + position.estimatedCloseCostUsd;
     return {
       ...position,
-      mark: market.price,
+      mark: price,
       grossPnl,
       estimatedAllInCostUsd,
       estimatedNetPnl: grossPnl - estimatedAllInCostUsd,
       roePct: position.collateral ? (grossPnl / position.collateral) * 100 : 0
     };
-  }, [market?.price, position]);
+  }, [marketForScreen?.price, position, tapeStatus]);
   const execution = account?.execution ?? pendingExecution;
   const maxLeverage = market?.maxLeverage ?? 25;
   const leverage = allowedLeverage(leveragePreset, maxLeverage);
@@ -182,21 +201,33 @@ function TickApp() {
     }
   }
 
-  async function loadChart(pair: string) {
+  async function loadChart(pair: string, force = false) {
     const normalized = pair.toUpperCase().replace("/", "-");
     const currentLoad = chartLoads.current[normalized];
     if (currentLoad?.status === "loading") return;
-    if (currentLoad?.status === "loaded" && Date.now() - currentLoad.at < 15000) return;
+    if (!force && currentLoad?.status === "loaded" && Date.now() - currentLoad.at < 15000) return;
     chartLoads.current[normalized] = { status: "loading", at: Date.now() };
     try {
       const chart = await api.chart(normalized);
       setMarkets((current) => current.map((item) => {
         if (item.pair !== normalized) return item;
-        const source = [...chart.points, ...chart.ticks.map((tick) => tick.mid), ...item.points, item.price];
-        const lastSequence = chart.ticks[chart.ticks.length - 1]?.sequence ?? item.sequence;
+        const observationPoints: ChartPoint[] = chart.observations
+          ?.map((point) => ({
+            time: point.receivedTs,
+            price: Number(point.price),
+            seq: point.seq,
+            unchanged: point.unchanged
+          }))
+          .filter((point) => Number.isFinite(point.price) && point.price > 0 && Number.isFinite(point.time)) ?? [];
+        const tickPoints = chartPointsFromTicks(chart.ticks);
+        const source = observationPoints.length ? observationPoints : tickPoints.length ? tickPoints : seedChartPoints(chart.points, item.price, 240);
+        const chartPoints = compactChartPoints(source);
+        const lastSequence = chart.lastSeq ?? chart.ticks[chart.ticks.length - 1]?.sequence ?? item.sequence;
+        tapeSequence.current[normalized] = Math.max(tapeSequence.current[normalized] ?? 0, lastSequence);
         return {
           ...item,
-          points: seedPoints(source, item.price, 300),
+          points: chartPoints.map((point) => point.price),
+          chartPoints,
           sequence: Math.max(item.sequence, lastSequence)
         };
       }));
@@ -213,9 +244,25 @@ function TickApp() {
     tapeInFlight.current[normalized] = true;
     try {
       const response = await api.tape(normalized, tapeSequence.current[normalized] ?? 0);
-      tapeSequence.current[normalized] = Math.max(response.sequence, tapeSequence.current[normalized] ?? 0);
-      if (activePairRef.current === normalized) setTapeStale(response.stale);
-      setMarkets((items) => items.map((item) => item.pair === normalized ? mergeTicks(item, response.ticks, response.sequence) : item));
+      const feedStatus = response.feedStatus ?? (response.stale ? "stale" : "live");
+      if (activePairRef.current === normalized) {
+        setTapeStale(response.stale);
+        setTapeStatus(feedStatus);
+      }
+      const activePosition = positionRef.current;
+      if (
+        activePosition?.pair === normalized
+        && feedStatus !== "live"
+        && Date.now() - lastForcedMarkRefresh.current > 1000
+      ) {
+        lastForcedMarkRefresh.current = Date.now();
+        void refreshState(true);
+      }
+      const lastReturnedSequence = response.ticks[response.ticks.length - 1]?.sequence;
+      const nextSequence = lastReturnedSequence ?? response.sequence;
+      tapeSequence.current[normalized] = Math.max(nextSequence, tapeSequence.current[normalized] ?? 0);
+      if (response.resyncRequired) void loadChart(normalized, true);
+      setMarkets((items) => items.map((item) => item.pair === normalized ? mergeTicks(item, response.ticks, nextSequence) : item));
     } catch (cause) {
       if (activePairRef.current === normalized) setTapeStale(true);
       showError(cause, false);
@@ -328,12 +375,19 @@ function TickApp() {
     if ((last.action === "close" || externalOpenFinalized) && last.status === "closed") {
       if (closedResultTimer.current) clearTimeout(closedResultTimer.current);
       const liquidated = isLiquidatedResult(last, result);
+      const closedLabel = liquidated
+        ? "Liquidated"
+        : last.realizedWalletDelta === null
+          ? "Closed"
+          : last.realizedWalletDelta >= 0
+            ? "Net profit"
+            : "Net loss";
       setClosedResult({
         id: last.id,
         pair: last.pair,
         pnl: last.realizedWalletDelta,
         durationSeconds: result?.durationSeconds ?? 0,
-        label: liquidated ? "Liquidated" : "Closed"
+        label: closedLabel
       });
       closedResultTimer.current = setTimeout(
         () => setClosedResult((current) => current?.id === last.id ? null : current),
@@ -384,7 +438,7 @@ function TickApp() {
         <View style={styles.content}>
           {tab === "trade" ? (
             <TradeScreen
-              market={market}
+              market={marketForScreen}
               balance={account?.balances.usdc ?? 0}
               leverage={leverage}
               position={livePosition}
@@ -394,6 +448,7 @@ function TickApp() {
               closedResult={closedResult}
               error={error}
               tapeStale={tapeStale}
+              tapeStatus={tapeStatus}
               onOpen={open}
               onClose={close}
               onNext={() => shiftMarket(1)}

@@ -10,7 +10,7 @@ import {
   liquidationDistance,
   sideForDirection
 } from "../market";
-import type { Direction, Execution, Market, Position, Quotes } from "../types";
+import type { Direction, Execution, FeedStatus, Market, Position, Quotes } from "../types";
 import { styles } from "../styles";
 import { PriceChart } from "./PriceChart";
 
@@ -33,6 +33,7 @@ type Props = {
   closedResult: ClosedResult;
   error: string | null;
   tapeStale: boolean;
+  tapeStatus: FeedStatus;
   onOpen: (direction: Direction) => void;
   onClose: () => void;
   onNext: () => void;
@@ -188,7 +189,7 @@ export function TradeScreen(props: Props) {
           <View style={styles.badgeTopLine}>
             <Text style={[styles.assetClass, { color: market.theme.glow }]}>{market.assetClass}</Text>
             {openingQuote?.marketOpen ? <Text style={styles.testBadge}>LIVE</Text> : null}
-            {props.tapeStale ? <Text style={styles.staleBadge}>STALE</Text> : null}
+            {props.tapeStatus !== "live" ? <Text style={styles.staleBadge}>{tapeBadge(props.tapeStatus)}</Text> : null}
           </View>
           <Text style={styles.marketState}>{marketState}</Text>
           <Text style={styles.marketMetrics}>MOVE {formatPercent(tape)} · COST {formatPercent(costToMove(openingQuote))}</Text>
@@ -204,7 +205,17 @@ export function TradeScreen(props: Props) {
                 {formatSignedMoney(position.estimatedNetPnl)}
               </Text>
             )}
-            <Text style={styles.pnlEstimate}>{closing ? "market close sent" : position.optimistic ? "venue confirmation" : position.indexing ? "callback confirmed" : "estimated net"}</Text>
+            <Text style={styles.pnlEstimate}>
+              {closing
+                ? "market close sent"
+                : position.optimistic
+                  ? "venue confirmation"
+                  : props.tapeStatus !== "live"
+                    ? "venue mark fallback"
+                    : position.indexing
+                      ? "callback confirmed"
+                      : "estimated net"}
+            </Text>
           </View>
         ) : execution?.status === "opening" || props.submitting === "long" || props.submitting === "short" ? (
           <View pointerEvents="none" style={styles.pnlBadge}>
@@ -287,6 +298,13 @@ function Term({ label, value }: { label: string; value: string }) {
       <Text numberOfLines={1} style={styles.termValue}>{value}</Text>
     </View>
   );
+}
+
+function tapeBadge(status: FeedStatus): string {
+  if (status === "delayed") return "DELAYED";
+  if (status === "disconnected") return "NO TAPE";
+  if (status === "resyncing") return "SYNC";
+  return "STALE";
 }
 
 function costToMove(quote: Quotes["long"]): number {

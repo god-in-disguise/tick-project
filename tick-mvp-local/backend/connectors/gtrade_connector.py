@@ -145,5 +145,12 @@ class GTradeConnector:
     def _fresh_price(self, pair: str) -> dict[str, Any] | None:
         pair = normalize_pair(pair)
         with self._latest_lock:
-            fresh = time.monotonic() - self._latest_prices_at <= 2.5
-            return dict(self._latest_prices[pair]) if fresh and pair in self._latest_prices else None
+            value = self._latest_prices.get(pair)
+            if not value:
+                return None
+            received_at = float(value.get("_receivedAt") or 0)
+            if received_at and time.time() - received_at <= 2.5:
+                return dict(value)
+            if not received_at and time.monotonic() - self._latest_prices_at <= 2.5:
+                return dict(value)
+            return None

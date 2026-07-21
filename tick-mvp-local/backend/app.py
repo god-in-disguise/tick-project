@@ -138,7 +138,7 @@ def price(pair: str | None = None) -> dict[str, Any]:
     selected = (pair or connector.feed_pairs[0]).upper().replace("/", "-")
     snapshot = ticks.snapshot(selected)
     latest = snapshot.get("latest")
-    if latest:
+    if latest and not snapshot["stale"]:
         return {
             "pair": selected,
             "timestamp": int(float(latest["time"])),
@@ -150,25 +150,75 @@ def price(pair: str | None = None) -> dict[str, Any]:
             },
             "stale": snapshot["stale"],
         }
-    return _safe(lambda: connector.price(selected))
+    try:
+        return _safe(lambda: connector.price(selected))
+    except HTTPException:
+        if latest:
+            return {
+                "pair": selected,
+                "timestamp": int(float(latest["time"])),
+                "price": {
+                    "mid": latest["mid"],
+                    "bid": latest["bid"],
+                    "ask": latest["ask"],
+                    "open": latest["open"],
+                },
+                "stale": True,
+            }
+        raise
 
 
 @app.get("/api/tape")
 def tape(pair: str, since: int = Query(default=0, ge=0)) -> dict[str, Any]:
     snapshot = ticks.snapshot(pair, since)
-    snapshot["ticks"] = _thin_ticks(snapshot.get("ticks", []), max_points=90 if since == 0 else 40)
+    raw_ticks = snapshot.get("ticks", [])
+    max_points = 120 if since == 0 else 80
+    snapshot["resyncRequired"] = since > 0 and len(raw_ticks) > max_points
+    snapshot["ticks"] = _thin_ticks(raw_ticks, max_points=max_points)
+    metadata_ticks = snapshot["ticks"] or ([snapshot["latest"]] if snapshot.get("latest") else [])
+    snapshot.update(_feed_metadata(metadata_ticks, snapshot.get("timestamp")))
     return snapshot
+
+
+@app.get("/api/tape/diagnostics")
+def tape_diagnostics(seconds: float = Query(default=60, ge=5, le=600)) -> dict[str, Any]:
+    return ticks.diagnostics(seconds=seconds)
 
 
 @app.get("/api/chart")
 def chart(pair: str | None = None, minutes: int = Query(default=20, ge=5, le=180)) -> dict[str, Any]:
     selected = (pair or connector.feed_pairs[0]).upper().replace("/", "-")
+    requested_seconds = minutes * 60
     historical = _safe(lambda: connector.chart(selected, minutes=minutes))
-    live_ticks = ticks.recent(selected, seconds=min(minutes * 60, 180))
-    live_ticks = _thin_ticks(live_ticks, max_points=180)
+    live_seconds = min(requested_seconds, 180)
+    live_ticks = ticks.recent(selected, seconds=live_seconds)
+    live_ticks = _thin_ticks(live_ticks, max_points=240)
+    latest_tick = ticks.snapshot(selected).get("latest")
     live_points = [float(item["mid"]) for item in live_ticks if float(item.get("mid") or 0) > 0]
     points = live_points if len(live_points) >= 8 else historical.get("points", [])
-    return {**historical, "points": points, "ticks": live_ticks}
+    server_now = time.time()
+    coverage_seconds = _coverage_seconds(live_ticks) if len(live_points) >= 8 else None
+    return {
+        **historical,
+        "points": points,
+        "ticks": live_ticks,
+        "requestedWindowSeconds": requested_seconds,
+        "actualWindowSeconds": coverage_seconds,
+        "serverNow": server_now,
+        "partial": coverage_seconds is not None and coverage_seconds + 1 < requested_seconds,
+        "lastSeq": int(live_ticks[-1]["sequence"]) if live_ticks else None,
+        "feed": _feed_metadata(live_ticks or ([latest_tick] if latest_tick else []), server_now),
+        "observations": [
+            {
+                "seq": int(item["sequence"]),
+                "venueTs": float(item.get("sourceTime") or item["time"]),
+                "receivedTs": float(item["time"]),
+                "price": str(item["mid"]),
+                "unchanged": bool(item.get("unchanged", False)),
+            }
+            for item in live_ticks
+        ],
+    }
 
 
 @app.get("/api/markets")
@@ -272,6 +322,39 @@ def _thin_ticks(items: list[dict[str, Any]], max_points: int) -> list[dict[str, 
         return items[-1:]
     step = (len(items) - 1) / (max_points - 1)
     return [items[round(index * step)] for index in range(max_points)]
+
+
+def _coverage_seconds(items: list[dict[str, Any]]) -> float | None:
+    if len(items) < 2:
+        return None
+    return max(0.0, float(items[-1]["time"]) - float(items[0]["time"]))
+
+
+def _feed_metadata(items: list[dict[str, Any]], server_now: float | None) -> dict[str, Any]:
+    now = server_now or time.time()
+    if not items:
+        return {
+            "feedStatus": "resyncing",
+            "lastMarketTickAgeMs": None,
+            "lastPriceChangeAgeMs": None,
+        }
+    latest = items[-1]
+    latest_age_ms = max(0.0, (now - float(latest["time"])) * 1000)
+    changed = next((item for item in reversed(items) if not item.get("unchanged")), latest)
+    changed_age_ms = max(0.0, (now - float(changed["time"])) * 1000)
+    if latest_age_ms <= 1200:
+        status = "live"
+    elif latest_age_ms <= 2500:
+        status = "delayed"
+    elif latest_age_ms <= 8000:
+        status = "stale"
+    else:
+        status = "disconnected"
+    return {
+        "feedStatus": status,
+        "lastMarketTickAgeMs": round(latest_age_ms, 1),
+        "lastPriceChangeAgeMs": round(changed_age_ms, 1),
+    }
 
 
 def _authorize(token: str | None) -> None:

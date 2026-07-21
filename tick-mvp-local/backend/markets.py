@@ -51,8 +51,9 @@ class MarketService:
                 self._error = None
                 updated_at = self._updated_at
                 error = None
+        current = self._with_current_tape(data)
         return {
-            **data,
+            **current,
             "cachedAt": updated_at,
             "stale": not updated_at or time.time() - updated_at > self.refresh_seconds * 3,
             "error": error,
@@ -79,16 +80,31 @@ class MarketService:
             self._stop.wait(max(0.1, self.refresh_seconds - elapsed))
 
     def _refresh(self) -> dict[str, Any]:
-        response = self.connector.markets(limit=10)
-        markets = [self._with_live_tape(item) for item in response.get("markets", [])]
+        return self.connector.markets(limit=10)
+
+    def _with_current_tape(self, data: dict[str, Any]) -> dict[str, Any]:
+        markets = [self._with_live_tape(item) for item in data.get("markets", [])]
         markets.sort(key=lambda item: float(item.get("score") or 0), reverse=True)
-        return {**response, "markets": markets}
+        return {**data, "markets": markets}
 
     def _with_live_tape(self, market: dict[str, Any]) -> dict[str, Any]:
         recent = self.ticks.recent(market["pair"], seconds=60)
         values = [float(item["mid"]) for item in recent if float(item.get("mid") or 0) > 0]
+        latest_snapshot = self.ticks.snapshot(market["pair"], since=0)
+        latest = latest_snapshot.get("latest")
+        latest_age_ms = None
+        if latest:
+            latest_age_ms = max(0.0, (time.time() - float(latest["time"])) * 1000)
+        feed_status = _feed_status(latest_age_ms)
         if len(values) < 3:
-            return market
+            return {
+                **market,
+                "score": float(market.get("score") or 0) * 0.05,
+                "cooling": True,
+                "feedLabel": "Waiting tape",
+                "feedStatus": feed_status,
+                "lastMarketTickAgeMs": round(latest_age_ms, 1) if latest_age_ms is not None else None,
+            }
 
         latest = values[-1]
         recent_30 = values[len(values) // 2 :]
@@ -112,7 +128,9 @@ class MarketService:
             "tradability": tradability,
             "score": score,
             "cooling": cooling,
-            "feedLabel": "Cooling" if cooling else label,
+            "feedLabel": _feed_label(feed_status, cooling, label),
+            "feedStatus": feed_status,
+            "lastMarketTickAgeMs": round(latest_age_ms, 1) if latest_age_ms is not None else None,
         }
 
 
@@ -123,3 +141,25 @@ def _thin_values(values: list[float], max_points: int) -> list[float]:
         return values[-1:]
     step = (len(values) - 1) / (max_points - 1)
     return [values[round(index * step)] for index in range(max_points)]
+
+
+def _feed_status(latest_age_ms: float | None) -> str:
+    if latest_age_ms is None:
+        return "resyncing"
+    if latest_age_ms <= 1200:
+        return "live"
+    if latest_age_ms <= 2500:
+        return "delayed"
+    if latest_age_ms <= 8000:
+        return "stale"
+    return "disconnected"
+
+
+def _feed_label(feed_status: str, cooling: bool, normal_label: str) -> str:
+    if feed_status == "delayed":
+        return "Delayed tape"
+    if feed_status == "stale":
+        return "Stale tape"
+    if feed_status in {"disconnected", "resyncing"}:
+        return "Waiting tape"
+    return "Cooling" if cooling else normal_label

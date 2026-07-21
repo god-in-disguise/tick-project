@@ -18,7 +18,7 @@ from .store import LocalStore
 LOGGER = logging.getLogger("tick.execution")
 QUOTE_TTL_SECONDS = float(os.getenv("TICK_QUOTE_TTL_SECONDS", "5"))
 STALE_EXECUTION_SECONDS = float(os.getenv("TICK_STALE_EXECUTION_SECONDS", "120"))
-MONITOR_INTERVAL_SECONDS = float(os.getenv("TICK_MONITOR_INTERVAL_SECONDS", "0.75"))
+MONITOR_INTERVAL_SECONDS = float(os.getenv("TICK_MONITOR_INTERVAL_SECONDS", "0.35"))
 POSITION_ABSENT_CONFIRM_SECONDS = float(os.getenv("TICK_POSITION_ABSENT_CONFIRM_SECONDS", "1.0"))
 POSITION_INDEXING_GRACE_SECONDS = float(os.getenv("TICK_POSITION_INDEXING_GRACE_SECONDS", "12"))
 BALANCE_RECONCILE_TIMEOUT_SECONDS = float(os.getenv("TICK_BALANCE_RECONCILE_TIMEOUT_SECONDS", "8"))
@@ -472,6 +472,12 @@ class ExecutionService:
             if close_balance_before is not None and returned is not None
             else None
         )
+        if balance_after is None and close_balance_before is not None:
+            try:
+                fresh_balance = self._fresh_usdc_balance()
+                balance_after = None if _same_amount(fresh_balance, close_balance_before) else fresh_balance
+            except Exception:
+                balance_after = None
         opening = self.store.latest_open_for_pair(position["pair"])
         balance_before = opening.get("balanceBefore") if opening else None
         realized = balance_after - balance_before if balance_after is not None and balance_before is not None else None
@@ -520,6 +526,10 @@ class ExecutionService:
 
     def _monitor_loop(self) -> None:
         while not self._stop.is_set():
+            try:
+                self._reconcile_external_position_events()
+            except Exception:
+                LOGGER.exception("external position event reconciliation failed")
             self._safe_refresh_account()
             try:
                 self._reconcile_pending()
@@ -564,6 +574,41 @@ class ExecutionService:
                 status=status,
                 error=f"{execution['action']} did not reconcile within {int(STALE_EXECUTION_SECONDS)} seconds",
             )
+
+    def _reconcile_external_position_events(self) -> None:
+        pending_close_pairs = {
+            execution["pair"]
+            for execution in self.store.pending_executions()
+            if execution["action"] == "close" and execution["status"] in {"created", "closing", "unknown"}
+        }
+        account = self._cached_account() or {"balances": {}, "positions": []}
+        for opening in self.store.open_executions():
+            if opening["id"] in self._running or opening["pair"] in pending_close_pairs:
+                continue
+            previous = opening.get("position") or {}
+            gone_event = self._latest_position_event(opening, present=False)
+            if gone_event is None:
+                continue
+            self._event(
+                opening["id"],
+                "external_position_event",
+                {
+                    "status": "gone",
+                    "source": gone_event.get("source") or "backend_ws",
+                    "name": gone_event.get("name"),
+                    "currentBlock": gone_event.get("currentBlock"),
+                    "pair": opening.get("pair"),
+                    "idx": previous.get("idx"),
+                    "fastPath": True,
+                },
+            )
+            self._finish_external_position_gone(
+                opening,
+                account,
+                reason="venue_unregister_event",
+                external_event=gone_event,
+            )
+            self._missing_positions.pop(_position_key(opening), None)
 
     def _reconcile_open_positions(
         self,
