@@ -1,9 +1,54 @@
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    display_name TEXT,
+    avatar_url TEXT,
+    status TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_login_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (email)
+);
+
+CREATE TABLE IF NOT EXISTS auth_identities (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    provider TEXT NOT NULL,
+    provider_subject TEXT NOT NULL,
+    email TEXT NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (provider, provider_subject)
+);
+
+CREATE TABLE IF NOT EXISTS assets (
+    id TEXT PRIMARY KEY,
+    symbol TEXT NOT NULL,
+    chain_id INTEGER NOT NULL,
+    address TEXT,
+    decimals INTEGER NOT NULL,
+    asset_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (chain_id, address),
+    UNIQUE (symbol, chain_id)
+);
+
 CREATE TABLE IF NOT EXISTS wallet_accounts (
     id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
+    user_id TEXT NOT NULL REFERENCES users(id),
     chain_id INTEGER NOT NULL,
     address TEXT NOT NULL,
     wallet_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    custody_provider TEXT NOT NULL,
+    custody_key_ref TEXT NOT NULL,
+    encrypted_private_key BYTEA,
+    gas_wallet BOOLEAN NOT NULL DEFAULT false,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (chain_id, address)
@@ -40,6 +85,7 @@ CREATE TABLE IF NOT EXISTS trade_intents (
     status TEXT NOT NULL,
     quote_id TEXT REFERENCES quotes(id),
     position_id TEXT,
+    wallet_id TEXT REFERENCES wallet_accounts(id),
     market TEXT NOT NULL,
     side TEXT,
     payload JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -58,6 +104,11 @@ CREATE TABLE IF NOT EXISTS execution_attempts (
     nonce BIGINT,
     tx_hash TEXT,
     raw_tx_ref TEXT,
+    gas_payer_wallet_id TEXT REFERENCES wallet_accounts(id),
+    gas_cost_native NUMERIC,
+    gas_cost_usd NUMERIC,
+    gas_charge_asset TEXT,
+    gas_charge_amount NUMERIC,
     error TEXT,
     payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -67,7 +118,9 @@ CREATE TABLE IF NOT EXISTS execution_attempts (
 CREATE TABLE IF NOT EXISTS positions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
+    wallet_id TEXT REFERENCES wallet_accounts(id),
     venue TEXT NOT NULL,
+    venue_position_id TEXT,
     market TEXT NOT NULL,
     side TEXT NOT NULL,
     status TEXT NOT NULL,
@@ -85,6 +138,29 @@ CREATE TABLE IF NOT EXISTS positions (
     payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS withdrawals (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    wallet_id TEXT NOT NULL REFERENCES wallet_accounts(id),
+    idempotency_key TEXT NOT NULL,
+    request_hash TEXT NOT NULL,
+    asset TEXT NOT NULL,
+    amount NUMERIC NOT NULL,
+    destination_address TEXT NOT NULL,
+    status TEXT NOT NULL,
+    nonce BIGINT,
+    tx_hash TEXT,
+    gas_cost_native NUMERIC,
+    gas_cost_usd NUMERIC,
+    gas_charge_asset TEXT,
+    gas_charge_amount NUMERIC,
+    error TEXT,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id, idempotency_key)
 );
 
 CREATE TABLE IF NOT EXISTS venue_events (
@@ -124,9 +200,17 @@ CREATE TABLE IF NOT EXISTS ledger_events (
     asset TEXT NOT NULL,
     amount NUMERIC NOT NULL,
     source TEXT NOT NULL,
+    execution_attempt_id TEXT REFERENCES execution_attempts(id),
+    withdrawal_id TEXT REFERENCES withdrawals(id),
     payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS idx_auth_identities_user
+    ON auth_identities (user_id);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_accounts_user
+    ON wallet_accounts (user_id);
 
 CREATE INDEX IF NOT EXISTS idx_trade_intents_user_created
     ON trade_intents (user_id, created_at DESC);
@@ -137,6 +221,12 @@ CREATE INDEX IF NOT EXISTS idx_execution_attempts_intent
 CREATE INDEX IF NOT EXISTS idx_positions_user_status
     ON positions (user_id, status);
 
+CREATE INDEX IF NOT EXISTS idx_withdrawals_user_created
+    ON withdrawals (user_id, created_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_venue_events_position
     ON venue_events (position_id, observed_at DESC);
 
+INSERT INTO assets (id, symbol, chain_id, address, decimals, asset_type, status)
+VALUES ('asset_arb_usdc', 'USDC', 42161, '0xaf88d065e77c8cc2239327c5edb3a432268e5831', 6, 'collateral', 'active')
+ON CONFLICT DO NOTHING;

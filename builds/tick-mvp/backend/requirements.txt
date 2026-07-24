@@ -3,3 +3,8 @@ uvicorn[standard]==0.37.0
 arq==0.26.3
 redis==6.4.0
 psycopg[binary]==3.3.0
+SQLAlchemy>=2.0,<3.0
+alembic>=1.13,<2.0
+google-auth>=2.0,<3.0
+cryptography>=42.0,<47.0
+eth-account>=0.13,<0.14

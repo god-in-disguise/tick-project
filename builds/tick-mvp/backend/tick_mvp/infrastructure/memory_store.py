@@ -12,6 +12,7 @@ from typing import Any
 from tick_mvp.domain.schemas import (
     AcceptedTradeResponse,
     CloseRequest,
+    DepositAddressResponse,
     ExecutionAttemptResponse,
     OpenRequest,
     PositionResponse,
@@ -20,8 +21,23 @@ from tick_mvp.domain.schemas import (
     ReconciliationResponse,
     StateResponse,
     TradeIntentResponse,
+    UserResponse,
+    WalletAccountResponse,
+    WithdrawalRequest,
+    WithdrawalResponse,
 )
-from tick_mvp.domain.states import ExecutionAttemptStatus, PositionStatus, ReconciliationStatus, TradeAction, TradeIntentStatus
+from tick_mvp.domain.states import (
+    AuthProvider,
+    ExecutionAttemptStatus,
+    PositionStatus,
+    ReconciliationStatus,
+    TradeAction,
+    TradeIntentStatus,
+    UserStatus,
+    WalletStatus,
+    WalletType,
+    WithdrawalStatus,
+)
 
 
 class StoreConflict(Exception):
@@ -50,11 +66,109 @@ class MemoryStore:
     quote_ttl_seconds: int = 5
     _lock: threading.RLock = field(default_factory=threading.RLock)
     _quotes: dict[str, QuoteRecord] = field(default_factory=dict)
+    _users: dict[str, UserResponse] = field(default_factory=dict)
+    _user_by_provider: dict[tuple[AuthProvider, str], str] = field(default_factory=dict)
+    _wallets: dict[str, WalletAccountResponse] = field(default_factory=dict)
+    _wallet_by_user: dict[str, str] = field(default_factory=dict)
     _intents: dict[str, TradeIntentResponse] = field(default_factory=dict)
     _executions: dict[str, ExecutionAttemptResponse] = field(default_factory=dict)
     _positions: dict[str, PositionResponse] = field(default_factory=dict)
     _reconciliations: dict[str, ReconciliationResponse] = field(default_factory=dict)
+    _withdrawals: dict[str, WithdrawalResponse] = field(default_factory=dict)
     _idempotency: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)
+    _withdrawal_idempotency: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)
+
+    def upsert_google_user(
+        self,
+        *,
+        provider_subject: str,
+        email: str,
+        display_name: str | None,
+        avatar_url: str | None,
+        chain_id: int,
+        custody_provider: str,
+    ) -> tuple[UserResponse, WalletAccountResponse]:
+        now = _now()
+        with self._lock:
+            key = (AuthProvider.GOOGLE, provider_subject)
+            existing_user_id = self._user_by_provider.get(key)
+            if existing_user_id is None:
+                user = UserResponse(
+                    id=_id("user"),
+                    authProvider=AuthProvider.GOOGLE,
+                    providerSubject=provider_subject,
+                    email=email.lower(),
+                    displayName=display_name,
+                    avatarUrl=avatar_url,
+                    status=UserStatus.ACTIVE,
+                    createdAt=now,
+                    lastLoginAt=now,
+                )
+                self._users[user.id] = user
+                self._user_by_provider[key] = user.id
+            else:
+                previous = self._users[existing_user_id]
+                user = previous.model_copy(
+                    update={
+                        "email": email.lower(),
+                        "displayName": display_name,
+                        "avatarUrl": avatar_url,
+                        "lastLoginAt": now,
+                    }
+                )
+                self._users[user.id] = user
+
+            wallet = self._wallet_for_user(user.id, chain_id=chain_id, custody_provider=custody_provider, now=now)
+            return user, wallet
+
+    def user(self, user_id: str) -> UserResponse:
+        with self._lock:
+            user = self._users.get(user_id)
+        if user is None:
+            raise StoreNotFound("user not found")
+        return user
+
+    def wallet_for_user(self, user_id: str) -> WalletAccountResponse:
+        with self._lock:
+            wallet_id = self._wallet_by_user.get(user_id)
+            wallet = self._wallets.get(wallet_id or "")
+        if wallet is None:
+            raise StoreNotFound("wallet not found")
+        return wallet
+
+    def deposit_address(self, user_id: str) -> DepositAddressResponse:
+        wallet = self.wallet_for_user(user_id)
+        return DepositAddressResponse(chainId=wallet.chainId, walletId=wallet.id, address=wallet.address)
+
+    def request_withdrawal(self, user_id: str, request: WithdrawalRequest) -> WithdrawalResponse:
+        payload_hash = _hash_payload(request.model_dump(mode="json"))
+        with self._lock:
+            existing = self._withdrawal_idempotency.get((user_id, request.idempotencyKey))
+            if existing is not None:
+                previous_hash, withdrawal_id = existing
+                if previous_hash != payload_hash:
+                    raise StoreConflict("idempotency key reused with different payload")
+                return self._withdrawals[withdrawal_id]
+
+            wallet_id = self._wallet_by_user.get(user_id)
+            if wallet_id is None:
+                raise StoreNotFound("wallet not found")
+            now = _now()
+            withdrawal = WithdrawalResponse(
+                id=_id("withdrawal"),
+                userId=user_id,
+                walletId=wallet_id,
+                asset=request.asset.upper(),
+                amount=request.amount,
+                destinationAddress=request.destinationAddress,
+                status=WithdrawalStatus.REQUESTED,
+                txHash=None,
+                createdAt=now,
+                updatedAt=now,
+            )
+            self._withdrawals[withdrawal.id] = withdrawal
+            self._withdrawal_idempotency[(user_id, request.idempotencyKey)] = (payload_hash, withdrawal.id)
+            return withdrawal
 
     def create_quote(self, user_id: str, request: QuoteRequest) -> QuoteResponse:
         now = _now()
@@ -213,17 +327,24 @@ class MemoryStore:
             intents = list(self._intents.values())
             executions = list(self._executions.values())
             reconciliations = list(self._reconciliations.values())
+            withdrawals = list(self._withdrawals.values())
+            user = self._users.get(user_id or "")
+            wallet = self._wallets.get(self._wallet_by_user.get(user_id or "") or "")
         if user_id is not None:
             positions = [item for item in positions if item.userId == user_id]
             intents = [item for item in intents if item.userId == user_id]
             executions = [item for item in executions if item.userId == user_id]
+            withdrawals = [item for item in withdrawals if item.userId == user_id]
             position_ids = {item.id for item in positions}
             reconciliations = [item for item in reconciliations if item.positionId in position_ids]
         return StateResponse(
+            user=user,
+            wallet=wallet,
             positions=positions,
             intents=intents,
             executionAttempts=executions,
             reconciliations=reconciliations,
+            withdrawals=withdrawals,
         )
 
     def _idempotent_lookup(self, user_id: str, key: str, payload_hash: str) -> AcceptedTradeResponse | None:
@@ -237,6 +358,26 @@ class MemoryStore:
         intent = self._intents[execution.tradeIntentId]
         position = self._positions.get(intent.positionId or "")
         return AcceptedTradeResponse(intent=intent, executionAttempt=execution, position=position)
+
+    def _wallet_for_user(self, user_id: str, *, chain_id: int, custody_provider: str, now: datetime) -> WalletAccountResponse:
+        wallet_id = self._wallet_by_user.get(user_id)
+        if wallet_id is not None:
+            return self._wallets[wallet_id]
+        wallet = WalletAccountResponse(
+            id=_id("wallet"),
+            userId=user_id,
+            chainId=chain_id,
+            address=_dev_address(user_id),
+            walletType=WalletType.PLATFORM_CUSTODY,
+            status=WalletStatus.ACTIVE,
+            custodyProvider=custody_provider,
+            custodyKeyRef=f"development:{user_id}",
+            createdAt=now,
+            updatedAt=now,
+        )
+        self._wallets[wallet.id] = wallet
+        self._wallet_by_user[user_id] = wallet.id
+        return wallet
 
 
 def _id(prefix: str) -> str:
@@ -254,3 +395,8 @@ def _market(value: str) -> str:
 def _hash_payload(payload: dict[str, Any]) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def _dev_address(seed: str) -> str:
+    digest = hashlib.sha256(f"tick-dev-wallet:{seed}".encode()).hexdigest()
+    return f"0x{digest[-40:]}"

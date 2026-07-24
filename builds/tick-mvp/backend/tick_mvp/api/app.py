@@ -1,19 +1,25 @@
 from fastapi import FastAPI, Header, HTTPException, status
 
 from tick_mvp.api.auth import AuthError, UserSession, create_session_token, verify_session_token
+from tick_mvp.api.google_auth import GoogleAuthError, verify_google_identity
 from tick_mvp.core.config import get_settings
 from tick_mvp.domain.schemas import (
     AcceptedTradeResponse,
     CloseRequest,
+    DepositAddressResponse,
     DevSessionRequest,
+    GoogleSessionRequest,
+    MeResponse,
     OpenRequest,
     QuoteRequest,
     QuoteResponse,
     SessionResponse,
     StateResponse,
+    WithdrawalRequest,
+    WithdrawalResponse,
 )
 from tick_mvp.infrastructure.memory_store import MemoryStore, StoreConflict, StoreNotFound
-from tick_mvp.infrastructure.queue import enqueue_execution_attempt
+from tick_mvp.infrastructure.queue import enqueue_execution_attempt, enqueue_withdrawal_request
 
 
 def create_app(store: MemoryStore | None = None) -> FastAPI:
@@ -40,18 +46,66 @@ def create_app(store: MemoryStore | None = None) -> FastAPI:
         current_settings = get_settings()
         if not current_settings.tick_allow_dev_auth:
             raise HTTPException(status_code=404, detail="dev auth is disabled")
+        user, wallet = _store(app).upsert_google_user(
+            provider_subject=f"dev:{body.userId}",
+            email=f"{body.userId}@dev.tick.local",
+            display_name=body.userId,
+            avatar_url=None,
+            chain_id=current_settings.arb_chain_id,
+            custody_provider=current_settings.custody_provider,
+        )
         token = create_session_token(
-            user_id=body.userId,
-            wallet_address=body.walletAddress,
+            user_id=user.id,
+            wallet_address=wallet.address,
             secret=current_settings.jwt_secret,
             ttl_seconds=current_settings.jwt_ttl_seconds,
         )
         return SessionResponse(
             token=token,
-            userId=body.userId,
-            walletAddress=body.walletAddress,
+            userId=user.id,
+            walletAddress=wallet.address,
             expiresIn=current_settings.jwt_ttl_seconds,
+            user=user,
+            wallet=wallet,
         )
+
+    @app.post("/api/auth/google", response_model=SessionResponse)
+    def google_session(body: GoogleSessionRequest) -> SessionResponse:
+        current_settings = get_settings()
+        try:
+            identity = verify_google_identity(body, current_settings)
+        except GoogleAuthError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        user, wallet = _store(app).upsert_google_user(
+            provider_subject=identity.subject,
+            email=identity.email,
+            display_name=identity.display_name,
+            avatar_url=identity.avatar_url,
+            chain_id=current_settings.arb_chain_id,
+            custody_provider=current_settings.custody_provider,
+        )
+        token = create_session_token(
+            user_id=user.id,
+            wallet_address=wallet.address,
+            secret=current_settings.jwt_secret,
+            ttl_seconds=current_settings.jwt_ttl_seconds,
+        )
+        return SessionResponse(
+            token=token,
+            userId=user.id,
+            walletAddress=wallet.address,
+            expiresIn=current_settings.jwt_ttl_seconds,
+            user=user,
+            wallet=wallet,
+        )
+
+    @app.get("/api/me", response_model=MeResponse)
+    def me(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> MeResponse:
+        session = _session(authorization, x_tick_user)
+        try:
+            return MeResponse(user=_store(app).user(session.user_id), wallet=_store(app).wallet_for_user(session.user_id))
+        except StoreNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/api/state", response_model=StateResponse)
     def state(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> StateResponse:
@@ -60,6 +114,33 @@ def create_app(store: MemoryStore | None = None) -> FastAPI:
     @app.get("/api/positions")
     def positions(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> dict[str, object]:
         return {"positions": _store(app).state(_session(authorization, x_tick_user).user_id).positions}
+
+    @app.get("/api/wallet/deposit-address", response_model=DepositAddressResponse)
+    def deposit_address(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> DepositAddressResponse:
+        try:
+            return _store(app).deposit_address(_session(authorization, x_tick_user).user_id)
+        except StoreNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/wallet/withdrawals", response_model=WithdrawalResponse, status_code=status.HTTP_202_ACCEPTED)
+    async def request_withdrawal(
+        body: WithdrawalRequest,
+        authorization: str | None = Header(default=None),
+        x_tick_user: str | None = Header(default=None),
+    ) -> WithdrawalResponse:
+        try:
+            withdrawal = _store(app).request_withdrawal(_session(authorization, x_tick_user).user_id, body)
+            if get_settings().tick_enqueue_jobs:
+                await enqueue_withdrawal_request(withdrawal)
+            return withdrawal
+        except StoreNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except StoreConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.get("/api/wallet/withdrawals")
+    def withdrawals(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> dict[str, object]:
+        return {"withdrawals": _store(app).state(_session(authorization, x_tick_user).user_id).withdrawals}
 
     @app.post("/api/trade/quote", response_model=QuoteResponse)
     def quote(body: QuoteRequest, authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> QuoteResponse:

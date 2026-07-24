@@ -9,6 +9,8 @@ Production-shaped MVP for TICK.
 - Database: Postgres.
 - Runtime cache/pubsub: Redis.
 - Venue: gTrade/Gains first, venue-agnostic primitives.
+- Auth: Google ID token login, backend-issued TICK session JWT.
+- Wallets: platform-created Arbitrum wallets with encrypted Postgres key material for MVP.
 
 ## Backend Processes
 
@@ -32,3 +34,5 @@ Backend runtime files live under `backend/`. The frontend is separate and should
 - open/close are idempotent;
 - final PnL must reconcile;
 - chart must use truthful market data only.
+- users should not manage ETH gas;
+- platform pays gas and records USDC gas charges.

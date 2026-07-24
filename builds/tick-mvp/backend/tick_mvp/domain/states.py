@@ -11,6 +11,34 @@ class TradeSide(StrEnum):
     SHORT = "short"
 
 
+class UserStatus(StrEnum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+
+
+class AuthProvider(StrEnum):
+    GOOGLE = "google"
+
+
+class WalletType(StrEnum):
+    PLATFORM_CUSTODY = "platform_custody"
+
+
+class WalletStatus(StrEnum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+
+
+class WithdrawalStatus(StrEnum):
+    REQUESTED = "requested"
+    VALIDATED = "validated"
+    SIGNED = "signed"
+    BROADCAST = "broadcast"
+    CONFIRMED = "confirmed"
+    FAILED = "failed"
+    CANCELED = "canceled"
+
+
 class TradeIntentStatus(StrEnum):
     CREATED = "created"
     VALIDATED = "validated"
@@ -115,4 +143,3 @@ def can_transition(current: PositionStatus, target: PositionStatus) -> bool:
 
 def can_execution_transition(current: ExecutionAttemptStatus, target: ExecutionAttemptStatus) -> bool:
     return target in EXECUTION_TRANSITIONS[current]
-

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from tick_mvp.core.config import get_settings
-from tick_mvp.workers.tasks import execute_trade_attempt, reconcile_positions
+from tick_mvp.workers.tasks import execute_trade_attempt, execute_withdrawal_request, reconcile_positions
 
 
 settings = get_settings()
@@ -22,7 +22,7 @@ class WorkerSettings:
     from arq.connections import RedisSettings
 
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
-    functions = [execute_trade_attempt, reconcile_positions]
+    functions = [execute_trade_attempt, execute_withdrawal_request, reconcile_positions]
     on_startup = startup
     on_shutdown = shutdown
     max_jobs = settings.arq_max_jobs
