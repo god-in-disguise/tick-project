@@ -1,3 +1,6 @@
+from contextlib import asynccontextmanager
+from typing import Any
+
 from fastapi import FastAPI, Header, HTTPException, status
 
 from tick_mvp.api.auth import AuthError, UserSession, create_session_token, verify_session_token
@@ -22,10 +25,20 @@ from tick_mvp.infrastructure.memory_store import MemoryStore, StoreConflict, Sto
 from tick_mvp.infrastructure.queue import enqueue_execution_attempt, enqueue_withdrawal_request
 
 
-def create_app(store: MemoryStore | None = None) -> FastAPI:
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    current_settings = get_settings()
+    if current_settings.tick_store_backend == "postgres" and current_settings.tick_run_migrations_on_start:
+        from tick_mvp.infrastructure.database import run_sql_migrations
+
+        run_sql_migrations(current_settings.database_url)
+    yield
+
+
+def create_app(store: Any | None = None) -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="TICK MVP API")
-    app.state.store = store or MemoryStore(default_venue=settings.default_venue, quote_ttl_seconds=settings.quote_ttl_seconds)
+    app = FastAPI(title="TICK MVP API", lifespan=_lifespan)
+    app.state.store = store or _default_store()
 
     @app.get("/health")
     def health() -> dict[str, object]:
@@ -177,8 +190,17 @@ def create_app(store: MemoryStore | None = None) -> FastAPI:
     return app
 
 
-def _store(app: FastAPI) -> MemoryStore:
+def _store(app: FastAPI) -> Any:
     return app.state.store
+
+
+def _default_store() -> Any:
+    settings = get_settings()
+    if settings.tick_store_backend == "postgres":
+        from tick_mvp.infrastructure.sqlalchemy_store import SQLAlchemyStore
+
+        return SQLAlchemyStore(default_venue=settings.default_venue, quote_ttl_seconds=settings.quote_ttl_seconds)
+    return MemoryStore(default_venue=settings.default_venue, quote_ttl_seconds=settings.quote_ttl_seconds)
 
 
 async def _with_dispatch(accepted: AcceptedTradeResponse) -> AcceptedTradeResponse:
@@ -201,6 +223,5 @@ def _session(authorization: str | None, dev_user_id: str | None) -> UserSession:
     if settings.tick_allow_dev_auth:
         return UserSession(user_id=dev_user_id or "dev-user")
     raise HTTPException(status_code=401, detail="missing bearer token")
-
 
 app = create_app()

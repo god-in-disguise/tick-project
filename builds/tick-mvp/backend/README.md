@@ -47,6 +47,7 @@ This scaffold currently implements the contract layer only:
 Auth is bearer-token based. For local development, `POST /api/auth/dev-session` returns a dependency-free HS256 JWT. Production login uses Google ID token verification and then returns the same backend-issued TICK session JWT.
 
 The current store is in-memory so frontend wiring and API shape can move quickly. The durable Postgres target schema is in `migrations/001_core.sql`.
+Docker uses `TICK_STORE_BACKEND=postgres`; local unit tests can still inject `MemoryStore` directly.
 
 ## Package Layout
 

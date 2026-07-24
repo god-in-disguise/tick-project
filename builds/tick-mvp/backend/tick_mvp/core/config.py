@@ -16,6 +16,8 @@ class Settings:
     tick_google_auth_dev: bool = True
 
     database_url: str = "postgresql://tick:tick@postgres:5432/tick"
+    tick_store_backend: str = "memory"
+    tick_run_migrations_on_start: bool = False
     redis_url: str = "redis://redis:6379/0"
     arq_max_jobs: int = 10
     arq_job_timeout: int = 300
@@ -46,6 +48,8 @@ def get_settings() -> Settings:
         google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
         tick_google_auth_dev=_bool_env("TICK_GOOGLE_AUTH_DEV", True),
         database_url=os.getenv("DATABASE_URL", "postgresql://tick:tick@postgres:5432/tick"),
+        tick_store_backend=os.getenv("TICK_STORE_BACKEND", "memory"),
+        tick_run_migrations_on_start=_bool_env("TICK_RUN_MIGRATIONS_ON_START", False),
         redis_url=os.getenv("REDIS_URL", "redis://redis:6379/0"),
         arq_max_jobs=_int_env("ARQ_MAX_JOBS", 10),
         arq_job_timeout=_int_env("ARQ_JOB_TIMEOUT", 300),
