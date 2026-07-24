@@ -9,6 +9,6 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY tick_mvp ./tick_mvp
+COPY migrations ./migrations
 
 CMD ["uvicorn", "tick_mvp.app:app", "--host", "0.0.0.0", "--port", "8787"]
-

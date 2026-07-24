@@ -1,19 +1,22 @@
+import os
+from dataclasses import dataclass
 from functools import lru_cache
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-
+@dataclass(frozen=True, slots=True)
+class Settings:
     tick_env: str = "local"
     tick_api_host: str = "0.0.0.0"
     tick_api_port: int = 8787
+    tick_allow_dev_auth: bool = True
+    jwt_secret: str = "dev-only-change-me"
+    jwt_ttl_seconds: int = 86400
 
     database_url: str = "postgresql://tick:tick@postgres:5432/tick"
     redis_url: str = "redis://redis:6379/0"
 
     default_venue: str = "gtrade"
+    quote_ttl_seconds: int = 5
     arb_chain_id: int = 42161
     arb_rpc_url: str = ""
     arb_write_rpc_url: str = ""
@@ -22,5 +25,31 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings(
+        tick_env=os.getenv("TICK_ENV", "local"),
+        tick_api_host=os.getenv("TICK_API_HOST", "0.0.0.0"),
+        tick_api_port=_int_env("TICK_API_PORT", 8787),
+        tick_allow_dev_auth=_bool_env("TICK_ALLOW_DEV_AUTH", True),
+        jwt_secret=os.getenv("JWT_SECRET", "dev-only-change-me"),
+        jwt_ttl_seconds=_int_env("JWT_TTL_SECONDS", 86400),
+        database_url=os.getenv("DATABASE_URL", "postgresql://tick:tick@postgres:5432/tick"),
+        redis_url=os.getenv("REDIS_URL", "redis://redis:6379/0"),
+        default_venue=os.getenv("DEFAULT_VENUE", "gtrade"),
+        quote_ttl_seconds=_int_env("QUOTE_TTL_SECONDS", 5),
+        arb_chain_id=_int_env("ARB_CHAIN_ID", 42161),
+        arb_rpc_url=os.getenv("ARB_RPC_URL", ""),
+        arb_write_rpc_url=os.getenv("ARB_WRITE_RPC_URL", ""),
+        arb_wss_url=os.getenv("ARB_WSS_URL", ""),
+    )
 
+
+def _int_env(name: str, default: int) -> int:
+    value = os.getenv(name)
+    return int(value) if value else default
+
+
+def _bool_env(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.lower() in {"1", "true", "yes", "on"}
