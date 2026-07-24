@@ -18,7 +18,7 @@ The defaults use those same values, but environment variables avoid another code
 Start the Python backend first, then:
 
 ```bash
-cd tick-mvp-local-expo
+cd builds/local-mvp/tick-mvp-local-expo
 PATH=/Users/savvasepelev/.nvm/versions/node/v22.21.1/bin:$PATH \
   npm run start -- --host lan --port 8086 --clear
 ```

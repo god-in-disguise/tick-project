@@ -3,7 +3,7 @@
 This directory keeps venue knowledge separate from product specs and connector code.
 
 - Product decisions live in `tick_real_build_spec.md`.
-- Executable probes live in `venue-checks/`.
+- Executable probes live in `research/experiments/venue-checks/`.
 - Venue facts, measurements, and open questions live here.
 
 Every venue page is dated because fees, leverage, APIs, rewards, and access rules change. Do not treat a points program as guaranteed token value, or an official performance claim as a TICK measurement.

@@ -8,5 +8,4 @@ This folder contains the source-of-truth thinking for TICK:
 - local MVP lessons;
 - real-build specification.
 
-Use these docs before changing `tick-mvp/` architecture.
-
+Use these docs before changing `builds/tick-mvp/` architecture.

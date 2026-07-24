@@ -40,8 +40,8 @@ Every venue-open market is executable in the canary. Scanner state changes ranki
 ## Run
 
 ```bash
-tick-mvp-local/.venv/bin/uvicorn backend.app:app \
-  --app-dir tick-mvp-local \
+builds/local-mvp/tick-mvp-local/.venv/bin/uvicorn backend.app:app \
+  --app-dir builds/local-mvp/tick-mvp-local \
   --host 0.0.0.0 \
   --port 8787
 ```
@@ -65,7 +65,7 @@ Opening and closing run in a background execution worker. The API returns the du
 State is stored in:
 
 ```text
-tick-mvp-local/.local/tick.sqlite3
+builds/local-mvp/tick-mvp-local/.local/tick.sqlite3
 ```
 
 The database stores quotes, idempotency keys, execution transitions, transaction hashes, errors, balance snapshots, and completed local history. It contains no private key.
@@ -75,7 +75,7 @@ The database stores quotes, idempotency keys, execution transitions, transaction
 Tests use a fake venue connector and never touch the wallet:
 
 ```bash
-cd tick-mvp-local
+cd builds/local-mvp/tick-mvp-local
 .venv/bin/python -m unittest discover -s tests -v
 ```
 

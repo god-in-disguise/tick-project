@@ -35,8 +35,8 @@ Supporting docs:
 - `flow_concept.md` for product concept.
 - `tick_product_infra.md` for broader product/infra direction.
 - `flow_tech_doc.md` for earlier router thinking.
-- `venue-research/` for dated venue facts, measurements, and test decisions.
-- `tick-mvp-local/` and `tick-mvp-local-expo/` for the local live prototype.
+- `research/venues/` for dated venue facts, measurements, and test decisions.
+- `builds/local-mvp/tick-mvp-local/` and `builds/local-mvp/tick-mvp-local-expo/` for the local live prototype.
 
 If this document conflicts with older docs, use this document.
 

@@ -31,7 +31,7 @@ oracle callback latency p50:        roughly 1 s
 oracle callback latency p95:        roughly 2 s
 ```
 
-These are end-to-end observations from our path, not protocol guarantees. The local connector is in `tick-mvp-local/backend/connectors/`, and independent probes are in `venue-checks/`.
+These are end-to-end observations from our path, not protocol guarantees. The local connector is in `builds/local-mvp/tick-mvp-local/backend/connectors/`, and independent probes are in `research/experiments/venue-checks/`.
 
 ## Cost
 
