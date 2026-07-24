@@ -4,7 +4,7 @@ Production-shaped MVP for TICK.
 
 ## Target Deployment
 
-- Backend: DigitalOcean, Docker Compose first.
+- Backend: DigitalOcean, backend-owned Docker Compose first.
 - Frontend: Vercel, PWA-first.
 - Database: Postgres.
 - Runtime cache/pubsub: Redis.
@@ -21,6 +21,8 @@ The backend is one codebase with multiple process roles:
 
 Avoid microservices until the state model is stable.
 
+Backend runtime files live under `backend/`. The frontend is separate and should be deployed as a Vercel/PWA app, not as part of backend Compose.
+
 ## MVP Rules
 
 - one live venue at first;
@@ -30,4 +32,3 @@ Avoid microservices until the state model is stable.
 - open/close are idempotent;
 - final PnL must reconcile;
 - chart must use truthful market data only.
-

@@ -1,7 +1,9 @@
+from __future__ import annotations
+
 import asyncio
 import sys
 
-from tick_mvp.config import get_settings
+from tick_mvp.core.config import get_settings
 
 
 async def run(role: str) -> None:
@@ -12,10 +14,9 @@ async def run(role: str) -> None:
 
 
 def main() -> None:
-    role = sys.argv[1] if len(sys.argv) > 1 else "worker"
+    role = sys.argv[1] if len(sys.argv) > 1 else "service"
     asyncio.run(run(role))
 
 
 if __name__ == "__main__":
     main()
-

@@ -1,0 +1,89 @@
+x-backend-env: &backend-env
+  - path: .env.example
+  - path: .env
+    required: false
+
+services:
+  api:
+    build:
+      context: .
+    env_file: *backend-env
+    command: uvicorn tick_mvp.api.app:app --host 0.0.0.0 --port 8787
+    ports:
+      - "8787:8787"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/ready', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+    env_file: *backend-env
+    command: arq tick_mvp.workers.worker.WorkerSettings
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  market-feed:
+    build:
+      context: .
+    env_file: *backend-env
+    command: python -m tick_mvp.workers.service market-feed
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  venue-events:
+    build:
+      context: .
+    env_file: *backend-env
+    command: python -m tick_mvp.workers.service venue-events
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tick
+      POSTGRES_USER: tick
+      POSTGRES_PASSWORD: tick
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tick -d tick"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
