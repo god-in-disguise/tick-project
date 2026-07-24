@@ -18,12 +18,14 @@ type Props = {
 export function PriceChart({ market, entry, stopLoss, liquidation, direction }: Props) {
   const displayPrice = useRenderedPrice(market.price, market.pair);
   const domainRef = useRef<StableDomain | null>(null);
+  const clockRef = useRef<number | null>(null);
   const domainPairRef = useRef(market.pair);
   if (domainPairRef.current !== market.pair) {
     domainPairRef.current = market.pair;
     domainRef.current = null;
+    clockRef.current = null;
   }
-  const chart = buildChart(market.chartPoints, market.points, market.price, displayPrice, entry, stopLoss, liquidation, domainRef);
+  const chart = buildChart(market.chartPoints, market.points, market.price, displayPrice, entry, stopLoss, liquidation, domainRef, clockRef);
   const movementColor = market.move >= 0 ? "#38d39f" : "#ff6070";
 
   return (
@@ -169,7 +171,8 @@ function buildChart(
   entry?: number,
   stopLoss?: number | null,
   liquidation?: number | null,
-  domainRef?: React.MutableRefObject<StableDomain | null>
+  domainRef?: React.MutableRefObject<StableDomain | null>,
+  clockRef?: React.MutableRefObject<number | null>
 ) {
   const top = 24;
   const bottom = 406;
@@ -177,7 +180,14 @@ function buildChart(
   const right = 310;
   const renderNow = Date.now() / 1000;
   const latestSourceTime = chartPoints.reduce((latest, point) => Math.max(latest, point.time), 0);
-  const now = Math.max(renderNow, latestSourceTime || renderNow);
+  const sourceClock = latestSourceTime || renderNow;
+  const previousClock = clockRef?.current;
+  const now = previousClock === null || previousClock === undefined
+    ? sourceClock
+    : latestSourceTime > previousClock + 0.001
+      ? latestSourceTime
+      : previousClock;
+  if (clockRef) clockRef.current = now;
   const source = normalizeChartPoints(chartPoints, fallbackPoints, currentPrice, now);
   const xMin = now - CHART_WINDOW_SECONDS;
   const xMax = now;

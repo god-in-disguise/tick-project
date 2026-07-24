@@ -485,6 +485,34 @@ export const styles = StyleSheet.create({
     fontWeight: "700",
     marginTop: 5
   },
+  filterRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginBottom: 8
+  },
+  filterChip: {
+    minHeight: 30,
+    minWidth: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    borderRadius: 15,
+    backgroundColor: color.panel,
+    borderWidth: 1,
+    borderColor: color.line
+  },
+  filterChipActive: {
+    backgroundColor: "rgba(242,248,246,0.94)",
+    borderColor: "rgba(242,248,246,0.94)"
+  },
+  filterText: {
+    color: color.muted,
+    fontSize: 10,
+    fontWeight: "900"
+  },
+  filterTextActive: {
+    color: "#0b1416"
+  },
   historyRow: {
     minHeight: 56,
     paddingHorizontal: 12,
@@ -495,10 +523,48 @@ export const styles = StyleSheet.create({
     borderRadius: 7,
     backgroundColor: color.panel
   },
+  historyMain: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 8
+  },
+  historyTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0
+  },
   historySymbol: {
     color: color.text,
     fontSize: 15,
     fontWeight: "900"
+  },
+  historyStatus: {
+    marginLeft: 7,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+    overflow: "hidden",
+    fontSize: 8,
+    fontWeight: "900"
+  },
+  historyStatusWin: {
+    color: "#0b1416",
+    backgroundColor: color.green
+  },
+  historyStatusLoss: {
+    color: "#0b1416",
+    backgroundColor: color.red
+  },
+  historyStatusStop: {
+    color: "#0b1416",
+    backgroundColor: "#ffc166"
+  },
+  historyStatusBad: {
+    color: color.text,
+    backgroundColor: "rgba(255,96,112,0.28)"
+  },
+  historyRight: {
+    alignItems: "flex-end"
   },
   historyPnl: {
     fontSize: 15,

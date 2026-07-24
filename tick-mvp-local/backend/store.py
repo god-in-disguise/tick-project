@@ -265,7 +265,13 @@ class LocalStore:
             rows = connection.execute(
                 """
                 SELECT * FROM executions
-                WHERE action = 'close' AND status = 'closed'
+                WHERE status = 'closed'
+                  AND (
+                    action = 'close'
+                    OR result_json LIKE '%"status":"external_closed"%'
+                    OR result_json LIKE '%"status":"stop_loss_hit"%'
+                    OR result_json LIKE '%"status":"liquidated"%'
+                  )
                 ORDER BY updated_at DESC LIMIT ?
                 """,
                 (max(1, min(limit, 200)),),
