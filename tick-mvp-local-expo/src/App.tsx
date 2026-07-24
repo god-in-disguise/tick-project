@@ -21,7 +21,7 @@ import {
   sideForDirection,
   toMarket
 } from "./market";
-import type { AccountState, ChartPoint, Direction, Execution, FeedStatus, Market, Position, Quotes, Tab, TradeQuote } from "./types";
+import type { AccountState, ChartPoint, Direction, Execution, ExecutionResult, FeedStatus, Market, Position, Quotes, Tab, TradeQuote } from "./types";
 import { BottomNav } from "./components/BottomNav";
 import { Dashboard } from "./components/Dashboard";
 import { Profile } from "./components/Profile";
@@ -446,23 +446,22 @@ function TickApp() {
     if (key === lastExecutionRef.current) return;
     lastExecutionRef.current = key;
     if (last.status === "failed" || last.status === "unknown") showError(new Error(last.error || `Execution ${last.status}`));
-    const result = last.result as {
-      status?: string;
-      durationSeconds?: number;
-      position?: Partial<Pick<Position, "pnl" | "grossPnl" | "estimatedAllInCostUsd">>;
-    } | null;
+    const result = last.result as ExecutionResult | null;
     const externalOpenFinalized = (
       last.action === "open"
       && last.status === "closed"
-      && ["liquidated", "external_closed"].includes(String(result?.status ?? ""))
+      && ["liquidated", "external_closed", "stop_loss_hit"].includes(String(result?.status ?? ""))
     );
     if ((last.action === "close" || externalOpenFinalized) && last.status === "closed") {
       if (closedResultTimer.current) clearTimeout(closedResultTimer.current);
       const liquidated = isLiquidatedResult(result);
+      const stopped = isStopLossResult(result);
       const grossPnl = liquidated ? null : realizedGrossPnl(result, last.position);
       const closedLabel = liquidated
         ? "Liquidated"
-        : last.realizedWalletDelta === null
+        : stopped
+          ? "Stop hit"
+          : last.realizedWalletDelta === null
           ? "Closed"
           : last.realizedWalletDelta >= 0
             ? "Net profit"
@@ -476,7 +475,7 @@ function TickApp() {
         durationSeconds: result?.durationSeconds ?? 0,
         label: closedLabel
       });
-      const visibleMs = last.realizedWalletDelta === null ? 10000 : liquidated ? 5600 : 3200;
+      const visibleMs = last.realizedWalletDelta === null ? 10000 : liquidated ? 5600 : stopped ? 5200 : 3200;
       closedResultTimer.current = setTimeout(
         () => setClosedResult((current) => current?.id === last.id ? null : current),
         visibleMs
@@ -606,6 +605,10 @@ function isBusy(execution: Execution | null): boolean {
 
 function isLiquidatedResult(result: { status?: string } | null): boolean {
   return result?.status === "liquidated";
+}
+
+function isStopLossResult(result: { status?: string } | null): boolean {
+  return result?.status === "stop_loss_hit";
 }
 
 function realizedGrossPnl(

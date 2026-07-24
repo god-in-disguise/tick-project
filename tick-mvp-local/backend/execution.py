@@ -98,7 +98,8 @@ class ExecutionService:
         effective_leverage = Decimal(str(estimate["leverage"]))
         estimated_all_in_cost = Decimal(str(estimate.get("estimatedAllInCostUsd") or 0))
         market_move_budget = stop_loss_usd - estimated_all_in_cost
-        stop_loss_valid = market_move_budget > 0
+        native_stop_supported = bool(getattr(self.connector, "supports_native_stop_loss", False))
+        stop_loss_valid = native_stop_supported and market_move_budget > 0
         stop_loss_price = (
             _stop_loss_price(
                 Decimal(str(estimate["price"])),
@@ -109,9 +110,14 @@ class ExecutionService:
             if stop_loss_valid
             else None
         )
-        blocked_reason = None if stop_loss_valid else (
-            f"stop {float(stop_loss_usd):.2f} is below estimated cost floor {float(estimated_all_in_cost):.2f}"
-        )
+        if stop_loss_valid:
+            blocked_reason = None
+        elif not native_stop_supported:
+            blocked_reason = "venue native stop is unavailable"
+        else:
+            blocked_reason = (
+                f"stop {float(stop_loss_usd):.2f} is below estimated cost floor {float(estimated_all_in_cost):.2f}"
+            )
         opening_allowed = market_open and stop_loss_valid
         local_override = opening_allowed and not tradeable
         quote = {
@@ -163,6 +169,8 @@ class ExecutionService:
             raise ExecutionError("quote expired")
         if not quote.get("openingAllowed"):
             raise ExecutionError(str(quote.get("blockedReason") or "market is watching; opening is not allowed"))
+        if not quote.get("venueStopLoss") or not quote.get("stopLossPrice"):
+            raise ExecutionError("venue stop loss is required")
 
         with self._state_lock:
             existing = self.store.get_execution_by_idempotency(idempotency_key)
@@ -1174,6 +1182,8 @@ def _stop_loss_price(price: Decimal, side: str, notional_usd: Decimal, market_lo
 
 
 def _submission_quote_with_native_stop(original: dict[str, Any], refreshed: dict[str, Any]) -> dict[str, Any]:
+    if not original.get("venueStopLoss") or not original.get("stopLossPrice"):
+        raise ExecutionError("venue stop loss is required")
     submission = {**original, **refreshed}
     stop_loss_usd = Decimal(str(original.get("softStopLossUsd") or original["ticketUsd"]))
     estimated_all_in_cost = Decimal(
@@ -1264,7 +1274,34 @@ def _external_terminal_status(
     )
     if ticket > 0 and realized <= -(ticket * 0.90):
         return "liquidated"
+    if _looks_like_stop_loss_hit(execution, position, realized):
+        return "stop_loss_hit"
     return "external_closed"
+
+
+def _looks_like_stop_loss_hit(
+    execution: dict[str, Any],
+    position: dict[str, Any],
+    realized: float | None,
+) -> bool:
+    if realized is None or realized >= 0:
+        return False
+    if not bool(position.get("venueStopLoss") or execution.get("venueStopLoss")):
+        return False
+    if not (position.get("stopLossPrice") or execution.get("stopLossPrice")):
+        return False
+    soft_stop = float(
+        position.get("softStopLossUsd")
+        or execution.get("softStopLossUsd")
+        or position.get("ticketUsd")
+        or execution.get("ticketUsd")
+        or 0
+    )
+    if soft_stop <= 0:
+        return False
+    actual_loss = abs(float(realized))
+    tolerance = max(1.0, soft_stop * 0.25)
+    return actual_loss >= soft_stop * 0.75 and actual_loss <= soft_stop + tolerance
 
 
 def _is_successful_close(result: dict[str, Any]) -> bool:

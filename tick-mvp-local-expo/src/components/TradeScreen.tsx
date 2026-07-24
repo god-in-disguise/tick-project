@@ -7,7 +7,6 @@ import {
   formatPercent,
   formatPrice,
   formatSignedMoney,
-  liquidationDistance,
   sideForDirection
 } from "../market";
 import type { Direction, Execution, FeedStatus, Market, Position, Quotes } from "../types";
@@ -61,12 +60,13 @@ export function TradeScreen(props: Props) {
   const cost = openingQuote?.estimatedAllInCostUsd ?? 0;
   const marginUsd = openingQuote?.ticketUsd ?? props.marginUsd;
   const softStopUsd = openingQuote?.softStopLossUsd ?? props.softStopUsd;
-  const riskLeverage = openingQuote?.riskLeverage ?? (softStopUsd > 0 ? marginUsd * props.leverage / softStopUsd : props.leverage);
-  const stopValue = openingQuote?.stopLossValid === false
+  const stopPriceValue = openingQuote?.venueStopLoss === false
+    ? "No venue SL"
+    : openingQuote?.stopLossValid === false
     ? "Below cost"
     : openingQuote?.stopLossPrice
-      ? `${formatMoney(softStopUsd)} / ${formatPrice(openingQuote.stopLossPrice)}`
-      : `${formatMoney(softStopUsd)} · ${formatCompactLeverage(riskLeverage)}`;
+      ? formatPrice(openingQuote.stopLossPrice)
+      : "--";
   const tape = market.activeTapePct ?? 0;
   const marketState = market.feedLabel === "Watching" ? "Live tape" : market.feedLabel;
   const showClosedBreakdown = Boolean(
@@ -199,6 +199,7 @@ export function TradeScreen(props: Props) {
         <PriceChart
           market={market}
           entry={position?.entry}
+          stopLoss={position?.stopLossPrice}
           liquidation={position?.estimatedLiquidationPrice}
           direction={position ? directionForSide(position.side) : undefined}
         />
@@ -298,20 +299,20 @@ export function TradeScreen(props: Props) {
           <View style={styles.termRow}>
             {position ? (
               <>
-                <Term label="Entry" value={formatPrice(position.entry)} />
-                <Term label="Now" value={formatPrice(position.mark)} />
+                <Term label="Max loss" value={formatMoney(position.softStopLossUsd ?? position.ticketUsd)} />
+                <Term label={position.venueStopLoss ? "Venue SL" : "SL"} value={position.stopLossPrice ? formatPrice(position.stopLossPrice) : "--"} />
                 <Term
-                  label="Liq"
-                  value={position.estimatedLiquidationPrice ? formatPrice(position.estimatedLiquidationPrice) : liquidationDistance(position.entry, position.estimatedLiquidationPrice)}
+                  label="SL away"
+                  value={distanceFrom(position.mark, position.stopLossPrice)}
                 />
-                <Term label="Away" value={liquidationDistance(position.entry, position.estimatedLiquidationPrice)} />
+                <Term label="Liq away" value={distanceFrom(position.mark, position.estimatedLiquidationPrice)} />
               </>
             ) : (
               <>
-                <Term label="Margin" value={formatMoney(marginUsd)} />
+                <Term label="Collateral" value={formatMoney(marginUsd)} />
+                <Term label="Max loss" value={formatMoney(softStopUsd)} />
                 <Term label="Exposure" value={compactMoney(openingQuote?.notionalUsd ?? marginUsd * props.leverage)} />
-                <Term label="Cost" value={openingQuote ? formatMoney(openingQuote.estimatedAllInCostUsd) : "--"} />
-                <Term label="Stop" value={stopValue} />
+                <Term label="Venue SL" value={stopPriceValue} />
               </>
             )}
           </View>
@@ -370,9 +371,9 @@ function compactMoney(value: number): string {
   return formatMoney(value);
 }
 
-function formatCompactLeverage(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "--";
-  return `${Math.round(value)}x`;
+function distanceFrom(from: number, to: number | null | undefined): string {
+  if (!from || !to || !Number.isFinite(from) || !Number.isFinite(to)) return "--";
+  return `${(Math.abs(from - to) / from * 100).toFixed(3)}%`;
 }
 
 function formatDuration(seconds: number): string {

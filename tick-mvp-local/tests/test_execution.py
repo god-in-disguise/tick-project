@@ -131,6 +131,15 @@ class ExecutionServiceTest(unittest.TestCase):
         self.assertIsNone(quote["stopLossPrice"])
         self.assertIn("cost floor", quote["blockedReason"])
 
+    def test_quote_blocks_when_venue_native_stop_is_unavailable(self) -> None:
+        self.connector.supports_native_stop_loss = False
+        quote = self.service.quote("BTC-USD", "long", Decimal("50"), Decimal("100"), Decimal("20"))
+
+        self.assertFalse(quote["openingAllowed"])
+        self.assertFalse(quote["venueStopLoss"])
+        self.assertIsNone(quote["stopLossPrice"])
+        self.assertEqual(quote["blockedReason"], "venue native stop is unavailable")
+
     def test_pending_close_keeps_position_until_venue_disappears(self) -> None:
         quote = self.service.quote("BTC-USD", "long", Decimal("20"), Decimal("100"))
         opened = self.service.open(quote["quoteId"], "open-pending-close")
@@ -253,6 +262,27 @@ class ExecutionServiceTest(unittest.TestCase):
         finalized = wait_for_result(lambda: self.service.execution(finalized["id"]))
 
         self.assertEqual(finalized["result"]["status"], "liquidated")
+        self.assertEqual(finalized["result"]["finalizationSource"], "position_absent_in_account_snapshot")
+        self.assertEqual(finalized["realizedWalletDelta"], -20.0)
+        self.assertEqual(self.service.state()["positions"], [])
+
+    def test_external_disappearance_near_native_stop_is_stop_loss_hit(self) -> None:
+        quote = self.service.quote("BTC-USD", "long", Decimal("50"), Decimal("100"), Decimal("20"))
+        opened = self.service.open(quote["quoteId"], "open-before-native-stop")
+        opened = wait_for(lambda: self.service.execution(opened["id"]), "open")
+        self.assertTrue(opened["position"]["venueStopLoss"])
+        self.assertEqual(opened["position"]["softStopLossUsd"], 20.0)
+
+        with self.connector._lock:
+            self.connector.position = None
+            self.connector.balance = 80.0
+        with self.service._state_lock:
+            self.service._account_updated_at = 0.0
+
+        finalized = wait_for(lambda: self.service.execution(opened["id"]), "closed", timeout=4.5)
+        finalized = wait_for_result(lambda: self.service.execution(finalized["id"]))
+
+        self.assertEqual(finalized["result"]["status"], "stop_loss_hit")
         self.assertEqual(finalized["result"]["finalizationSource"], "position_absent_in_account_snapshot")
         self.assertEqual(finalized["realizedWalletDelta"], -20.0)
         self.assertEqual(self.service.state()["positions"], [])

@@ -79,6 +79,14 @@ export type Position = {
 
 export type ExecutionStatus = "created" | "opening" | "open" | "closing" | "closed" | "failed" | "unknown";
 
+export type ExecutionResultStatus = "closed" | "external_closed" | "stop_loss_hit" | "liquidated" | string;
+
+export type ExecutionResult = {
+  status?: ExecutionResultStatus;
+  durationSeconds?: number;
+  position?: Partial<Pick<Position, "pnl" | "grossPnl" | "estimatedAllInCostUsd" | "softStopLossUsd" | "venueStopLoss">>;
+};
+
 export type Execution = {
   id: string;
   idempotencyKey: string;
@@ -95,7 +103,7 @@ export type Execution = {
   txHash: string | null;
   realizedWalletDelta: number | null;
   position: Position | null;
-  result: Record<string, unknown> | null;
+  result: ExecutionResult | null;
   error: string | null;
   createdAt: number;
   updatedAt: number;

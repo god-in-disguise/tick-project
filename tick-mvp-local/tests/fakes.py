@@ -8,6 +8,7 @@ from typing import Any
 class FakeConnector:
     name = "fake"
     feed_pairs = ("BTC-USD",)
+    supports_native_stop_loss = True
 
     def __init__(self):
         self._lock = threading.Lock()

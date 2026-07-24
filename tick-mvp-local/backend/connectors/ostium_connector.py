@@ -17,6 +17,7 @@ class OstiumConnector:
 
     name = "ostium"
     feed_pairs = tuple(raw.FEED_CANDIDATES)
+    supports_native_stop_loss = False
 
     def __init__(self) -> None:
         self._price_lock = threading.RLock()

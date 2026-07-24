@@ -16,6 +16,7 @@ class VenueConnector(Protocol):
 
     name: str
     feed_pairs: tuple[str, ...]
+    supports_native_stop_loss: bool
 
     def wallet_address(self) -> str: ...
 

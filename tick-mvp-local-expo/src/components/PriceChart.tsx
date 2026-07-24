@@ -10,11 +10,12 @@ import { styles } from "../styles";
 type Props = {
   market: Market;
   entry?: number;
+  stopLoss?: number | null;
   liquidation?: number | null;
   direction?: Direction;
 };
 
-export function PriceChart({ market, entry, liquidation, direction }: Props) {
+export function PriceChart({ market, entry, stopLoss, liquidation, direction }: Props) {
   const displayPrice = useRenderedPrice(market.price, market.pair);
   const domainRef = useRef<StableDomain | null>(null);
   const domainPairRef = useRef(market.pair);
@@ -22,7 +23,7 @@ export function PriceChart({ market, entry, liquidation, direction }: Props) {
     domainPairRef.current = market.pair;
     domainRef.current = null;
   }
-  const chart = buildChart(market.chartPoints, market.points, market.price, displayPrice, entry, liquidation, domainRef);
+  const chart = buildChart(market.chartPoints, market.points, market.price, displayPrice, entry, stopLoss, liquidation, domainRef);
   const movementColor = market.move >= 0 ? "#38d39f" : "#ff6070";
 
   return (
@@ -75,6 +76,17 @@ export function PriceChart({ market, entry, liquidation, direction }: Props) {
             strokeWidth="0.8"
           />
         ) : null}
+        {chart.stopLossLine ? (
+          <Line
+            x1={chart.left}
+            y1={chart.stopLossLine.y}
+            x2={chart.right}
+            y2={chart.stopLossLine.y}
+            stroke="rgba(255,193,102,0.5)"
+            strokeDasharray="4 6"
+            strokeWidth="1.05"
+          />
+        ) : null}
         {chart.entryEdge ? (
           <SvgText x={chart.left + 2} y={chart.entryEdge.y} fill="rgba(225,235,232,0.46)" fontSize="7" fontWeight="900">
             ENTRY {chart.entryEdge.direction}
@@ -83,6 +95,11 @@ export function PriceChart({ market, entry, liquidation, direction }: Props) {
         {chart.liquidationEdge ? (
           <SvgText x={chart.left + 2} y={chart.liquidationEdge.y} fill="rgba(255,96,112,0.58)" fontSize="7" fontWeight="900">
             LIQ {chart.liquidationEdge.direction}
+          </SvgText>
+        ) : null}
+        {chart.stopLossEdge ? (
+          <SvgText x={chart.left + 2} y={chart.stopLossEdge.y} fill="rgba(255,193,102,0.72)" fontSize="7" fontWeight="900">
+            SL {chart.stopLossEdge.direction}
           </SvgText>
         ) : null}
 
@@ -150,6 +167,7 @@ function buildChart(
   currentPrice: number,
   displayPrice: number,
   entry?: number,
+  stopLoss?: number | null,
   liquidation?: number | null,
   domainRef?: React.MutableRefObject<StableDomain | null>
 ) {
@@ -208,6 +226,7 @@ function buildChart(
     return { y: toY(value), label: formatAxisPrice(value, span) };
   });
   const entryOverlay = overlay(entry, rawY(entry ?? NaN), top, bottom);
+  const stopLossOverlay = overlay(stopLoss ?? undefined, rawY(stopLoss ?? NaN), top, bottom);
   const liquidationOverlay = overlay(liquidation ?? undefined, rawY(liquidation ?? NaN), top, bottom);
   return {
     path,
@@ -219,6 +238,8 @@ function buildChart(
     span,
     entryLine: entryOverlay.line,
     entryEdge: entryOverlay.edge,
+    stopLossLine: stopLossOverlay.line,
+    stopLossEdge: stopLossOverlay.edge,
     liquidationLine: liquidationOverlay.line,
     liquidationEdge: liquidationOverlay.edge,
     priceTagY: clamp(last.y - 9, top, bottom - 18)

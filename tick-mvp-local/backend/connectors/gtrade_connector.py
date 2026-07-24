@@ -16,6 +16,7 @@ class GTradeConnector:
     """TICK adapter over gTrade/Gains on Arbitrum."""
 
     name = "gtrade"
+    supports_native_stop_loss = True
 
     def __init__(self) -> None:
         self.public = GTradePublicClient()
