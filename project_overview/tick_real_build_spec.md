@@ -56,8 +56,9 @@ These decisions override the older two-venue-start and Ostium-first language in 
 | Wallet delta | Keep as the canary aggregate invariant. Store venue-derived cash flows and PnL fields too. |
 | User positions | One active position and one in-flight command per user in V1. |
 | Scanner gating | Main TICK feed blocks opening unless cost coverage, freshness, venue health, and risk checks pass. |
-| Agent model | Shared agent only for internal canaries. Per-user delegated agents for external private beta. |
-| Allowance | Max allowance is local/internal only. External users get bounded allowance with revocation. |
+| Wallet model | Current MVP uses Google login and platform-created Arbitrum wallets with encrypted Postgres key material. This is deliberate for the demo/private MVP, not a final broad-public custody architecture. |
+| Agent model | Local canary uses delegated gTrade execution. Production should keep funds and positions in per-user wallets while platform workers handle execution and gas where the venue supports it. |
+| Allowance | Max allowance is local/internal only. External users should get bounded allowance or explicit revocation, unless the cohort is intentionally founder/demo wallets. |
 | Build strategy | Strangler-style extraction. Preserve the working gTrade behavior and mobile loop, but move execution truth to Postgres, durable workers, event journals, and a single reducer. |
 
 ## What We Learned From The Live MVP
@@ -134,7 +135,7 @@ The app must show:
 - Closed
 - Failed / retry needed
 
-The position must not disappear just because the close request was sent. It disappears only after the backend confirms the venue state and refreshes balance.
+The position must not disappear just because the close request was sent. It stops showing live exposure after authoritative venue close or liquidation confirmation. Final settlement and wallet/balance reconciliation can continue after that.
 
 ### 5. The Feed Must Not Switch By Itself
 
@@ -151,7 +152,9 @@ Rules:
 
 ### Mobile TICK
 
-Mobile launches with the main TICK product only.
+The local Expo MVP is the closest current expression of the intended product loop. The first deployable investor/team build may be a PWA for distribution speed, but it should copy the Expo interaction model instead of becoming a desktop trading terminal.
+
+Mobile-shaped TICK launches with the main TICK product only.
 
 No Pro mode on mobile at launch.
 
@@ -206,14 +209,20 @@ Same backend, different frontend surface.
 
 ### Stack
 
-MVP:
+MVP UX reference:
 
 - React Native
 - TypeScript
 - Expo is acceptable for mock/live MVP speed
 - EAS/dev-client or bare React Native later if native wallet/session features require it
 
-Web:
+First deployable frontend:
+
+- PWA-first is acceptable for fast sharing and Vercel deployment
+- Mobile viewport and gestures remain the primary design target
+- The PWA should use the same backend APIs as the native app
+
+Web/TICK Pro:
 
 - React/Next or Vite React is fine
 - Should use the same backend APIs
@@ -429,22 +438,26 @@ tick_backend/
 
 Responsibilities:
 
-- Privy or embedded wallet login
+- Google login for the current MVP
 - user identity
 - wallet mapping
 - session permissions
 - deposit/withdraw state
 - versioned eligibility decisions
 
-V1 should avoid full custody.
+Current MVP decision:
 
-Preferred model:
+- user signs in with Google
+- backend issues a TICK session JWT
+- backend creates a per-user Arbitrum wallet
+- private key is encrypted before storage in Postgres using an env encryption key
+- user deposits Arbitrum USDC to that wallet
+- backend executes approved wallet/setup/withdrawal actions through workers
+- platform pays gas where possible and records USDC gas charges
 
-- user has embedded/self-custody wallet
-- TICK gets bounded session permissions where possible
-- permissions have expiry, max notional, max leverage, allowed markets, allowed venues
+This is simpler for a private MVP and investor demo because users do not need to understand wallets, ETH gas, delegates, or allowances. It also creates custody/security obligations, so it should not be described as production-grade public custody until signing isolation, withdrawal controls, revocation, limits, monitoring, and incident handling are hardened.
 
-Local MVP used max allowance for speed. That is acceptable for local testing only, not production default.
+Local live canary used max allowance/delegation for speed. That is acceptable for founder/demo wallets only, not a broad-public default.
 
 External users need:
 
@@ -472,9 +485,9 @@ Internally, funds may sit in:
 
 V1 should not do real cross-venue margin.
 
-The backend can manage venue pockets while showing one clean product balance.
+The backend can manage wallet and venue pockets while showing one clean product balance.
 
-For one non-custodial live venue, use an append-only money-movement journal and reconcile it to wallet and venue truth. A full double-entry ledger becomes mandatory before pooled custody, internal transfers, or a genuinely spendable cross-venue balance.
+For the current platform-wallet MVP, use an append-only money-movement journal and reconcile it to wallet and venue truth. A full double-entry ledger becomes mandatory before pooled custody, internal transfers, or a genuinely spendable cross-venue balance.
 
 #### Market Data Normalizer
 
@@ -690,23 +703,40 @@ Mobile retries must not create duplicate positions.
 
 V1 should be venue-agnostic, even though the first live execution path uses gTrade/Gains.
 
-Minimum adapter interface:
+Do not make a connector method own the whole lifecycle from "submit" to "normalized position state." The local canary proved the gTrade mechanics, but the production backend needs smaller venue primitives:
 
 ```text
-VenueAdapter
+VenueMarketData
   list_markets()
-  get_price(market)
-  get_candles(market, window)
-  get_fee_schedule(market)
-  get_max_leverage(market)
-  get_account(user)
-  get_positions(user)
-  estimate_open(intent)
-  open_position(intent)
-  estimate_close(position)
-  close_position(position)
-  reconcile_order(orderId)
-  reconcile_position(positionId)
+  get_market_config()
+  get_price()
+  get_history()
+
+VenueQuoteEngine
+  estimate_open()
+  estimate_close()
+
+VenueTransactionBuilder
+  build_open()
+  build_close()
+  build_permission_setup()
+
+VenueSubmitter
+  submit_signed_transaction()
+
+VenueEventDecoder
+  decode_log()
+  correlate_event()
+  backfill_events()
+
+VenueSnapshotReader
+  get_positions()
+  get_account()
+  get_history()
+
+VenueReconciler
+  reconcile_execution()
+  reconcile_position()
 ```
 
 Adapter outputs must normalize the primitives TICK actually needs:
@@ -782,7 +812,14 @@ manual_review
 
 The app should only show a position as live after venue confirmation.
 
-The app should only remove a position after close confirmation and balance refresh.
+The app should stop showing live exposure after authoritative close or liquidation confirmation. Settlement and final PnL can continue after that:
+
+```text
+Position = closed
+Settlement = pending
+```
+
+Then finalize settlement after venue cash flows, trade history, and wallet/balance reconciliation are complete.
 
 Workers and monitors append observations. They do not compete to mutate normalized position state.
 
@@ -979,6 +1016,9 @@ Keep all money values as decimals/integers, not floats.
 - persist nonce, execution attempt, and raw signed transaction reference before RPC submission
 - recover accepted-but-timeout RPC broadcasts by precomputed hash
 - use versioned compare-and-swap state transitions
+- enforce one active position and one active command with database constraints
+- make quote consumption unique
+- add a durable outbox/job table; Redis is a wake-up mechanism, not the source of financial truth
 
 ### PR3: Direct Logs, Event Journal, And Recovery
 
@@ -1093,7 +1133,7 @@ Do not build in V1:
 - own exchange
 - own matching engine
 - binary options
-- custody
+- pooled custody or internal exchange-style omnibus balances
 - portfolio margin
 - full social network
 - copy trading
@@ -1155,11 +1195,23 @@ The real product only works if:
 - balance changes are explainable
 - venues are replaceable rails, not the product
 
+## Open Decisions
+
+These are the remaining product/architecture choices that should be settled before wider external testing:
+
+- Custody boundary after the private MVP: keep platform-created wallets, move to embedded/self-custody, or support both.
+- PWA versus native after the investor/team build: PWA is fastest to share, but Expo/native remains the best reference for gestures, haptics, and notifications.
+- External 500x policy: internal/demo mode is allowed; broader user access needs explicit eligibility, native stops, and visible cost/liquidation terms.
+- Wallet signing model: direct platform wallet signing, delegated per-user agents, or a hybrid where the wallet owns funds and the agent pays gas for venue actions.
+- Allowance and revocation UX: founder/demo can use max allowance, but broader users need a clear permission screen and revocation path.
+- Scanner gate strictness: whether demo mode can override tradeability checks, and how clearly that is separated from real-money production mode.
+- First second venue: Lighter, Aster, Pacifica, GMTrade, or Ostium should remain shadow/research until the gTrade lifecycle passes canary certification.
+
 ## Current Decision
 
 Use Python/FastAPI for V1.
 
-Use React Native for mobile.
+Use the local Expo app as the mobile UX reference. The first deployable frontend can be a PWA if that is faster to share with teammates and investors, but it should preserve the Expo loop: one market, vertical open/close gestures, horizontal market switching, real chart, real net PnL.
 
 Use gTrade/Gains on Arbitrum for the first live MVP route because the delegated, user-owned position model and mobile loop have been canary tested.
 

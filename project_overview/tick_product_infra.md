@@ -2,7 +2,7 @@
 
 TICK is a mobile-first day-trading app for catching live market movement.
 
-The core use case is simple: the user has 2-10 minutes, the market is moving, and they want to take a side, watch the number move, and cash out.
+The core use case is simple: the user has 2-10 minutes, the market is moving, and they want to take a side, watch the number move, and close.
 
 TICK should not feel like a perp terminal, CEX dashboard, or venue aggregator. It should feel like a fast market-movement catcher: one live market, one decision, live PnL, clear exit.
 
@@ -29,7 +29,7 @@ TICK turns those moments into a simple mobile flow.
 
 The promise:
 
-> Open the app, see what is moving, take a side, watch live PnL, cash out.
+> Open the app, see what is moving, take a side, watch live PnL, close.
 
 The moat is the volatility explorer for day trading. TICK should not just show a feed of volatile assets. It should decide which moves are tradeable after liquidity, spread, fees, leverage limits, route quality, and user eligibility.
 
@@ -46,7 +46,7 @@ The main screen should be:
 - live price movement
 - simple long/short action
 - live PnL after entry
-- clear cash-out button
+- clear close button
 - direct route to the next market
 
 The trade is still real. Before execution, the app must clearly show the important terms:
@@ -70,7 +70,7 @@ The stronger model is a live open position:
 1. User chooses long or short.
 2. Position opens.
 3. PnL moves live.
-4. User can cash out manually.
+4. User can close manually.
 5. Position can liquidate if it goes badly.
 6. If the trade runs hard, the user can keep watching and holding.
 
@@ -92,13 +92,13 @@ At 100x, even a small taker fee becomes visible as a percentage of the user's ma
 
 The main TICK product does not mean the app has only one screen. It means the trading interface is simple.
 
-Mobile should still include:
+The local Expo MVP is the current best UX reference. The production frontend may ship first as a PWA for distribution speed, but it should preserve the same mobile loop, not become a desktop terminal.
+
+Mobile/PWA should still include:
 
 - Trade: the main market-movement screen
-- Activity: trade history, wins/losses, fees, funding
-- Wallet: TICK balance, deposits, withdrawals, available margin
-- Dashboard: open exposure, past trades, stats
-- Profile: settings, eligibility, notifications, risk limits
+- TICK dashboard: volatility explorer summary, recent trades, alerts, history
+- Me: account, wallet, deposits, withdrawals, presets, settings, notifications
 
 These surfaces should support the trading loop, not compete with it.
 
@@ -112,7 +112,7 @@ Good first social primitives:
 
 - "238 trading BTC now"
 - long/short pressure
-- anonymous entry and cash-out pulses
+- anonymous entry and close/result pulses
 - small avatars or dots on the chart
 - recent public actions if users opt in
 - friends or public profiles later
@@ -200,6 +200,7 @@ TICK API
   v
 Venue Adapter Layer
   |
+  +-- gTrade / Gains
   +-- Aster
   +-- Lighter
   +-- Ostium / cross-asset venue
@@ -301,13 +302,14 @@ The hard part is not placing an order. The hard part is staying correct when rea
 
 First version should stay narrow:
 
-- mobile TICK first
-- at least two venues behind the scenes
+- mobile-shaped TICK first, delivered as PWA if that gets users and investors testing faster
+- one live venue behind the scenes until the lifecycle is explainable
+- other venues stay as research, probes, or shadow checks
 - limited but varied market universe
 - simple long/short market orders
 - isolated margin only
 - no venue selector
-- live PnL and cash-out
+- live PnL and close
 - wallet/account/history/dashboard
 - volatility alerts
 - anonymous crowd presence
@@ -315,7 +317,7 @@ First version should stay narrow:
 
 The first product should prove that the loop works:
 
-> market moves -> TICK alerts -> user opens app -> takes side -> watches live PnL -> cashes out -> returns next time volatility appears.
+> market moves -> TICK alerts -> user opens app -> takes side -> watches live PnL -> closes -> returns next time volatility appears.
 
 ## Public Framing
 

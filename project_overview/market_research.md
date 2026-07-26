@@ -170,7 +170,7 @@ Weakness:
 
 Takeaway:
 
-Hyperliquid is an important strategic reference because it shows that traders will move away from old CEX brands if the product is fast, focused, and culturally alive. But TICK should not depend on one venue. The MVP should start with at least two execution venues behind the same intent model, then add cross-asset venues once the adapter and reconciliation layer are working.
+Hyperliquid is an important strategic reference because it shows that traders will move away from old CEX brands if the product is fast, focused, and culturally alive. But TICK should not become one venue's skin. The MVP architecture should start with a venue-neutral intent model, one live gTrade/Gains execution route, and shadow/research routes for the next venues. A second live venue should be enabled only after one route has deterministic execution, reconciliation, and PnL accounting.
 
 ### Rocket Perps
 
@@ -295,7 +295,7 @@ The CEX path is credible if staged correctly.
 
 Stage 1: Multi-venue wrapper / broker layer
 
-- Connect to at least two execution venues
+- Run one live execution venue and at least one shadow/research venue behind the same intent model
 - Build the feed, UX, risk layer, onboarding, and brand
 - Earn from referral, broker fee, or spread/take-rate share
 - Validate retention, volume, and user behavior
@@ -442,12 +442,12 @@ MVP should include:
 - Feed of ranked market moments
 - Main TICK product
 - TICK Pro preview
-- At least two execution venues behind the scenes
+- One live execution venue plus shadow/research routes behind the same intent model
 - Fee-aware route selection
 - Dynamic leverage suggestions in the 25x-100x range
 - Real or paper trading depending on licensing path
 - Fire Score with transparent ingredients
-- Bracket TP/SL by default
+- Venue-native stop for real-money opening
 - Isolated margin by default
 - Trade history and PnL
 - App-store-safe copy
@@ -498,7 +498,7 @@ Rocket Perps proves the arcade-perps lane exists. CEXs prove the volume. Trading
 
 The gap is a mobile-native trading router where the feed is the terminal.
 
-If built well, the main TICK product gets retail attention. TICK Pro earns credibility. The volatility explorer, cost/leverage engine, and execution-quality data become the moat. The long-term company can become a CEX because the interface gives users a reason to switch before the infrastructure is fully owned, but the MVP should prove this with at least two venues behind the scenes.
+If built well, the main TICK product gets retail attention. TICK Pro earns credibility. The volatility explorer, cost/leverage engine, and execution-quality data become the moat. The long-term company can become a CEX because the interface gives users a reason to switch before the infrastructure is fully owned, but the MVP should prove this with one fully explainable live venue and shadow evidence for the next venue.
 
 ## Sources
 

@@ -20,3 +20,10 @@ The local MVP is frozen as the reference implementation. It proved the core loop
 - chart and execution latency lessons.
 
 New production work should happen in `builds/tick-mvp/`. Pull proven pieces out of `builds/local-mvp/`; do not keep productionizing the prototype in place.
+
+Current production-shaped status:
+
+- `builds/tick-mvp/backend` runs with Docker Compose, Postgres, Redis, ARQ worker, market-feed, and venue-events processes.
+- Auth/session, platform wallet creation, deposit address, quote, open intent, close intent, idempotency, and withdrawal contracts are wired.
+- Live gTrade execution has not yet been extracted into the new backend; the local MVP remains the live execution reference.
+- The first frontend target is PWA for fast sharing, but the UX should follow the local Expo canary.

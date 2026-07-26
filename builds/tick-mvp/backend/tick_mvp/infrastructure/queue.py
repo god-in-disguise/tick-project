@@ -16,7 +16,7 @@ async def enqueue_execution_attempt(attempt: ExecutionAttemptResponse) -> JobDis
 
     redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
     try:
-        job = await redis.enqueue_job(EXECUTION_JOB, attempt.id)
+        job = await redis.enqueue_job(EXECUTION_JOB, attempt.id, _job_id=f"execution:{attempt.id}")
     finally:
         await redis.close()
     return JobDispatchResponse(jobId=job.job_id if job else None, queued=job is not None)
@@ -29,7 +29,7 @@ async def enqueue_withdrawal_request(withdrawal: WithdrawalResponse) -> JobDispa
 
     redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
     try:
-        job = await redis.enqueue_job(WITHDRAWAL_JOB, withdrawal.id)
+        job = await redis.enqueue_job(WITHDRAWAL_JOB, withdrawal.id, _job_id=f"withdrawal:{withdrawal.id}")
     finally:
         await redis.close()
     return JobDispatchResponse(jobId=job.job_id if job else None, queued=job is not None)

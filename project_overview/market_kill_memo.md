@@ -206,7 +206,7 @@ Problems:
 - The product cannot prove it has a real volatility explorer or routing moat.
 - The venue can copy the UI or change partner economics.
 
-The MVP should start with at least two execution venues behind one normalized trade-intent model. Ostium-style cross-asset coverage is interesting, but it should be an expansion path, not the only rail.
+The MVP should start with one fully explainable live venue behind a normalized trade-intent model, plus at least one shadow/research venue to prove the abstraction. Ostium-style cross-asset coverage is interesting, but it should be an expansion path, not the only rail.
 
 ### 11. The product may select for bad markets
 
@@ -333,7 +333,7 @@ Ask counsel specifically about perps, CFDs, suitability/appropriateness, recomme
 
 2. Venue partner calls
 
-Find out whether at least two serious CEX/DEX/regulated venues will let you route flow from a feed-first mobile app and what economics they offer. Ask specifically about fees, leverage limits, session keys, reward attribution, outage handling, and whether they can support the asset classes TICK wants to show.
+Find out which serious CEX/DEX/regulated venues will let you route flow from a feed-first mobile app and what economics they offer. Ask specifically about fees, leverage limits, session keys, reward attribution, outage handling, and whether they can support the asset classes TICK wants to show. The first production rail must be explainable before the second rail goes live.
 
 3. Pro trader interviews
 

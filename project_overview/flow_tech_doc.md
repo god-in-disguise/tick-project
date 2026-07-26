@@ -2,7 +2,7 @@
 
 This is the first technical direction for TICK.
 
-`flow_concept.md` is the product source of truth. This document explains the backend and execution architecture needed to support it.
+Status: older router memo. Use `tick_real_build_spec.md` for current build decisions. In particular, the current MVP is one live gTrade/Gains route plus shadow/research venues, and the current demo/private-MVP wallet decision is platform-created Arbitrum wallets with encrypted Postgres key material.
 
 ## Core Thesis
 
@@ -99,7 +99,7 @@ The user configures a preset before entering the feed:
 - Margin size
 - Leverage range
 - Max loss
-- TP/SL or manual cash-out preference
+- native stop/loss budget and manual close preference
 - Margin mode
 - Slippage limit
 
@@ -322,13 +322,13 @@ Main TICK swipe execution should feel instant, but the backend still needs stric
 6. Route Scorer selects best venue.
 7. Execution Router creates venue-specific order plan.
 8. Venue Adapter submits order.
-9. TP/SL is attached atomically or submitted immediately after.
+9. Venue-native stop is attached atomically or confirmed immediately after, depending on venue support.
 10. Position Reconciler confirms final state.
 11. App shows result card.
 12. Audit Log stores every event.
 ```
 
-If a venue does not support atomic TP/SL, TICK must make that clear internally and treat the trade as higher risk until protection orders are confirmed.
+If a venue does not support atomic stop protection, TICK must make that clear internally and treat the trade as higher risk until protection orders are confirmed. A backend-calculated stop is not equivalent to a venue-native stop.
 
 ## Position Reconciliation
 
@@ -419,14 +419,15 @@ Start simple, but keep the data model clean. We will need historical execution d
 
 ## Signing And Wallet Model
 
-TICK should avoid custody at the start.
+Current MVP model:
 
-Preferred model:
+- User signs in with Google
+- TICK creates a per-user Arbitrum wallet
+- wallet private key is encrypted in Postgres using an env encryption key
+- platform workers execute approved setup/trading/withdrawal actions
+- platform pays gas where possible and records USDC gas charges
 
-- User owns wallet or embedded wallet
-- TICK uses limited session keys / API keys where venues support them
-- User authorizes bounded trading permissions
-- TICK never holds unlimited authority
+This is a private-MVP/demo decision. For broader external users, bounded permissions, revocation, withdrawal controls, and stronger signing isolation become mandatory.
 
 Session limits should include:
 
@@ -441,19 +442,20 @@ This is important for one-gesture trading. The user should not sign every swipe,
 
 ## Venue Adapter MVP
 
-Start with two venues.
+Start with one live venue and one or more shadow/research venues.
 
-One venue is only an integration. Two venues force the abstraction to become real.
+One live venue keeps the first real execution lifecycle explainable. Shadow venues force the abstraction to stay real without doubling live money risk before state, PnL, and reconciliation are deterministic.
 
-Recommended order:
+Current order:
 
-1. Aster
-2. Lighter
-3. Ostium
+1. gTrade/Gains live route
+2. Lighter/Aster/Pacifica research or shadow checks
+3. Ostium for cross-asset expansion
 4. Hyperliquid or GMX later
 
 Reasoning:
 
+- gTrade/Gains is the selected first route because the local canary proved real wallet-native high-leverage execution.
 - Aster is strategically relevant for crypto perps, reward upside, and direct competitive learning.
 - Lighter gives a strong low-cost/points angle and forces the adapter abstraction to be real.
 - Ostium is the cross-asset unlock: stocks, indices, commodities, and FX in the same feed.
@@ -473,7 +475,7 @@ MVP should include:
 - Lighter adapter
 - Cost And Leverage Engine
 - Open/close position
-- TP/SL support
+- venue-native stop support
 - Unified position view
 - Reward program metadata
 - Execution audit log
@@ -530,7 +532,7 @@ Points are upside. Execution quality is the product.
 
 ### Milestone 1: Paper Router
 
-- Ingest market data from two venues
+- Ingest market data from the live venue and at least one shadow/research venue
 - Normalize markets
 - Rank feed cards
 - Simulate routing decisions

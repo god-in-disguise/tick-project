@@ -30,7 +30,7 @@ The first real implementation should extract the gTrade connector from `../../lo
 
 ## Current Contract Pass
 
-This scaffold currently implements the contract layer only:
+This scaffold currently implements the contract layer and Postgres persistence, but not live venue execution yet:
 
 - `POST /api/auth/dev-session`
 - `POST /api/auth/google`
@@ -46,8 +46,22 @@ This scaffold currently implements the contract layer only:
 
 Auth is bearer-token based. For local development, `POST /api/auth/dev-session` returns a dependency-free HS256 JWT. Production login uses Google ID token verification and then returns the same backend-issued TICK session JWT.
 
-The current store is in-memory so frontend wiring and API shape can move quickly. The durable Postgres target schema is in `migrations/001_core.sql`.
-Docker uses `TICK_STORE_BACKEND=postgres`; local unit tests can still inject `MemoryStore` directly.
+Docker uses `TICK_STORE_BACKEND=postgres` and runs migrations from `migrations/001_core.sql` on startup. Local unit tests can still inject `MemoryStore` directly as a fast test double.
+
+Verified local Docker smoke:
+
+- API, Postgres, Redis, worker, market-feed, and venue-events start from Compose.
+- `GET /health` and `GET /ready` return ok.
+- dev session creates/reuses a user and platform Arbitrum wallet.
+- deposit address returns the platform wallet.
+- quote/open/close creates persisted quote, intent, execution attempt, position, and reconciliation rows.
+- ARQ worker consumes queued open/close/withdrawal jobs.
+- idempotency returns the original attempt for duplicate payloads.
+- idempotent replays use deterministic ARQ job IDs, so the same execution is not queued twice.
+- idempotency key reuse with a different payload returns conflict.
+- one active position and one active close command are enforced at the API/store layer.
+
+The execution worker currently acknowledges jobs only. The next real work is extracting gTrade quote/build/submit/event/reconcile primitives from `../../local-mvp/tick-mvp-local/backend/connectors/`.
 
 ## Package Layout
 
@@ -78,6 +92,7 @@ Do not add venue execution directly to the API process. The next step is:
 
 1. API accepts quote/open/close requests.
 2. API persists intent/attempt records in Postgres.
-3. Worker executes gTrade.
-4. Venue/event workers append observations.
-5. A single reducer mutates normalized position state.
+3. API writes a durable outbox/job record in the same transaction.
+4. Worker executes gTrade from the persisted attempt.
+5. Venue/event workers append observations.
+6. A single reducer mutates normalized position state.

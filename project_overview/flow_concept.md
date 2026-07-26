@@ -8,7 +8,7 @@ The user opens the app and lands directly inside the action. A chart is live. Th
 
 The first version can be crypto-first, but the bigger product is not limited to crypto pairs. The feed can include BTC, ETH, high-beta stocks, indices, gold, oil, and FX when the execution venue supports those markets. The point is not "more assets." The point is that TICK becomes the fastest way to feel the market when something is moving anywhere.
 
-The product should not depend on one venue. TICK should feel like one clean app, but the backend should route through at least two execution venues from the start. Aster, Lighter, and Ostium-style venues are rails, not the product.
+The product should not depend on one venue long term. TICK should feel like one clean app, but the backend should be written in venue-agnostic primitives from the start. The first live MVP route is gTrade/Gains until the lifecycle is fully explainable; Aster, Lighter, Pacifica, GMTrade, and Ostium-style venues are research or shadow rails before they become live routes.
 
 The moat is the volatility explorer for day trading. TICK should not only show charts. It should discover which markets are alive, rank whether the move is tradeable after fees and spread, choose a sensible leverage range, and call users back when a real market moment appears.
 
@@ -16,7 +16,7 @@ The moat is the volatility explorer for day trading. TICK should not only show c
 
 The main TICK product is for retail users who want fast market action without a full trading terminal.
 
-The user configures the trade style before entering the feed: default size, leverage range, max loss, TP/SL or manual cash-out preference, and margin mode. After that, the app becomes extremely simple. Every market uses the active preset unless the user changes it.
+The user configures the trade style before entering the feed: default size, leverage range, stop/loss budget, manual close behavior, and margin mode. After that, the app becomes extremely simple. Every market uses the active preset unless the user changes it.
 
 The screen is simple:
 
@@ -32,15 +32,14 @@ The trade terms stay visible on the screen: size, leverage, liquidation or max l
 The casino-style mechanics are in the pacing and feedback:
 
 - Hot and cold markets
-- Streaks
 - Fast rounds
-- Cash-out moments
+- Close moments
 - Trade result cards
-- Daily leaderboards
 - Fire markets
 - Trial mode
-- Small challenges
 - Visual wins and losses
+
+Streaks, leaderboards, and challenges belong in trial mode or later carefully gated surfaces. The real-money V1 should get its energy from movement, feedback, and clear state, not rewards for unnecessary turnover.
 
 The feel is direct: preset risk, live market, one gesture, instant outcome, next market.
 
@@ -75,7 +74,7 @@ TICK Pro should not feel playful. It should feel fast, dense, and serious. The v
 5. See the result instantly.
 6. Continue to the next market.
 
-The product is built around momentum. The feed replaces the exchange dashboard. The market card replaces the slot. The trade result replaces the spin outcome.
+The product is built around momentum. The feed replaces the exchange dashboard. The market card is the live table. The trade result is a financial result, not a spin outcome.
 
 ## The Bigger Idea
 

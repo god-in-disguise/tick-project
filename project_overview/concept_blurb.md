@@ -10,7 +10,7 @@ TICK Pro is the same engine with the full cockpit exposed. Traders get funding, 
 
 The first market universe can be crypto-first, but the bigger feed is cross-asset: BTC, ETH, high-beta stocks, indices, gold, oil, and FX when compliant venues support them. Products like Ostium make this strategically interesting because TICK can become the front end for "what is moving now" across crypto and macro, not only another crypto pair list.
 
-TICK should not rely on one venue. Users see one clean product balance and one trade flow, but the backend should route across at least two venues from the beginning. That keeps fees, uptime, market coverage, and points/reward upside from being controlled by a single rail.
+TICK should not become one venue's skin. Users see one clean product balance and one trade flow, while the backend is written in venue-agnostic primitives from the beginning. The first live MVP route is gTrade/Gains until execution is fully explainable; other venues can run as research or shadow checks before becoming live routes.
 
 The moat is the volatility explorer for day trading. TICK should know what is moving, how cleanly it can be traded, what leverage makes sense, and when the move is worth pushing to the user. The swipe UI is the surface; the volatility explorer is the engine.
 

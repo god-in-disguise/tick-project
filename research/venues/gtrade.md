@@ -1,14 +1,14 @@
 # gTrade / Gains
 
-Snapshot: 2026-07-20.
+Snapshot: 2026-07-26.
 
-Status: official documentation and public Arbitrum backend measured; no TICK signed trade yet.
+Status: live tested with TICK founder/demo wallet on Arbitrum.
 
 ## Bottom Line
 
-gTrade is the best next high-leverage venue to test after GMTrade. It fits the wallet-native thesis better than Lighter because users keep custody and do not need an exchange deposit account. It also has a documented delegated trading primitive that could support one-click execution after user approval.
+gTrade is the selected first live MVP route. It fits the TICK loop because it supports high leverage, USDC collateral on Arbitrum, wallet-owned positions, delegated execution, broad market coverage, and real venue-native stops.
 
-The main risk is latency. gTrade market opens and closes require oracle fulfillment, so it may feel closer to Ostium/GMTrade than Lighter unless the request-to-execution path is fast enough in practice.
+The main risk is still state correctness rather than basic order placement. gTrade market opens and closes require oracle fulfillment, so the backend must distinguish initiation transaction confirmation from actual venue execution/callback. The local canary proved the loop is usable, but production must harden quote truth, native stops, direct events, PnL, and reconciliation.
 
 ## Live Arbitrum Snapshot
 
@@ -55,7 +55,19 @@ ETH/USD         200x
 
 The 500x degen crypto group has a minimum notional of about $5,000, so at 500x the minimum collateral is about $10. Normal BTC/ETH at 200x have a minimum notional of about $2,857, so the minimum collateral is about $14.29.
 
-The local test wallet on 2026-07-20 had enough USDC for a small canary but had zero USDC allowance to the Gains diamond. A dry `openTrade` gas estimate using the current v10 trade struct reached the contract and reverted with the expected ERC-20 allowance error. This means the current calldata shape is usable; approval is the next blocker before a live open.
+The local test wallet progressed beyond dry calls. TICK opened and closed real BTCDEGEN/USD 500x positions, tested delegated execution, tested venue stops, observed real fee drag, and measured the difference between initiation confirmation, venue callback, UI state, and final wallet delta.
+
+Representative lessons:
+
+```text
+$10 ticket at 500x degen pair
+requested notional: about $5,000
+round-trip venue fee drag: about $1.85-$2.00 before meaningful market movement
+position visibility: usable, but not instant
+close visibility: improved after cache-first close, but still needs direct event/reducer hardening
+```
+
+The exact numbers vary by sample, market, route, RPC, and oracle callback timing. Do not use one canary as a production SLA.
 
 ## Execution Model
 
@@ -81,12 +93,14 @@ Strengths:
 
 Risks:
 
-- Real open/close latency is still unknown.
-- Oracle fulfillment may make it too slow for a 30-60 second loop.
+- Open/close latency is acceptable for canary/product validation, but needs p50/p95 measurement after production extraction.
+- Oracle fulfillment means sub-second guaranteed execution is not a safe assumption.
 - Degen pairs are high leverage but may have different fees, spread, and risk mechanics.
 - Forex/commodities/stocks have market-hour and gap behavior.
 - Delegated trading is powerful; TICK policy must prevent reckless or unintended execution.
 - Current docs and live values differ in places, so connector must rely on live backend variables.
+- Silent leverage normalization is not acceptable: displayed leverage/exposure must match submitted leverage/exposure.
+- Phone-side PnL formulas are not authoritative; backend must publish estimated net PnL and final realized result.
 
 ## Probe
 
@@ -118,13 +132,15 @@ price websocket update rate
 optional wallet balances and allowances
 ```
 
-## Next Test
+## Next Work
 
-1. Use Arbitrum USDC collateral.
-2. Test direct `openTrade` with a small BTCDEGEN/USD or BTC/USD position.
-3. Measure request transaction confirmation, oracle fulfillment, position visible delay, close request, close fulfillment, final balance delta.
-4. If direct signing is too much friction, test delegated trading with a dedicated agent wallet.
-5. Compare against GMTrade and Ostium using the same `$10-$20 margin, 3-5 second hold` canary.
+1. Extract gTrade into `builds/tick-mvp/` as primitives: quote/config, transaction building, submission, exact event decoding, snapshots, and reconciliation.
+2. Enforce direction-specific visible preflight: displayed terms must equal submitted terms.
+3. Require venue-native stop for real-money opening.
+4. Persist deterministic transaction hash and nonce before broadcast.
+5. Use direct callback/on-chain logs as normal execution truth, with Gains WS and REST as supplemental/recovery sources.
+6. Keep wallet delta as aggregate canary truth while storing venue-derived fee/PnL fields.
+7. Run 30-50 clean open/close cycles before enabling another live route.
 
 ## Primary Sources
 

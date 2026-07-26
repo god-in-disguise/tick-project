@@ -249,6 +249,9 @@ class SQLAlchemyStore:
                 created_at=now,
                 updated_at=now,
             )
+            session.add(intent)
+            session.flush()
+
             execution = ExecutionAttempt(
                 id=_id("exec"),
                 trade_intent_id=intent.id,
@@ -284,7 +287,7 @@ class SQLAlchemyStore:
                 updated_at=now,
             )
             intent.position_id = position.id
-            session.add_all([intent, execution, position])
+            session.add_all([execution, position])
             session.flush()
             return AcceptedTradeResponse(
                 intent=intent_response(intent),
@@ -325,6 +328,9 @@ class SQLAlchemyStore:
                 created_at=now,
                 updated_at=now,
             )
+            session.add(intent)
+            session.flush()
+
             execution = ExecutionAttempt(
                 id=_id("exec"),
                 trade_intent_id=intent.id,
@@ -348,7 +354,7 @@ class SQLAlchemyStore:
                 created_at=now,
                 updated_at=now,
             )
-            session.add_all([intent, execution, reconciliation])
+            session.add_all([execution, reconciliation])
             session.flush()
             return AcceptedTradeResponse(
                 intent=intent_response(intent),
