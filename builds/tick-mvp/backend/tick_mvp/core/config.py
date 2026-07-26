@@ -27,12 +27,25 @@ class Settings:
     quote_ttl_seconds: int = 5
     arb_chain_id: int = 42161
     arb_rpc_url: str = ""
-    arb_write_rpc_url: str = ""
     arb_wss_url: str = ""
     custody_provider: str = "development"
     custody_private_key_encryption_key: str = ""
     gas_payer_mode: str = "platform_agent"
     gas_charge_asset: str = "USDC"
+    tick_real_quotes_enabled: bool = False
+    tick_real_execution_enabled: bool = False
+    gtrade_backend_url: str = "https://backend-arbitrum.gains.trade"
+    gtrade_pricing_url: str = "https://backend-pricing.eu.gains.trade"
+    gtrade_diamond_address: str = "0xFF162c694eAA571f685030649814282eA457f169"
+    gtrade_usdc_address: str = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
+    gtrade_slippage_bps: int = 100
+    gtrade_open_wait_seconds: float = 9.0
+    gtrade_close_wait_seconds: float = 9.0
+    gtrade_rest_poll_seconds: float = 0.20
+    gtrade_auto_approve_usdc: bool = True
+    gtrade_fixed_open_gas: int = 2_300_000
+    gtrade_fixed_close_gas: int = 2_000_000
+    gtrade_fixed_approve_gas: int = 100_000
 
 
 @lru_cache
@@ -58,12 +71,25 @@ def get_settings() -> Settings:
         quote_ttl_seconds=_int_env("QUOTE_TTL_SECONDS", 5),
         arb_chain_id=_int_env("ARB_CHAIN_ID", 42161),
         arb_rpc_url=os.getenv("ARB_RPC_URL", ""),
-        arb_write_rpc_url=os.getenv("ARB_WRITE_RPC_URL", ""),
         arb_wss_url=os.getenv("ARB_WSS_URL", ""),
         custody_provider=os.getenv("CUSTODY_PROVIDER", "development"),
         custody_private_key_encryption_key=os.getenv("CUSTODY_PRIVATE_KEY_ENCRYPTION_KEY", ""),
         gas_payer_mode=os.getenv("GAS_PAYER_MODE", "platform_agent"),
         gas_charge_asset=os.getenv("GAS_CHARGE_ASSET", "USDC"),
+        tick_real_quotes_enabled=_bool_env("TICK_REAL_QUOTES_ENABLED", False),
+        tick_real_execution_enabled=_bool_env("TICK_REAL_EXECUTION_ENABLED", False),
+        gtrade_backend_url=os.getenv("GTRADE_BACKEND_URL", "https://backend-arbitrum.gains.trade"),
+        gtrade_pricing_url=os.getenv("GTRADE_PRICING_URL", "https://backend-pricing.eu.gains.trade"),
+        gtrade_diamond_address=os.getenv("GTRADE_DIAMOND_ADDRESS") or "0xFF162c694eAA571f685030649814282eA457f169",
+        gtrade_usdc_address=os.getenv("GTRADE_USDC_ADDRESS") or "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        gtrade_slippage_bps=_int_env("GTRADE_SLIPPAGE_BPS", 100),
+        gtrade_open_wait_seconds=_float_env("GTRADE_OPEN_WAIT_SECONDS", 9.0),
+        gtrade_close_wait_seconds=_float_env("GTRADE_CLOSE_WAIT_SECONDS", 9.0),
+        gtrade_rest_poll_seconds=_float_env("GTRADE_REST_POLL_SECONDS", 0.20),
+        gtrade_auto_approve_usdc=_bool_env("GTRADE_AUTO_APPROVE_USDC", True),
+        gtrade_fixed_open_gas=_int_env("GTRADE_OPEN_GAS", 2_300_000),
+        gtrade_fixed_close_gas=_int_env("GTRADE_CLOSE_GAS", 2_000_000),
+        gtrade_fixed_approve_gas=_int_env("GTRADE_APPROVE_GAS", 100_000),
     )
 
 
@@ -77,3 +103,8 @@ def _bool_env(name: str, default: bool) -> bool:
     if value is None:
         return default
     return value.lower() in {"1", "true", "yes", "on"}
+
+
+def _float_env(name: str, default: float) -> float:
+    value = os.getenv(name)
+    return float(value) if value else default

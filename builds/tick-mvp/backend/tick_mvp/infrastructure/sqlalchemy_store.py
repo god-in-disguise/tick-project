@@ -58,7 +58,7 @@ from tick_mvp.infrastructure.models import (
 
 
 class SQLAlchemyStore:
-    def __init__(self, default_venue: str, quote_ttl_seconds: int = 5, session_factory=None) -> None:
+    def __init__(self, default_venue: str, quote_ttl_seconds: int = 5, session_factory=None, quote_engine=None) -> None:
         settings = get_settings()
         self.default_venue = default_venue
         self.quote_ttl_seconds = quote_ttl_seconds
@@ -66,6 +66,7 @@ class SQLAlchemyStore:
         self.custody_provider = settings.custody_provider
         self._settings = settings
         self._session_factory = session_factory or create_session_factory()
+        self._quote_engine = quote_engine
 
     def upsert_google_user(
         self,
@@ -183,27 +184,64 @@ class SQLAlchemyStore:
 
     def create_quote(self, user_id: str, request: QuoteRequest) -> QuoteResponse:
         now = _now()
-        notional = request.ticketUsd * request.leverage
-        estimated_open = notional * Decimal("0.0002")
-        estimated_close = notional * Decimal("0.0002")
+        if self._quote_engine is not None:
+            venue_quote = self._quote_engine.quote_open(
+                market=request.market,
+                side=request.side,
+                ticket_usd=request.ticketUsd,
+                leverage=request.leverage,
+                max_loss_usd=request.maxLossUsd,
+            )
+            venue = venue_quote.venue
+            market = venue_quote.market
+            side = venue_quote.side.value
+            ticket_usd = venue_quote.ticket_usd
+            leverage = venue_quote.leverage
+            notional = venue_quote.notional_usd
+            estimated_open = venue_quote.estimated_open_cost_usd
+            estimated_close = venue_quote.estimated_close_cost_usd
+            estimated_round_trip = venue_quote.estimated_round_trip_cost_usd
+            liquidation_price = venue_quote.liquidation_price
+            stop_loss_price = venue_quote.stop_loss_price
+            opening_allowed = venue_quote.opening_allowed
+            payload = {
+                **venue_quote.payload,
+                "quoteSource": "live_venue",
+                "liquidationPrice": str(liquidation_price) if liquidation_price is not None else None,
+                "stopLossPrice": str(stop_loss_price) if stop_loss_price is not None else None,
+            }
+        else:
+            venue = self.default_venue
+            market = _market(request.market)
+            side = request.side.value
+            ticket_usd = request.ticketUsd
+            leverage = request.leverage
+            notional = request.ticketUsd * request.leverage
+            estimated_open = notional * Decimal("0.0002")
+            estimated_close = notional * Decimal("0.0002")
+            estimated_round_trip = estimated_open + estimated_close
+            liquidation_price = None
+            stop_loss_price = None
+            opening_allowed = True
+            payload = {"quoteSource": "static_placeholder"}
         quote = Quote(
             id=_id("quote"),
             user_id=user_id,
-            venue=self.default_venue,
-            market=_market(request.market),
-            side=request.side.value,
-            ticket_usd=request.ticketUsd,
-            leverage=request.leverage,
+            venue=venue,
+            market=market,
+            side=side,
+            ticket_usd=ticket_usd,
+            leverage=leverage,
             notional_usd=notional,
             max_loss_usd=request.maxLossUsd,
             estimated_open_cost_usd=estimated_open,
             estimated_close_cost_usd=estimated_close,
-            estimated_round_trip_cost_usd=estimated_open + estimated_close,
-            liquidation_price=None,
-            stop_loss_price=None,
-            opening_allowed=True,
+            estimated_round_trip_cost_usd=estimated_round_trip,
+            liquidation_price=liquidation_price,
+            stop_loss_price=stop_loss_price,
+            opening_allowed=opening_allowed,
             risk_decision_id=_id("risk"),
-            payload={},
+            payload=payload,
             created_at=now,
             expires_at=now + timedelta(seconds=self.quote_ttl_seconds),
         )

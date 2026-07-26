@@ -16,7 +16,7 @@ The local MVP proved the venue behavior. This backend should extract that behavi
 - `WalletAccount`
 - `LedgerEvent`
 
-The first real implementation should extract the gTrade connector from `../../local-mvp/tick-mvp-local/backend/connectors/` without copying local SQLite/threading assumptions.
+The first gTrade extraction is now started. The backend has live gTrade quote support and a worker-side execution adapter, while live trading remains disabled unless explicitly enabled.
 
 ## Product Decisions
 
@@ -30,7 +30,7 @@ The first real implementation should extract the gTrade connector from `../../lo
 
 ## Current Contract Pass
 
-This scaffold currently implements the contract layer and Postgres persistence, but not live venue execution yet:
+This scaffold currently implements the contract layer, Postgres persistence, live gTrade quotes, and a guarded worker execution path:
 
 - `POST /api/auth/dev-session`
 - `POST /api/auth/google`
@@ -54,14 +54,18 @@ Verified local Docker smoke:
 - `GET /health` and `GET /ready` return ok.
 - dev session creates/reuses a user and platform Arbitrum wallet.
 - deposit address returns the platform wallet.
-- quote/open/close creates persisted quote, intent, execution attempt, position, and reconciliation rows.
-- ARQ worker consumes queued open/close/withdrawal jobs.
+- quote uses live gTrade pair metadata/pricing when `TICK_REAL_QUOTES_ENABLED=true`.
+- BTCDEGEN quotes normalize to venue execution leverage and include estimated open/close costs, liquidation estimate, and stop-loss estimate.
+- open/close creates persisted quote, intent, execution attempt, position, and reconciliation rows.
+- ARQ worker consumes queued open/close/withdrawal jobs and returns dry-run execution results when `TICK_REAL_EXECUTION_ENABLED=false`.
 - idempotency returns the original attempt for duplicate payloads.
 - idempotent replays use deterministic ARQ job IDs, so the same execution is not queued twice.
 - idempotency key reuse with a different payload returns conflict.
 - one active position and one active close command are enforced at the API/store layer.
 
-The execution worker currently acknowledges jobs only. The next real work is extracting gTrade quote/build/submit/event/reconcile primitives from `../../local-mvp/tick-mvp-local/backend/connectors/`.
+Live execution is behind `TICK_REAL_EXECUTION_ENABLED`. When enabled, the worker decrypts the user's platform wallet key, auto-approves USDC if needed, signs from that user wallet, submits through the configured `ARB_RPC_URL`, waits for gTrade position visibility/absence, and updates the execution/position rows. It keeps the useful local-MVP speed work: persistent provider, cached nonces, short-lived fee cache, fixed hot-path gas limits, and deterministic tx hash before broadcast.
+
+The next hardening work is direct callback-event journaling, recovery after ambiguous RPC responses, and final PnL reconciliation.
 
 ## Package Layout
 
@@ -70,6 +74,8 @@ The code is layered for readability without turning the MVP into a framework pro
 - `tick_mvp.api` - FastAPI app, HTTP routes, and session handling.
 - `tick_mvp.domain` - Pydantic contracts and state machines.
 - `tick_mvp.infrastructure` - storage and queue adapters.
+- `tick_mvp.venues` - venue-specific market, quote, and transaction primitives.
+- `tick_mvp.execution` - worker orchestration between persisted attempts and venue adapters.
 - `tick_mvp.workers` - ARQ tasks plus long-running market/event service entrypoints.
 - `tick_mvp.core` - runtime settings.
 

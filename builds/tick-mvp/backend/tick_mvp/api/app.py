@@ -198,8 +198,13 @@ def _default_store() -> Any:
     settings = get_settings()
     if settings.tick_store_backend == "postgres":
         from tick_mvp.infrastructure.sqlalchemy_store import SQLAlchemyStore
+        from tick_mvp.venues.registry import create_quote_engine
 
-        return SQLAlchemyStore(default_venue=settings.default_venue, quote_ttl_seconds=settings.quote_ttl_seconds)
+        return SQLAlchemyStore(
+            default_venue=settings.default_venue,
+            quote_ttl_seconds=settings.quote_ttl_seconds,
+            quote_engine=create_quote_engine(settings),
+        )
     return MemoryStore(default_venue=settings.default_venue, quote_ttl_seconds=settings.quote_ttl_seconds)
 
 

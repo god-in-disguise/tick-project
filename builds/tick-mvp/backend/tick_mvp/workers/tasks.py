@@ -2,19 +2,18 @@ from __future__ import annotations
 
 import logging
 
+from tick_mvp.execution.service import ExecutionService
+
 
 LOGGER = logging.getLogger("tick.worker")
+_EXECUTION_SERVICE: ExecutionService | None = None
 
 
 async def execute_trade_attempt(ctx: dict, execution_attempt_id: str) -> dict[str, str]:
-    """Placeholder execution task.
-
-    The next pass will load the execution attempt from Postgres and call the
-    gTrade connector. Keeping this task tiny makes the worker boundary visible
-    without mixing live venue code into the API process.
-    """
     LOGGER.info("execution attempt queued", extra={"executionAttemptId": execution_attempt_id})
-    return {"executionAttemptId": execution_attempt_id, "status": "queued"}
+    service = _execution_service()
+    result = service.execute(execution_attempt_id)
+    return {key: str(value) for key, value in result.items() if value is not None}
 
 
 async def execute_withdrawal_request(ctx: dict, withdrawal_id: str) -> dict[str, str]:
@@ -30,3 +29,10 @@ async def execute_withdrawal_request(ctx: dict, withdrawal_id: str) -> dict[str,
 async def reconcile_positions(ctx: dict) -> dict[str, str]:
     LOGGER.info("reconciliation tick")
     return {"status": "ok"}
+
+
+def _execution_service() -> ExecutionService:
+    global _EXECUTION_SERVICE
+    if _EXECUTION_SERVICE is None:
+        _EXECUTION_SERVICE = ExecutionService()
+    return _EXECUTION_SERVICE
