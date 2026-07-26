@@ -117,6 +117,17 @@ class DepositAddressResponse(BaseModel):
     walletId: str
 
 
+class WalletBalancesResponse(BaseModel):
+    chainId: int
+    address: str
+    nativeEth: Decimal | None = None
+    usdc: Decimal | None = None
+    gtradeAllowanceUsdc: Decimal | None = None
+    source: str
+    fetchedAt: datetime
+    unavailableReason: str | None = None
+
+
 class WithdrawalRequest(BaseModel):
     asset: str = Field(default="USDC", min_length=1, max_length=20)
     amount: Decimal = Field(gt=0)

@@ -131,6 +131,7 @@ def test_api_routes_are_present() -> None:
     assert "/api/auth/google" in paths
     assert "/api/me" in paths
     assert "/api/wallet/deposit-address" in paths
+    assert "/api/wallet/balances" in paths
     assert "/api/wallet/withdrawals" in paths
     assert "/api/trade/quote" in paths
     assert "/api/trade/open" in paths

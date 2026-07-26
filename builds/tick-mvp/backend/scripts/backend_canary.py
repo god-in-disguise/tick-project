@@ -48,6 +48,7 @@ def main() -> None:
         auth = {"Authorization": f"Bearer {token}"}
 
         deposit = timed(timeline, "deposit_address", lambda: client.get("/api/wallet/deposit-address", headers=auth))
+        balances = optional_timed(timeline, "wallet_balances", lambda: client.get("/api/wallet/balances", headers=auth))
         quote = timed(
             timeline,
             "quote",
@@ -145,6 +146,7 @@ def main() -> None:
             "wallet": {
                 "address": session.get("walletAddress"),
                 "depositAddress": deposit.get("address"),
+                "balances": balances,
             },
             "quote": compact_quote(quote),
             "open": {

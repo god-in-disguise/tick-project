@@ -18,6 +18,7 @@ from tick_mvp.domain.schemas import (
     QuoteResponse,
     SessionResponse,
     StateResponse,
+    WalletBalancesResponse,
     WithdrawalRequest,
     WithdrawalResponse,
 )
@@ -134,6 +135,16 @@ def create_app(store: Any | None = None) -> FastAPI:
             return _store(app).deposit_address(_session(authorization, x_tick_user).user_id)
         except StoreNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.get("/api/wallet/balances", response_model=WalletBalancesResponse)
+    def wallet_balances(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> WalletBalancesResponse:
+        try:
+            wallet = _store(app).wallet_for_user(_session(authorization, x_tick_user).user_id)
+        except StoreNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        from tick_mvp.infrastructure.wallet_balances import read_wallet_balances
+
+        return read_wallet_balances(wallet, get_settings())
 
     @app.post("/api/wallet/withdrawals", response_model=WithdrawalResponse, status_code=status.HTTP_202_ACCEPTED)
     async def request_withdrawal(

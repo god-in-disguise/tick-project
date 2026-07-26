@@ -100,7 +100,7 @@ Run the API canary from the repository root:
 builds/local-mvp/tick-mvp-local/.venv/bin/python builds/tick-mvp/backend/scripts/backend_canary.py
 ```
 
-The canary creates a dev session, gets the platform wallet deposit address, asks for a live gTrade quote, accepts an open intent, waits for the position to become open, then accepts a close intent and waits for the terminal state. It cannot bypass `TICK_REAL_EXECUTION_ENABLED`; with real execution disabled, it should stop after the opening wait and print the current persisted state.
+The canary creates a dev session, gets the platform wallet deposit address and balances, asks for a live gTrade quote, accepts an open intent, waits for the position to become open, then accepts a close intent and waits for the terminal state. It cannot bypass `TICK_REAL_EXECUTION_ENABLED`; with real execution disabled, it should stop after the opening wait and print the current persisted state.
 
 For local timing inspection, pass the Docker Postgres URL:
 
