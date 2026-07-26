@@ -109,6 +109,13 @@ builds/local-mvp/tick-mvp-local/.venv/bin/python builds/tick-mvp/backend/scripts
   --db-url postgresql://tick:tick@127.0.0.1:5432/tick
 ```
 
+To bind a funded dev wallet to a local dev user:
+
+```bash
+docker compose exec -e DEV_WALLET_PRIVATE_KEY=0x... api \
+  python scripts/import_dev_wallet.py --user-id funded-dev
+```
+
 Do not add venue execution directly to the API process. The next step is:
 
 1. API accepts quote/open/close requests.
