@@ -40,8 +40,11 @@ class GTradePair:
 class GTradePublicClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._session = requests.Session()
         self._pairs_by_name: dict[str, GTradePair] = {}
         self._pairs_expires_at = 0.0
+        self._charts_payload: dict[str, Any] | None = None
+        self._charts_expires_at = 0.0
 
     def pair(self, pair_name: str) -> GTradePair:
         normalized = normalize_pair(pair_name)
@@ -68,7 +71,7 @@ class GTradePublicClient:
         now = time.time()
         if self._pairs_by_name and self._pairs_expires_at > now:
             return
-        payload = _get_json(f"{self._settings.gtrade_backend_url}/trading-variables")
+        payload = _get_json(self._session, f"{self._settings.gtrade_backend_url}/trading-variables")
         rows = _build_pairs(payload)
         by_name = {row.pair: row for row in rows}
         by_index = {row.pair_index: row for row in rows}
@@ -76,12 +79,17 @@ class GTradePublicClient:
             if index in by_index:
                 by_name.setdefault(by_index[index].pair, by_index[index])
         self._pairs_by_name = by_name
-        self._pairs_expires_at = now + 300
+        self._pairs_expires_at = now + self._settings.gtrade_pairs_ttl_seconds
 
     def _charts(self) -> dict[str, Any]:
-        payload = _get_json(f"{self._settings.gtrade_pricing_url}/charts")
+        now = time.time()
+        if self._charts_payload is not None and self._charts_expires_at > now:
+            return self._charts_payload
+        payload = _get_json(self._session, f"{self._settings.gtrade_pricing_url}/charts")
         if not isinstance(payload, dict):
             raise GTradeError("gTrade charts returned non-object JSON")
+        self._charts_payload = payload
+        self._charts_expires_at = now + self._settings.gtrade_charts_ttl_seconds
         return payload
 
     @staticmethod
@@ -157,11 +165,11 @@ def _pct_from_p(value: Any) -> Decimal:
     return (Decimal(str(value)) / Decimal(10**12)) * Decimal(100)
 
 
-def _get_json(url: str) -> Any:
+def _get_json(session: requests.Session, url: str) -> Any:
     last: Exception | None = None
     for attempt in range(4):
         try:
-            response = requests.get(url, timeout=25, headers={"user-agent": "tick-mvp/0.1"})
+            response = session.get(url, timeout=25, headers={"user-agent": "tick-mvp/0.1"})
             if response.status_code not in {429, 502, 503, 504}:
                 response.raise_for_status()
                 return response.json()
@@ -170,4 +178,3 @@ def _get_json(url: str) -> Any:
             last = exc
         time.sleep(0.5 * (attempt + 1))
     raise GTradeError(f"GET {url} failed: {last}") from last
-

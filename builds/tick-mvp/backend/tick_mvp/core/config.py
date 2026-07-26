@@ -42,6 +42,8 @@ class Settings:
     gtrade_open_wait_seconds: float = 9.0
     gtrade_close_wait_seconds: float = 9.0
     gtrade_rest_poll_seconds: float = 0.20
+    gtrade_pairs_ttl_seconds: float = 300.0
+    gtrade_charts_ttl_seconds: float = 0.50
     gtrade_auto_approve_usdc: bool = True
     gtrade_fixed_open_gas: int = 2_300_000
     gtrade_fixed_close_gas: int = 2_000_000
@@ -86,6 +88,8 @@ def get_settings() -> Settings:
         gtrade_open_wait_seconds=_float_env("GTRADE_OPEN_WAIT_SECONDS", 9.0),
         gtrade_close_wait_seconds=_float_env("GTRADE_CLOSE_WAIT_SECONDS", 9.0),
         gtrade_rest_poll_seconds=_float_env("GTRADE_REST_POLL_SECONDS", 0.20),
+        gtrade_pairs_ttl_seconds=_float_env("GTRADE_PAIRS_TTL_SECONDS", 300.0),
+        gtrade_charts_ttl_seconds=_float_env("GTRADE_CHARTS_TTL_SECONDS", 0.50),
         gtrade_auto_approve_usdc=_bool_env("GTRADE_AUTO_APPROVE_USDC", True),
         gtrade_fixed_open_gas=_int_env("GTRADE_OPEN_GAS", 2_300_000),
         gtrade_fixed_close_gas=_int_env("GTRADE_CLOSE_GAS", 2_000_000),
