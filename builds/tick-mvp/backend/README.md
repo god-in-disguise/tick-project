@@ -102,6 +102,13 @@ builds/local-mvp/tick-mvp-local/.venv/bin/python builds/tick-mvp/backend/scripts
 
 The canary creates a dev session, gets the platform wallet deposit address, asks for a live gTrade quote, accepts an open intent, waits for the position to become open, then accepts a close intent and waits for the terminal state. It cannot bypass `TICK_REAL_EXECUTION_ENABLED`; with real execution disabled, it should stop after the opening wait and print the current persisted state.
 
+For local timing inspection, pass the Docker Postgres URL:
+
+```bash
+builds/local-mvp/tick-mvp-local/.venv/bin/python builds/tick-mvp/backend/scripts/backend_canary.py \
+  --db-url postgresql://tick:tick@127.0.0.1:5432/tick
+```
+
 Do not add venue execution directly to the API process. The next step is:
 
 1. API accepts quote/open/close requests.

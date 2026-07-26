@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 import uuid
 from dataclasses import dataclass
@@ -89,6 +90,7 @@ def main() -> None:
 
         close_response = None
         close_state = None
+        close_execution_id = None
         if args.close and open_state["status"] == "open":
             if args.hold_seconds > 0:
                 time.sleep(args.hold_seconds)
@@ -101,6 +103,7 @@ def main() -> None:
                     headers=auth,
                 ),
             )
+            close_execution_id = close_response["executionAttempt"]["id"]
             close_state = wait_for_position(
                 client,
                 auth,
@@ -120,6 +123,20 @@ def main() -> None:
             )
 
         state = timed(timeline, "final_state", lambda: client.get("/api/state", headers=auth))
+        database = None
+        if args.db_url:
+            database = optional_timed(
+                timeline,
+                "database_details",
+                lambda: {
+                    "ok": True,
+                    **load_database_details(
+                        args.db_url,
+                        execution_ids=[item for item in [open_execution_id, close_execution_id] if item],
+                        position_id=position_id,
+                    ),
+                },
+            )
         output = {
             "ok": True,
             "runId": run_id,
@@ -139,6 +156,7 @@ def main() -> None:
             },
             "close": compact_close(close_response, close_state),
             "latestState": compact_state(state),
+            "database": database,
             "timeline": timeline,
         }
         print(json.dumps(output, indent=2, sort_keys=True))
@@ -191,6 +209,17 @@ def timed(timeline: list[dict[str, Any]], step: str, fn):
     except Exception as exc:
         timeline.append({"step": step, "ok": False, "elapsedMs": timer.ms(), "error": f"{type(exc).__name__}: {exc}"})
         raise
+    timeline.append({"step": step, "ok": True, "elapsedMs": timer.ms()})
+    return result
+
+
+def optional_timed(timeline: list[dict[str, Any]], step: str, fn):
+    timer = StepTimer.start()
+    try:
+        result = fn()
+    except Exception as exc:
+        timeline.append({"step": step, "ok": False, "elapsedMs": timer.ms(), "error": f"{type(exc).__name__}: {exc}"})
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
     timeline.append({"step": step, "ok": True, "elapsedMs": timer.ms()})
     return result
 
@@ -316,6 +345,60 @@ def compact_execution(execution: dict[str, Any] | None) -> dict[str, Any] | None
     }
 
 
+def load_database_details(db_url: str, *, execution_ids: list[str], position_id: str) -> dict[str, Any]:
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+    except ImportError as exc:
+        raise CanaryError("psycopg is required for --db-url timing inspection") from exc
+
+    with psycopg.connect(db_url, row_factory=dict_row) as connection:
+        executions = connection.execute(
+            """
+            select id, action, status, tx_hash, nonce, gas_cost_native, error, payload, created_at, updated_at
+            from execution_attempts
+            where id = any(%s)
+            order by created_at asc
+            """,
+            (execution_ids,),
+        ).fetchall()
+        positions = connection.execute(
+            """
+            select id, status, venue_position_id, entry_price, stop_loss_price, liquidation_price,
+                   payload, created_at, updated_at, opened_at, closed_at
+            from positions
+            where id = %s
+            """,
+            (position_id,),
+        ).fetchall()
+        reconciliations = connection.execute(
+            """
+            select id, status, venue_realized_pnl_usd, wallet_delta_usd, difference_usd, payload, created_at, updated_at
+            from reconciliations
+            where position_id = %s
+            order by created_at asc
+            """,
+            (position_id,),
+        ).fetchall()
+    return {
+        "executions": [json_safe(row) for row in executions],
+        "positions": [json_safe(row) for row in positions],
+        "reconciliations": [json_safe(row) for row in reconciliations],
+    }
+
+
+def json_safe(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: json_safe(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [json_safe(item) for item in value]
+    if isinstance(value, Decimal):
+        return str(value)
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return value
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run one TICK backend API canary through quote/open/close.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8787")
@@ -330,6 +413,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--close-timeout", type=float, default=20.0)
     parser.add_argument("--poll-seconds", type=float, default=0.25)
     parser.add_argument("--http-timeout", type=float, default=10.0)
+    parser.add_argument("--db-url", default=os.getenv("CANARY_DATABASE_URL", ""))
     parser.add_argument("--no-close", action="store_false", dest="close")
     parser.set_defaults(close=True)
     return parser.parse_args()
