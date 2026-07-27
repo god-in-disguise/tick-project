@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, localcontext
 
 import requests
 
@@ -52,7 +52,9 @@ def read_wallet_balances(wallet: WalletAccountResponse, settings: Settings) -> W
 
 
 def _quantize(value: Decimal, decimals: int) -> Decimal:
-    return value.quantize(Decimal(1).scaleb(-decimals))
+    with localcontext() as context:
+        context.prec = max(80, len(value.as_tuple().digits) + decimals)
+        return value.quantize(Decimal(1).scaleb(-decimals))
 
 
 def _rpc_batch_payload(*, owner: str, token: str, spender: str) -> list[dict[str, object]]:

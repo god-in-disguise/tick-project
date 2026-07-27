@@ -57,11 +57,10 @@ class ExecutionService:
             side=context.side,
             venue_position_id=context.venue_position_id,
         )
-        self._repository.mark_close_result(context, result)
+        wallet_delta_usd = self._repository.mark_close_result(context, result)
         return {
             "executionAttemptId": context.execution_id,
             "status": result.status,
             "txHash": result.tx.tx_hash,
-            "walletDeltaUsd": str(result.wallet_delta_usd) if result.wallet_delta_usd is not None else None,
+            "walletDeltaUsd": str(wallet_delta_usd) if wallet_delta_usd is not None else None,
         }
-

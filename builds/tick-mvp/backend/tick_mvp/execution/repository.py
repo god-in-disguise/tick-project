@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Any
 
 from tick_mvp.core.config import Settings, get_settings
+from tick_mvp.domain.accounting import whole_trade_wallet_delta
 from tick_mvp.domain.states import ExecutionAttemptStatus, PositionStatus, ReconciliationStatus, TradeAction, TradeIntentStatus, TradeSide
 from tick_mvp.infrastructure.custody import PrivateKeyCipher
 from tick_mvp.infrastructure.database import create_session_factory, session_scope
@@ -111,6 +112,11 @@ class ExecutionRepository:
             intent = _intent(session, context.intent_id)
             _apply_tx_result(execution, result.tx)
             execution.payload = {**(execution.payload or {}), "openResult": result.payload}
+            if result.account_balance_before_usd is not None:
+                position.payload = {
+                    **(position.payload or {}),
+                    "accountBalanceBeforeOpenUsd": str(result.account_balance_before_usd),
+                }
             if result.status == "open":
                 execution.status = ExecutionAttemptStatus.VENUE_EXECUTED.value
                 position.status = PositionStatus.OPEN.value
@@ -130,8 +136,9 @@ class ExecutionRepository:
             position.updated_at = now
             intent.updated_at = now
 
-    def mark_close_result(self, context: ExecutionContext, result: VenueCloseResult) -> None:
+    def mark_close_result(self, context: ExecutionContext, result: VenueCloseResult) -> Decimal | None:
         now = _now()
+        wallet_delta_usd: Decimal | None = None
         with session_scope(self._session_factory) as session:
             execution = _execution(session, context.execution_id)
             position = _position(session, context.position_id)
@@ -150,13 +157,14 @@ class ExecutionRepository:
                     .first()
                 )
                 if reconciliation is not None:
+                    wallet_delta_usd = whole_trade_wallet_delta(position.payload, result.account_balance_after_usd)
                     reconciliation.status = (
                         ReconciliationStatus.WALLET_RECONCILED.value
-                        if result.wallet_delta_usd is not None
+                        if wallet_delta_usd is not None
                         else ReconciliationStatus.VENUE_ACCOUNTED.value
                     )
                     reconciliation.venue_realized_pnl_usd = result.venue_realized_pnl_usd
-                    reconciliation.wallet_delta_usd = result.wallet_delta_usd
+                    reconciliation.wallet_delta_usd = wallet_delta_usd
                     reconciliation.payload = {**(reconciliation.payload or {}), "closeResult": result.payload}
                     reconciliation.updated_at = now
             elif result.tx.status == "confirmed":
@@ -168,6 +176,7 @@ class ExecutionRepository:
             execution.updated_at = now
             position.updated_at = now
             intent.updated_at = now
+        return wallet_delta_usd
 
     def mark_failed(self, context: ExecutionContext, error: str) -> None:
         now = _now()
@@ -231,4 +240,3 @@ def _intent(session, intent_id: str) -> TradeIntent:
 
 def _now() -> datetime:
     return datetime.now(UTC)
-

@@ -49,6 +49,7 @@ class VenueOpenResult:
     liquidation_price: Decimal | None
     stop_loss_price: Decimal | None
     opened_at: datetime | None
+    account_balance_before_usd: Decimal | None
     payload: dict[str, Any]
 
 
@@ -58,6 +59,6 @@ class VenueCloseResult:
     tx: VenueTxResult
     closed_at: datetime | None
     venue_realized_pnl_usd: Decimal | None
-    wallet_delta_usd: Decimal | None
+    account_balance_after_usd: Decimal | None
+    close_cashflow_usd: Decimal | None
     payload: dict[str, Any]
-

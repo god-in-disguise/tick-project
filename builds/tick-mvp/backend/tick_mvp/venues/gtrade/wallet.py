@@ -38,6 +38,7 @@ class GTradeWalletExecutor:
         stop_loss_price: Decimal | None,
     ) -> VenueOpenResult:
         account, address, web3 = self._account(private_key_hex)
+        account_balance_before = self._usdc_balance(web3, address)
         approvals: list[dict[str, Any]] = []
         if self._settings.gtrade_auto_approve_usdc:
             approval = self._ensure_usdc_allowance(account, address, ticket_usd)
@@ -83,8 +84,10 @@ class GTradeWalletExecutor:
             liquidation_price=_decimal_or_none(quote_payload.get("liquidationPrice")),
             stop_loss_price=stop_loss_price,
             opened_at=opened_at if position else None,
+            account_balance_before_usd=account_balance_before,
             payload={
                 "approvals": approvals,
+                "accountBalanceBeforeOpenUsd": str(account_balance_before),
                 "positionWait": position_wait,
                 "position": position,
                 "quotePayload": quote_payload,
@@ -114,19 +117,21 @@ class GTradeWalletExecutor:
         )
         closed = position_wait.get("observedPresent") is False and not position_wait.get("timedOut")
         after_usdc = self._usdc_balance(web3, address) if closed else None
-        wallet_delta = after_usdc - before_usdc if after_usdc is not None else None
+        close_cashflow = after_usdc - before_usdc if after_usdc is not None else None
         return VenueCloseResult(
             status="closed" if closed else "pending_execution",
             tx=tx,
             closed_at=datetime.now(UTC) if closed else None,
             venue_realized_pnl_usd=None,
-            wallet_delta_usd=wallet_delta,
+            account_balance_after_usd=after_usdc,
+            close_cashflow_usd=close_cashflow,
             payload={
                 "positionWait": position_wait,
                 "positionIndex": position_index,
                 "expectedClosePrice": str(price),
                 "walletUsdcBefore": str(before_usdc),
                 "walletUsdcAfter": str(after_usdc) if after_usdc is not None else None,
+                "closeCashflowUsd": str(close_cashflow) if close_cashflow is not None else None,
             },
         )
 
