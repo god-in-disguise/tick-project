@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 
 from tick_mvp.core.config import Settings, get_settings
 from tick_mvp.domain.states import TradeAction
@@ -16,6 +17,27 @@ class ExecutionService:
         self._settings = settings or get_settings()
         self._repository = repository or ExecutionRepository(self._settings)
         self._venue = create_venue(self._settings)
+
+    def start(self) -> None:
+        start = getattr(self._venue, "start", None)
+        if start is not None:
+            start()
+
+    def stop(self) -> None:
+        stop = getattr(self._venue, "stop", None)
+        if stop is not None:
+            stop()
+
+    def prepare_user_wallet(self, user_id: str, required_collateral_usd: Decimal) -> dict[str, object]:
+        _, private_key_hex = self._repository.load_user_wallet_credentials(user_id)
+        prepare = getattr(self._venue, "prepare_wallet", None)
+        if prepare is None:
+            return {"userId": user_id, "status": "unsupported"}
+        result = prepare(
+            private_key_hex=private_key_hex,
+            required_collateral_usd=required_collateral_usd,
+        )
+        return {"userId": user_id, "status": "ready", **result}
 
     def execute(self, execution_attempt_id: str) -> dict[str, object]:
         context = self._repository.load(execution_attempt_id)
@@ -42,6 +64,11 @@ class ExecutionService:
                 leverage=context.leverage,
                 quote_payload=context.quote_payload,
                 stop_loss_price=context.stop_loss_price,
+                on_transaction_prepared=lambda tx_hash, nonce: self._repository.mark_broadcast_pending(
+                    context,
+                    tx_hash=tx_hash,
+                    nonce=nonce,
+                ),
             )
             self._repository.mark_open_result(context, result)
             return {
@@ -56,8 +83,27 @@ class ExecutionService:
             market=context.market,
             side=context.side,
             venue_position_id=context.venue_position_id,
+            on_transaction_prepared=lambda tx_hash, nonce: self._repository.mark_broadcast_pending(
+                context,
+                tx_hash=tx_hash,
+                nonce=nonce,
+            ),
         )
         wallet_delta_usd = self._repository.mark_close_result(context, result)
+        if result.status == "closed" and wallet_delta_usd is None:
+            try:
+                account_balance_after = self._venue.collateral_balance_usd(
+                    private_key_hex=context.private_key_hex,
+                )
+                wallet_delta_usd = self._repository.mark_close_reconciliation(
+                    context,
+                    account_balance_after_usd=account_balance_after,
+                )
+            except Exception:
+                LOGGER.exception(
+                    "close accounting reconciliation deferred",
+                    extra={"executionAttemptId": context.execution_id},
+                )
         return {
             "executionAttemptId": context.execution_id,
             "status": result.status,

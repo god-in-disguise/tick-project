@@ -57,7 +57,7 @@ These decisions override the older two-venue-start and Ostium-first language in 
 | User positions | One active position and one in-flight command per user in V1. |
 | Scanner gating | Main TICK feed blocks opening unless cost coverage, freshness, venue health, and risk checks pass. |
 | Wallet model | Current MVP uses Google login and platform-created Arbitrum wallets with encrypted Postgres key material. This is deliberate for the demo/private MVP, not a final broad-public custody architecture. |
-| Agent model | Local canary uses delegated gTrade execution. Production should keep funds and positions in per-user wallets while platform workers handle execution and gas where the venue supports it. |
+| Wallet execution | V1 uses one platform-created Arbitrum wallet per user. The backend stores its encrypted key, signs only validated user intents, and prepares nonce, allowance, gas, and event tracking before the gesture. Delegated execution remains a future option where it materially improves gas sponsorship or wallet portability. |
 | Allowance | Max allowance is local/internal only. External users should get bounded allowance or explicit revocation, unless the cohort is intentionally founder/demo wallets. |
 | Build strategy | Strangler-style extraction. Preserve the working gTrade behavior and mobile loop, but move execution truth to Postgres, durable workers, event journals, and a single reducer. |
 
@@ -639,6 +639,11 @@ Rewards are useful, but never above execution quality.
 
 Before an opening swipe, the frontend keeps direction-specific short-lived execution preflights warm for the visible preset. This is a server-side executable estimate; it is only a firm quote when the venue actually provides one.
 
+Creating or refreshing that preflight also schedules venue-neutral wallet
+preparation. For the selected route this may warm the pending nonce, permission
+state, gas inputs, and event correlation. Venue-specific permission mechanics
+remain inside the connector.
+
 ```text
 ExecutionPreflight
   quoteId
@@ -752,7 +757,8 @@ Adapter outputs must normalize the primitives TICK actually needs:
 
 First venue priorities:
 
-- gTrade/Gains: first live MVP execution route because the delegated wallet-owned flow and mobile loop have been canary tested.
+- gTrade/Gains: first live MVP execution route because the high-leverage,
+  wallet-owned flow and mobile loop have been canary tested.
 - Aster, Lighter, Pacifica, GMTrade, and Ostium: research or shadow adapters only until the first route is deterministic.
 
 The architecture is venue-agnostic from the start, but only one venue executes initially. Enable a second live route only after every gTrade/Gains order, fee, balance movement, callback event, and position transition is explainable.
@@ -1028,7 +1034,8 @@ Keep all money values as decimals/integers, not floats.
 - backfill from last trusted block after restart or reconnect
 - handle duplicate logs idempotently
 - handle `deepReorg` by rewinding and replaying affected observations
-- keep Gains WebSocket as the fast path
+- use direct callback logs as the normal fast path
+- keep the normalized Gains WebSocket as a fallback observation source
 - replace unlimited WebSocket frames with measured bounded limits
 - record compressed and decoded event sizes
 - use exponential reconnect backoff with jitter
@@ -1036,11 +1043,10 @@ Keep all money values as decimals/integers, not floats.
 
 ### PR4: Security And Operator Controls
 
-- per-user delegated agent for external private beta
-- shared agent remains internal-canary only
-- agent ETH monitoring and controlled top-ups
-- bounded USDC allowance for external users
-- delegate and allowance revocation endpoints
+- one encrypted platform-created wallet per external private-beta user
+- wallet ETH monitoring and controlled gas top-ups
+- automatic max USDC allowance for the selected MVP venue
+- allowance revocation and trading-disable endpoints
 - one-position and one-in-flight-command enforcement at the database level
 - user, market, venue, and global kill switches
 - close-only mode

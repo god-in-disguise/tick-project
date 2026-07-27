@@ -35,7 +35,9 @@ class Settings:
     tick_real_quotes_enabled: bool = False
     tick_real_execution_enabled: bool = False
     gtrade_backend_url: str = "https://backend-arbitrum.gains.trade"
+    gtrade_backend_ws_url: str = "wss://backend-arbitrum.gains.trade"
     gtrade_pricing_url: str = "https://backend-pricing.eu.gains.trade"
+    gtrade_pricing_ws_url: str = "wss://backend-pricing.eu.gains.trade"
     gtrade_diamond_address: str = "0xFF162c694eAA571f685030649814282eA457f169"
     gtrade_usdc_address: str = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
     gtrade_slippage_bps: int = 100
@@ -73,7 +75,7 @@ def get_settings() -> Settings:
         quote_ttl_seconds=_int_env("QUOTE_TTL_SECONDS", 5),
         arb_chain_id=_int_env("ARB_CHAIN_ID", 42161),
         arb_rpc_url=os.getenv("ARB_RPC_URL", ""),
-        arb_wss_url=os.getenv("ARB_WSS_URL", ""),
+        arb_wss_url=_arb_wss_url(),
         custody_provider=os.getenv("CUSTODY_PROVIDER", "development"),
         custody_private_key_encryption_key=os.getenv("CUSTODY_PRIVATE_KEY_ENCRYPTION_KEY", ""),
         gas_payer_mode=os.getenv("GAS_PAYER_MODE", "platform_agent"),
@@ -81,7 +83,9 @@ def get_settings() -> Settings:
         tick_real_quotes_enabled=_bool_env("TICK_REAL_QUOTES_ENABLED", False),
         tick_real_execution_enabled=_bool_env("TICK_REAL_EXECUTION_ENABLED", False),
         gtrade_backend_url=os.getenv("GTRADE_BACKEND_URL", "https://backend-arbitrum.gains.trade"),
+        gtrade_backend_ws_url=os.getenv("GTRADE_BACKEND_WS_URL", "wss://backend-arbitrum.gains.trade"),
         gtrade_pricing_url=os.getenv("GTRADE_PRICING_URL", "https://backend-pricing.eu.gains.trade"),
+        gtrade_pricing_ws_url=os.getenv("GTRADE_PRICING_WS_URL", "wss://backend-pricing.eu.gains.trade"),
         gtrade_diamond_address=os.getenv("GTRADE_DIAMOND_ADDRESS") or "0xFF162c694eAA571f685030649814282eA457f169",
         gtrade_usdc_address=os.getenv("GTRADE_USDC_ADDRESS") or "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
         gtrade_slippage_bps=_int_env("GTRADE_SLIPPAGE_BPS", 100),
@@ -112,3 +116,15 @@ def _bool_env(name: str, default: bool) -> bool:
 def _float_env(name: str, default: float) -> float:
     value = os.getenv(name)
     return float(value) if value else default
+
+
+def _arb_wss_url() -> str:
+    explicit = os.getenv("ARB_WSS_URL", "")
+    if explicit:
+        return explicit
+    rpc_url = os.getenv("ARB_RPC_URL", "")
+    if rpc_url.startswith("https://"):
+        return f"wss://{rpc_url.removeprefix('https://')}"
+    if rpc_url.startswith("http://"):
+        return f"ws://{rpc_url.removeprefix('http://')}"
+    return ""

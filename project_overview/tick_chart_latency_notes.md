@@ -115,39 +115,92 @@ Polling should remain recovery, not the primary UX path.
 
 ## Arbitrum Latency Notes
 
-The current gTrade path uses one `ARB_RPC_URL` for Web3 reads and writes. It
-does not yet have a dedicated Arbitrum direct-sequencer write path.
+The production MVP uses the configured commercial `ARB_RPC_URL` for reads,
+receipts, recovery, and event delivery. Every signed write is submitted as the
+same raw transaction to both the commercial RPC and Arbitrum's direct sequencer.
+The first route returning the expected deterministic transaction hash wins.
+This cannot create two economic actions because both routes receive identical
+bytes, nonce, and hash. Kairos is not part of the production path.
 
-Useful next benchmark:
+July 27 direct-callback production-backend canary:
 
-- write RPC: `https://arb1-sequencer.arbitrum.io/rpc`
-- read RPC: existing provider
-- event RPC/WSS: existing provider or local Nitro later
+- live quote: `8.6ms`
+- API open acceptance and persistence: `26ms`
+- queue pickup: `70ms`
+- open wallet preparation on the hot path: `9.1ms`
+- open initiation transaction: `1.112s`
+- direct onchain open callback wait: `980ms`
+- open worker total: `2.104s`
+- open visible through the polling canary: `2.257s`
+- API close acceptance and persistence: `16.7ms`
+- close queue pickup: below the log timer's `10ms` resolution
+- close preparation: `4.7ms`
+- close initiation transaction: `903ms`
+- direct onchain close callback wait: `1.024s`
+- close worker total: `1.932s`
+- close visible through the polling canary: `1.958s`
+- wallet reconciliation after close commit: about `263ms`
+- venue result and wallet delta: both exactly `-$2.000223`
 
-Rename `sendRawTransactionMs` to `broadcastToSoftConfirmationMs` when using the
-direct sequencer, because a successful direct-sequencer response means L2 soft
-sequencing/execution, not just mempool acceptance.
+The open initiation landed four Arbitrum blocks before its callback. The close
+initiation landed five blocks before its callback. Direct `MarketExecuted`
+events won both confirmation races.
+
+July 27 identical-byte dual-write canaries from the local Docker backend:
+
+- 500x open: commercial RPC won in `843ms`; transaction plus receipt `1.355s`
+- 500x close: direct sequencer won in `576ms` versus commercial RPC `798ms`
+- 500x close worker total: `1.667s`; visible through polling in `1.909s`
+- 100x open: commercial RPC won in `766ms`; transaction plus receipt `880ms`
+- 100x close: direct sequencer won in `503ms`; transaction plus receipt `608ms`
+- 100x close worker total: `1.479s`; visible through polling in `1.649s`
+
+The direct sequencer was cold on each first open and warm by the corresponding
+close. The fixed race therefore preserves the commercial RPC's warm-open path
+while allowing the sequencer to remove roughly `220-300ms` when it wins. These
+are development-machine samples; repeat the same trace from the deployed
+backend region before setting an SLO.
+
+The initial backend waited `4.49s` for the normalized close event even though
+the economic close callback was already onchain. The current worker therefore
+subscribes directly to the deployed Gains diamond and decodes the current
+`MarketExecuted` and `LimitExecuted` callback ABI. The normalized Gains stream
+remains a fallback.
+
+The same canary paid `1.40s` of first-wallet preparation before the open.
+Production now moves that work before the swipe: requesting a quote schedules
+pending-nonce, allowance, and owner-event preparation for that user. A local
+warm-path check returned a live quote in `55.9ms` and completed wallet
+preparation in `0.65s` without submitting a trade.
 
 Measure:
 
-- tx hash persisted
+- API acceptance and queue pickup
+- nonce/fee cache hit
+- tx hash computed
 - broadcast start
 - broadcast response
 - receipt seen
 - receipt block
-- receipt `timeboosted`
-- callback tx hash
-- callback receipt `timeboosted`
 - callback block delta
+- Gains event arrival
+- REST recovery arrival
+- normalized state commit
+- winning write route
+- commercial RPC and direct-sequencer response time
 
-Direct sequencer should reduce the initiation leg, but gTrade still has a
-second oracle/callback transaction. Optimizing TICK's initiation cannot remove
-the whole callback interval.
+The gTrade open/close has two sequential chain legs: TICK's initiation and the
+venue oracle/callback. RPC tuning only affects the first. The production path
+therefore pre-arms direct callback and normalized venue events, removes wallet
+preparation from the gesture path, and races those event sources against
+delayed REST recovery.
 
 Implementation order:
 
-1. Add direct-sequencer write mode.
-2. Keep receipts and callback waiting parallel.
-3. Record `timeboosted` for initiation and callback txs.
-4. Add delayed identical raw-tx fallback.
-5. Ask Gains whether callback transactions use direct sequencer or Timeboost.
+1. Keep the configured primary RPC warm.
+2. Keep nonce, fee, allowance, and price state warm per active wallet/market.
+3. Persist the deterministic hash before broadcasting identical signed bytes.
+4. Race the commercial RPC and direct sequencer for transaction submission.
+5. Use the shared direct Arbitrum callback stream for normal confirmation.
+6. Keep normalized Gains events as fallback and REST as delayed recovery.
+7. Compare route wins and end-to-end p50/p95 with identical live canaries.

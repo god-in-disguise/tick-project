@@ -3,9 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Callable
 
 from tick_mvp.domain.states import TradeSide
+
+
+TransactionPreparedHandler = Callable[[str, int], None]
 
 
 class VenueError(Exception):

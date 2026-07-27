@@ -33,6 +33,19 @@ class FakeRepository:
             quote_payload={},
         )
 
+    def load_user_wallet_credentials(self, user_id: str) -> tuple[str, str]:
+        assert user_id == "user_1"
+        return "0x1111111111111111111111111111111111111111", "0x" + "1" * 64
+
+
+class FakeVenue:
+    def prepare_wallet(self, *, private_key_hex: str, required_collateral_usd: Decimal):
+        assert private_key_hex == "0x" + "1" * 64
+        return {
+            "allowanceReady": required_collateral_usd == Decimal("10"),
+            "approvalSubmitted": False,
+        }
+
 
 def test_execution_service_dry_run_does_not_trade() -> None:
     service = ExecutionService(settings=Settings(tick_real_execution_enabled=False), repository=FakeRepository())
@@ -41,3 +54,13 @@ def test_execution_service_dry_run_does_not_trade() -> None:
 
     assert result["executionAttemptId"] == "exec_1"
     assert result["status"] == "dry_run"
+
+
+def test_execution_service_prepares_user_wallet_before_swipe() -> None:
+    service = ExecutionService(settings=Settings(), repository=FakeRepository())
+    service._venue = FakeVenue()
+
+    result = service.prepare_user_wallet("user_1", Decimal("10"))
+
+    assert result["status"] == "ready"
+    assert result["allowanceReady"] is True

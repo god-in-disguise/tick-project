@@ -68,6 +68,16 @@ class SQLAlchemyStore:
         self._session_factory = session_factory or create_session_factory()
         self._quote_engine = quote_engine
 
+    def start(self) -> None:
+        start = getattr(self._quote_engine, "start", None)
+        if start is not None:
+            start()
+
+    def stop(self) -> None:
+        stop = getattr(self._quote_engine, "stop", None)
+        if stop is not None:
+            stop()
+
     def upsert_google_user(
         self,
         *,

@@ -5,7 +5,7 @@ from typing import Any
 
 from tick_mvp.core.config import Settings
 from tick_mvp.domain.states import TradeSide
-from tick_mvp.venues.base import VenueCloseResult, VenueOpenResult, VenueQuote
+from tick_mvp.venues.base import TransactionPreparedHandler, VenueCloseResult, VenueOpenResult, VenueQuote
 from tick_mvp.venues.gtrade.pricing import estimate_open
 from tick_mvp.venues.gtrade.public import GTradePublicClient
 from tick_mvp.venues.gtrade.wallet import GTradeWalletExecutor
@@ -17,7 +17,15 @@ class GTradeVenue:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._public = GTradePublicClient(settings)
-        self._wallet = GTradeWalletExecutor(settings)
+        self._wallet = GTradeWalletExecutor(settings, self._public)
+
+    def start(self) -> None:
+        self._public.start()
+        self._wallet.start()
+
+    def stop(self) -> None:
+        self._wallet.stop()
+        self._public.stop()
 
     def quote_open(
         self,
@@ -42,6 +50,7 @@ class GTradeVenue:
         leverage: Decimal,
         quote_payload: dict[str, Any],
         stop_loss_price: Decimal | None,
+        on_transaction_prepared: TransactionPreparedHandler | None = None,
     ) -> VenueOpenResult:
         pair = self._public.pair(market)
         return self._wallet.open_position(
@@ -52,6 +61,7 @@ class GTradeVenue:
             leverage=leverage,
             quote_payload=quote_payload,
             stop_loss_price=stop_loss_price,
+            on_transaction_prepared=on_transaction_prepared,
         )
 
     def close_position(
@@ -61,6 +71,7 @@ class GTradeVenue:
         market: str,
         side: TradeSide,
         venue_position_id: str | None,
+        on_transaction_prepared: TransactionPreparedHandler | None = None,
     ) -> VenueCloseResult:
         pair = self._public.pair(market)
         return self._wallet.close_position(
@@ -68,5 +79,16 @@ class GTradeVenue:
             pair=pair,
             side=side,
             venue_position_id=venue_position_id,
+            on_transaction_prepared=on_transaction_prepared,
         )
 
+    def collateral_balance_usd(self, *, private_key_hex: str) -> Decimal:
+        return self._wallet.collateral_balance_usd(private_key_hex)
+
+    def prepare_wallet(
+        self,
+        *,
+        private_key_hex: str,
+        required_collateral_usd: Decimal,
+    ) -> dict[str, Any]:
+        return self._wallet.prepare_wallet(private_key_hex, required_collateral_usd)

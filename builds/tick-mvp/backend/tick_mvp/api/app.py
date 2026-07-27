@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Header, HTTPException, status
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, status
 
 from tick_mvp.api.auth import AuthError, UserSession, create_session_token, verify_session_token
 from tick_mvp.api.google_auth import GoogleAuthError, verify_google_identity
@@ -23,7 +23,11 @@ from tick_mvp.domain.schemas import (
     WithdrawalResponse,
 )
 from tick_mvp.infrastructure.memory_store import MemoryStore, StoreConflict, StoreNotFound
-from tick_mvp.infrastructure.queue import enqueue_execution_attempt, enqueue_withdrawal_request
+from tick_mvp.infrastructure.queue import (
+    enqueue_execution_attempt,
+    enqueue_wallet_preparation,
+    enqueue_withdrawal_request,
+)
 
 
 @asynccontextmanager
@@ -33,7 +37,16 @@ async def _lifespan(app: FastAPI):
         from tick_mvp.infrastructure.database import run_sql_migrations
 
         run_sql_migrations(current_settings.database_url)
-    yield
+    store = getattr(app.state, "store", None)
+    start = getattr(store, "start", None)
+    if start is not None:
+        start()
+    try:
+        yield
+    finally:
+        stop = getattr(store, "stop", None)
+        if stop is not None:
+            stop()
 
 
 def create_app(store: Any | None = None) -> FastAPI:
@@ -167,8 +180,21 @@ def create_app(store: Any | None = None) -> FastAPI:
         return {"withdrawals": _store(app).state(_session(authorization, x_tick_user).user_id).withdrawals}
 
     @app.post("/api/trade/quote", response_model=QuoteResponse)
-    def quote(body: QuoteRequest, authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> QuoteResponse:
-        return _store(app).create_quote(_session(authorization, x_tick_user).user_id, body)
+    def quote(
+        body: QuoteRequest,
+        background_tasks: BackgroundTasks,
+        authorization: str | None = Header(default=None),
+        x_tick_user: str | None = Header(default=None),
+    ) -> QuoteResponse:
+        user_id = _session(authorization, x_tick_user).user_id
+        response = _store(app).create_quote(user_id, body)
+        if get_settings().tick_enqueue_jobs:
+            background_tasks.add_task(
+                enqueue_wallet_preparation,
+                user_id,
+                str(response.ticketUsd),
+            )
+        return response
 
     @app.post("/api/trade/open", response_model=AcceptedTradeResponse, status_code=status.HTTP_202_ACCEPTED)
     async def open_trade(

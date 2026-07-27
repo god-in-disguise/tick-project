@@ -63,9 +63,23 @@ Verified local Docker smoke:
 - idempotency key reuse with a different payload returns conflict.
 - one active position and one active close command are enforced at the API/store layer.
 
-Live execution is behind `TICK_REAL_EXECUTION_ENABLED`. When enabled, the worker decrypts the user's platform wallet key, auto-approves USDC if needed, signs from that user wallet, submits through the configured `ARB_RPC_URL`, waits for gTrade position visibility/absence, and updates the execution/position rows. It keeps the useful local-MVP speed work: persistent provider, cached nonces, short-lived fee cache, fixed hot-path gas limits, and deterministic tx hash before broadcast.
+Live execution is behind `TICK_REAL_EXECUTION_ENABLED`. When enabled, the worker decrypts the user's platform wallet key, auto-approves USDC if needed, signs from that user wallet, and races identical raw bytes through the configured `ARB_RPC_URL` and Arbitrum's direct sequencer. It keeps the useful local-MVP speed work: persistent providers, per-wallet nonce and allowance caches, a short-lived shared fee cache, fixed hot-path gas limits, and deterministic tx hashes.
 
-The next hardening work is direct callback-event journaling, recovery after ambiguous RPC responses, and final PnL reconciliation.
+The worker keeps one direct Arbitrum callback stream and one normalized Gains
+event stream for all active TICK users. Events are correlated by wallet, pair,
+and venue position index. Direct callback logs are the normal fast path, the
+normalized Gains stream is a fallback, and delayed `/open-trades` reads are
+recovery. Close is committed when venue execution is observed; wallet PnL
+reconciliation follows outside the exposure-critical path.
+
+The quote endpoint also schedules wallet preparation before the gesture. The
+worker warms that user's pending nonce and allowance, tracks the wallet on the
+shared event stream, and automatically submits the configured max USDC
+approval when the requested collateral is not already covered. Market metadata,
+live prices, and fee inputs are warmed at process level.
+
+The next hardening work is durable event journaling, recovery after ambiguous
+RPC responses, and the shared whitelisted market-feed API used by the PWA.
 
 ## Package Layout
 
@@ -87,6 +101,13 @@ Runtime shape follows the ARQ/FastAPI boilerplate pattern, but reduced to the pi
 - ARQ worker process consumes execution jobs from Redis.
 - Market-feed and venue-event processes remain separate long-running services.
 - Docker Compose wires Postgres and Redis with healthchecks.
+- Signed Arbitrum writes race the configured RPC and direct sequencer using
+  identical raw bytes; reads, receipts, and recovery remain on the configured
+  provider.
+
+The execution attempt stores its deterministic transaction hash and nonce
+before either write request. Route winner and per-route response timings are
+stored in the transaction result payload for canary comparison.
 
 Run backend Compose from this directory:
 

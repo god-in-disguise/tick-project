@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
 from decimal import Decimal
@@ -15,6 +16,10 @@ from tick_mvp.venues.gtrade.constants import (
     FX_PAIR_PREFIXES,
     WATCHLIST_INDEXES,
 )
+from tick_mvp.venues.gtrade.price_stream import GTradePriceStream
+
+
+LOGGER = logging.getLogger("tick.gtrade.public")
 
 
 class GTradeError(VenueError):
@@ -45,6 +50,21 @@ class GTradePublicClient:
         self._pairs_expires_at = 0.0
         self._charts_payload: dict[str, Any] | None = None
         self._charts_expires_at = 0.0
+        self._prices = GTradePriceStream(settings.gtrade_pricing_ws_url)
+
+    def start(self) -> None:
+        self._prices.start()
+        try:
+            self._ensure_pairs()
+        except Exception as exc:
+            LOGGER.warning("Could not warm gTrade market metadata: %s", exc)
+
+    def stop(self) -> None:
+        self._prices.stop()
+        self._session.close()
+
+    def health(self) -> dict[str, Any]:
+        return {"prices": self._prices.health()}
 
     def pair(self, pair_name: str) -> GTradePair:
         normalized = normalize_pair(pair_name)
@@ -60,12 +80,22 @@ class GTradePublicClient:
 
     def price(self, pair_name: str) -> dict[str, Any]:
         row = self.pair(pair_name)
+        live = self._prices.price(row.pair_index)
+        if live is not None:
+            return {
+                **self._price_from_mid(row, live["mid"], live["receivedAt"] * 1000),
+                "source": live["source"],
+                "ageMs": live["ageMs"],
+            }
         charts = self._charts()
         closes = charts.get("closes") or []
         if row.pair_index >= len(closes) or closes[row.pair_index] is None:
             raise GTradeError(f"price not found: {row.pair}")
         mid = Decimal(str(closes[row.pair_index]))
-        return self._price_from_mid(row, mid, charts.get("time"))
+        return {
+            **self._price_from_mid(row, mid, charts.get("time")),
+            "source": "gtrade_pricing_rest",
+        }
 
     def _ensure_pairs(self) -> None:
         now = time.time()

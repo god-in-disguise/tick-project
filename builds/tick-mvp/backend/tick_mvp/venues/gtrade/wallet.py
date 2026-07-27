@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import logging
 import re
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from decimal import Decimal, ROUND_DOWN, ROUND_UP
 from threading import RLock
@@ -11,20 +14,92 @@ import requests
 
 from tick_mvp.core.config import Settings
 from tick_mvp.domain.states import TradeSide
-from tick_mvp.venues.base import VenueCloseResult, VenueOpenResult, VenueTxResult
+from tick_mvp.venues.base import TransactionPreparedHandler, VenueCloseResult, VenueOpenResult, VenueTxResult
+from tick_mvp.venues.gtrade.broadcast import DualBroadcaster
 from tick_mvp.venues.gtrade.constants import ERC20_ABI, MAX_UINT256, TRADING_ABI, ZERO_ADDRESS
-from tick_mvp.venues.gtrade.public import GTradeError, GTradePair
+from tick_mvp.venues.gtrade.events import GTradeEventStream
+from tick_mvp.venues.gtrade.public import GTradeError, GTradePair, GTradePublicClient
+
+
+REST_FALLBACK_DELAY_SECONDS = 0.65
+FEE_CACHE_MAX_AGE_SECONDS = 3.0
+DIRECT_SEQUENCER_URL = "https://arb1-sequencer.arbitrum.io/rpc"
+LOGGER = logging.getLogger("tick.gtrade.wallet")
 
 
 class GTradeWalletExecutor:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, public_client: GTradePublicClient | None = None) -> None:
         self._settings = settings
+        self._public = public_client or GTradePublicClient(settings)
         self._read_web3 = None
+        self._sequencer_web3 = None
         self._trading_contract = None
         self._usdc_contract = None
         self._cache_lock = RLock()
         self._nonce_cache: dict[str, int] = {}
         self._fee_cache: tuple[float, dict[str, int]] | None = None
+        self._allowance_cache: dict[str, Decimal] = {}
+        self._wallet_locks: dict[str, RLock] = {}
+        self._rest_session = requests.Session()
+        self._broadcaster = DualBroadcaster()
+        self._events = GTradeEventStream(
+            settings.gtrade_backend_ws_url,
+            arb_wss_url=settings.arb_wss_url,
+            diamond_address=settings.gtrade_diamond_address,
+        )
+        self._fee_stop = threading.Event()
+        self._fee_thread: threading.Thread | None = None
+
+    def start(self) -> None:
+        self._events.start()
+        if not self._fee_thread or not self._fee_thread.is_alive():
+            self._fee_stop.clear()
+            self._fee_thread = threading.Thread(target=self._run_fee_warmer, name="gtrade-fees", daemon=True)
+            self._fee_thread.start()
+
+    def stop(self) -> None:
+        self._fee_stop.set()
+        if self._fee_thread:
+            self._fee_thread.join(timeout=2)
+        self._events.stop()
+        self._broadcaster.close()
+        self._rest_session.close()
+
+    def prepare_wallet(self, private_key_hex: str, required_collateral_usd: Decimal) -> dict[str, Any]:
+        """Warm one user's trading state before the execution gesture."""
+        started = time.perf_counter()
+        account, address, web3 = self._account(private_key_hex)
+        self._events.track_owner(address)
+        self._events.start()
+        with self._wallet_lock(address):
+            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="gtrade-wallet-warm") as executor:
+                nonce_future = executor.submit(web3.eth.get_transaction_count, address, "pending")
+                allowance_future = executor.submit(self._usdc_allowance, web3, address)
+                chain_nonce = int(nonce_future.result())
+                allowance = allowance_future.result()
+
+            with self._cache_lock:
+                current_nonce = self._nonce_cache.get(_checksum(address))
+                if current_nonce is None or current_nonce < chain_nonce:
+                    self._nonce_cache[_checksum(address)] = chain_nonce
+                self._allowance_cache[_checksum(address)] = allowance
+
+            approval: dict[str, Any] | None = None
+            if self._settings.gtrade_auto_approve_usdc and allowance < required_collateral_usd:
+                prepared = self._prepare_tx_params(web3, address)
+                result = self._approve_usdc(account, address, prepared=prepared)
+                if result.status != "confirmed":
+                    raise GTradeError("USDC approval transaction did not confirm")
+                approval = result.payload
+                allowance = Decimal(MAX_UINT256) / Decimal(10**6)
+                self._remember_allowance(address, allowance)
+
+        return {
+            "wallet": address,
+            "allowanceReady": allowance >= required_collateral_usd,
+            "approvalSubmitted": approval is not None,
+            "elapsedMs": _elapsed_ms(started, time.perf_counter()),
+        }
 
     def open_position(
         self,
@@ -36,16 +111,14 @@ class GTradeWalletExecutor:
         leverage: Decimal,
         quote_payload: dict[str, Any],
         stop_loss_price: Decimal | None,
+        on_transaction_prepared: TransactionPreparedHandler | None = None,
     ) -> VenueOpenResult:
+        started = time.perf_counter()
         account, address, web3 = self._account(private_key_hex)
-        account_balance_before = self._usdc_balance(web3, address)
-        approvals: list[dict[str, Any]] = []
-        if self._settings.gtrade_auto_approve_usdc:
-            approval = self._ensure_usdc_allowance(account, address, ticket_usd)
-            if approval is not None:
-                if approval.status != "confirmed":
-                    raise GTradeError("USDC approval transaction did not confirm")
-                approvals.append(approval.payload)
+        self._events.track_owner(address)
+        self._events.start()
+        approvals, prepared_tx = self._prepare_open_wallet(account, address, ticket_usd)
+        prepared_at = time.perf_counter()
         price = Decimal(str(quote_payload.get("price") or self._current_price(pair, side)))
         trade = (
             address,
@@ -65,13 +138,36 @@ class GTradeWalletExecutor:
             0,
         )
         fn = self._trading(web3).functions.openTrade(trade, self._settings.gtrade_slippage_bps, ZERO_ADDRESS)
-        tx = self._send(account, address, fn, label="open", gas=self._settings.gtrade_fixed_open_gas)
-        position_wait = self._wait_for_position(
-            address=address,
-            pair_index=pair.pair_index,
-            present=True,
-            timeout_seconds=self._settings.gtrade_open_wait_seconds,
+        listen_since = time.time()
+        tx = self._send(
+            account,
+            address,
+            fn,
+            label="open",
+            gas=self._settings.gtrade_fixed_open_gas,
+            prepared=prepared_tx,
+            on_transaction_prepared=on_transaction_prepared,
         )
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="gtrade-open-confirm") as executor:
+            balance_future = executor.submit(
+                self._usdc_balance,
+                web3,
+                address,
+                max(0, (tx.block_number or 1) - 1),
+            )
+            position_future = executor.submit(
+                self._wait_for_position,
+                address=address,
+                pair_index=pair.pair_index,
+                present=True,
+                timeout_seconds=self._settings.gtrade_open_wait_seconds,
+                since=listen_since,
+            )
+            position_wait = position_future.result()
+            try:
+                account_balance_before = balance_future.result()
+            except Exception:
+                account_balance_before = None
         position = position_wait.get("position")
         venue_position_id = _venue_position_id(pair.pair_index, position)
         entry = _position_entry_price(position) or price
@@ -91,6 +187,12 @@ class GTradeWalletExecutor:
                 "positionWait": position_wait,
                 "position": position,
                 "quotePayload": quote_payload,
+                "timingMs": {
+                    "walletPreparation": _elapsed_ms(started, prepared_at),
+                    "transaction": tx.payload.get("timingMs", {}).get("total"),
+                    "venueConfirmation": position_wait.get("elapsedMs"),
+                    "total": _elapsed_ms(started),
+                },
             },
         )
 
@@ -101,39 +203,71 @@ class GTradeWalletExecutor:
         pair: GTradePair,
         side: TradeSide,
         venue_position_id: str | None,
+        on_transaction_prepared: TransactionPreparedHandler | None = None,
     ) -> VenueCloseResult:
+        started = time.perf_counter()
         account, address, web3 = self._account(private_key_hex)
-        before_usdc = self._usdc_balance(web3, address)
+        self._events.track_owner(address)
+        self._events.start()
         position_index = self._resolve_position_index(address, pair.pair_index, venue_position_id)
-        price = self._current_price(pair, TradeSide.SHORT if side == TradeSide.LONG else TradeSide.LONG)
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="gtrade-close-prepare") as executor:
+            price_future = executor.submit(
+                self._current_price,
+                pair,
+                TradeSide.SHORT if side == TradeSide.LONG else TradeSide.LONG,
+            )
+            tx_params_future = executor.submit(self._prepare_tx_params, web3, address)
+            price = price_future.result()
+            prepared_tx = tx_params_future.result()
+        prepared_at = time.perf_counter()
         fn = self._trading(web3).functions.closeTradeMarket(position_index, _price_units(price))
-        tx = self._send(account, address, fn, label="close", gas=self._settings.gtrade_fixed_close_gas)
+        listen_since = time.time()
+        tx = self._send(
+            account,
+            address,
+            fn,
+            label="close",
+            gas=self._settings.gtrade_fixed_close_gas,
+            prepared=prepared_tx,
+            on_transaction_prepared=on_transaction_prepared,
+        )
         position_wait = self._wait_for_position(
             address=address,
             pair_index=pair.pair_index,
             present=False,
             timeout_seconds=self._settings.gtrade_close_wait_seconds,
             position_index=position_index,
+            since=listen_since,
         )
         closed = position_wait.get("observedPresent") is False and not position_wait.get("timedOut")
-        after_usdc = self._usdc_balance(web3, address) if closed else None
-        close_cashflow = after_usdc - before_usdc if after_usdc is not None else None
+        venue_realized_pnl_usd, close_cashflow_usd = _close_event_financials(position_wait)
         return VenueCloseResult(
             status="closed" if closed else "pending_execution",
             tx=tx,
             closed_at=datetime.now(UTC) if closed else None,
-            venue_realized_pnl_usd=None,
-            account_balance_after_usd=after_usdc,
-            close_cashflow_usd=close_cashflow,
+            venue_realized_pnl_usd=venue_realized_pnl_usd,
+            account_balance_after_usd=None,
+            close_cashflow_usd=close_cashflow_usd,
             payload={
                 "positionWait": position_wait,
                 "positionIndex": position_index,
                 "expectedClosePrice": str(price),
-                "walletUsdcBefore": str(before_usdc),
-                "walletUsdcAfter": str(after_usdc) if after_usdc is not None else None,
-                "closeCashflowUsd": str(close_cashflow) if close_cashflow is not None else None,
+                "venueRealizedPnlUsd": (
+                    str(venue_realized_pnl_usd) if venue_realized_pnl_usd is not None else None
+                ),
+                "closeCashflowUsd": str(close_cashflow_usd) if close_cashflow_usd is not None else None,
+                "timingMs": {
+                    "preparation": _elapsed_ms(started, prepared_at),
+                    "transaction": tx.payload.get("timingMs", {}).get("total"),
+                    "venueConfirmation": position_wait.get("elapsedMs"),
+                    "total": _elapsed_ms(started),
+                },
             },
         )
+
+    def collateral_balance_usd(self, private_key_hex: str) -> Decimal:
+        _, address, web3 = self._account(private_key_hex)
+        return self._usdc_balance(web3, address)
 
     def _account(self, private_key_hex: str):
         Account, Web3 = _web3_imports()
@@ -157,6 +291,15 @@ class GTradeWalletExecutor:
         self._read_web3 = web3
         return web3
 
+    def _sequencer(self):
+        if self._sequencer_web3 is not None:
+            return self._sequencer_web3
+        _, Web3 = _web3_imports()
+        self._sequencer_web3 = Web3(
+            Web3.HTTPProvider(DIRECT_SEQUENCER_URL, request_kwargs={"timeout": 8})
+        )
+        return self._sequencer_web3
+
     def _trading(self, web3: Any) -> Any:
         if self._trading_contract is None:
             _, Web3 = _web3_imports()
@@ -175,27 +318,96 @@ class GTradeWalletExecutor:
             )
         return self._usdc_contract
 
-    def _ensure_usdc_allowance(self, account: Any, address: str, ticket_usd: Decimal) -> VenueTxResult | None:
+    def _prepare_open_wallet(
+        self,
+        account: Any,
+        address: str,
+        ticket_usd: Decimal,
+    ) -> tuple[list[dict[str, Any]], tuple[int, dict[str, int]] | None]:
+        with self._wallet_lock(address):
+            web3 = self._web3()
+            cached_allowance = self._cached_allowance(address)
+            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="gtrade-wallet-read") as executor:
+                allowance_future = (
+                    executor.submit(self._usdc_allowance, web3, address)
+                    if self._settings.gtrade_auto_approve_usdc and cached_allowance < ticket_usd
+                    else None
+                )
+                tx_params_future = executor.submit(self._prepare_tx_params, web3, address)
+                allowance = allowance_future.result() if allowance_future is not None else cached_allowance
+                prepared_tx = tx_params_future.result()
+
+            approvals: list[dict[str, Any]] = []
+            if self._settings.gtrade_auto_approve_usdc and allowance < ticket_usd:
+                approval = self._approve_usdc(account, address, prepared=prepared_tx)
+                if approval.status != "confirmed":
+                    raise GTradeError("USDC approval transaction did not confirm")
+                approvals.append(approval.payload)
+                self._remember_allowance(address, Decimal(MAX_UINT256) / Decimal(10**6))
+                prepared_tx = None
+            elif allowance > 0:
+                self._remember_allowance(address, allowance)
+            return approvals, prepared_tx
+
+    def _approve_usdc(
+        self,
+        account: Any,
+        address: str,
+        *,
+        prepared: tuple[int, dict[str, int]],
+    ) -> VenueTxResult:
         _, Web3 = _web3_imports()
         web3 = self._web3()
-        usdc = self._usdc(web3)
         spender = Web3.to_checksum_address(self._settings.gtrade_diamond_address)
-        allowance = Decimal(usdc.functions.allowance(address, spender).call()) / Decimal(10**6)
-        if allowance >= ticket_usd:
-            return None
-        fn = usdc.functions.approve(spender, MAX_UINT256)
-        return self._send(account, address, fn, label="approve", gas=self._settings.gtrade_fixed_approve_gas)
+        fn = self._usdc(web3).functions.approve(spender, MAX_UINT256)
+        return self._send(
+            account,
+            address,
+            fn,
+            label="approve",
+            gas=self._settings.gtrade_fixed_approve_gas,
+            prepared=prepared,
+        )
 
-    def _send(self, account: Any, address: str, fn: Any, *, label: str, gas: int) -> VenueTxResult:
+    def _usdc_allowance(self, web3: Any, address: str) -> Decimal:
+        _, Web3 = _web3_imports()
+        spender = Web3.to_checksum_address(self._settings.gtrade_diamond_address)
+        return Decimal(self._usdc(web3).functions.allowance(address, spender).call()) / Decimal(10**6)
+
+    def _cached_allowance(self, address: str) -> Decimal:
+        with self._cache_lock:
+            return self._allowance_cache.get(_checksum(address), Decimal(0))
+
+    def _remember_allowance(self, address: str, allowance: Decimal) -> None:
+        with self._cache_lock:
+            self._allowance_cache[_checksum(address)] = allowance
+
+    def _wallet_lock(self, address: str) -> RLock:
+        checksum = _checksum(address)
+        with self._cache_lock:
+            return self._wallet_locks.setdefault(checksum, RLock())
+
+    def _send(
+        self,
+        account: Any,
+        address: str,
+        fn: Any,
+        *,
+        label: str,
+        gas: int,
+        prepared: tuple[int, dict[str, int]] | None = None,
+        on_transaction_prepared: TransactionPreparedHandler | None = None,
+    ) -> VenueTxResult:
         web3 = self._web3()
         started = time.perf_counter()
+        nonce, fee_params = prepared or self._prepare_tx_params(web3, address)
         tx = fn.build_transaction(
             {
                 "from": address,
                 "chainId": self._settings.arb_chain_id,
-                "nonce": self._next_nonce(web3, address),
+                "nonce": nonce,
                 "gas": int(Decimal(gas) * Decimal("1.25")),
-                **self._fee_params(web3),
+                **fee_params,
             }
         )
         built_at = time.perf_counter()
@@ -204,19 +416,32 @@ class GTradeWalletExecutor:
         _, Web3 = _web3_imports()
         precomputed_tx_hash = Web3.keccak(raw_tx).hex()
         signed_at = time.perf_counter()
+        if on_transaction_prepared is not None:
+            on_transaction_prepared(precomputed_tx_hash, int(tx["nonce"]))
+        persisted_at = time.perf_counter()
         try:
-            tx_hash = web3.eth.send_raw_transaction(raw_tx)
+            race = self._broadcaster.broadcast(
+                raw_transaction=raw_tx,
+                expected_tx_hash=precomputed_tx_hash,
+                primary_web3=web3,
+                sequencer_web3=self._sequencer(),
+            )
         except Exception:
             self._invalidate_nonce(address)
             self._invalidate_fee_cache()
             raise
         broadcast_at = time.perf_counter()
-        receipt = web3.eth.wait_for_transaction_receipt(tx_hash, timeout=90, poll_latency=0.2)
+        receipt = web3.eth.wait_for_transaction_receipt(
+            precomputed_tx_hash,
+            timeout=90,
+            poll_latency=0.2,
+        )
         receipt_at = time.perf_counter()
+        race.wait_for_outcomes(timeout=0.02)
         status = int(receipt.status)
         return VenueTxResult(
             status="confirmed" if status == 1 else "reverted",
-            tx_hash=tx_hash.hex(),
+            tx_hash=precomputed_tx_hash,
             nonce=int(tx["nonce"]),
             block_number=int(receipt.blockNumber),
             gas_used=int(receipt.gasUsed),
@@ -225,17 +450,24 @@ class GTradeWalletExecutor:
                 "label": label,
                 "status": status,
                 "precomputedTxHash": precomputed_tx_hash,
-                "writeTransport": "primary_rpc",
-                "broadcast": {"method": "eth_sendRawTransaction"},
+                "writeTransport": race.winner,
+                "broadcast": race.payload(),
                 "timingMs": {
                     "build": _elapsed_ms(started, built_at),
                     "sign": _elapsed_ms(built_at, signed_at),
-                    "broadcastToResponse": _elapsed_ms(signed_at, broadcast_at),
+                    "persistPrepared": _elapsed_ms(signed_at, persisted_at),
+                    "broadcastToResponse": _elapsed_ms(persisted_at, broadcast_at),
                     "receipt": _elapsed_ms(broadcast_at, receipt_at),
                     "total": _elapsed_ms(started, receipt_at),
                 },
             },
         )
+
+    def _prepare_tx_params(self, web3: Any, address: str) -> tuple[int, dict[str, int]]:
+        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="gtrade-tx-params") as executor:
+            nonce_future = executor.submit(self._next_nonce, web3, address)
+            fee_future = executor.submit(self._fee_params, web3)
+            return nonce_future.result(), fee_future.result()
 
     def _next_nonce(self, web3: Any, address: str) -> int:
         checksum = _checksum(address)
@@ -256,7 +488,7 @@ class GTradeWalletExecutor:
     def _fee_params(self, web3: Any) -> dict[str, int]:
         now = time.monotonic()
         with self._cache_lock:
-            if self._fee_cache and now - self._fee_cache[0] <= 1.0:
+            if self._fee_cache and now - self._fee_cache[0] <= FEE_CACHE_MAX_AGE_SECONDS:
                 return dict(self._fee_cache[1])
         params = _fee_params(web3)
         with self._cache_lock:
@@ -267,10 +499,19 @@ class GTradeWalletExecutor:
         with self._cache_lock:
             self._fee_cache = None
 
-    def _current_price(self, pair: GTradePair, side: TradeSide) -> Decimal:
-        from tick_mvp.venues.gtrade.public import GTradePublicClient
+    def _run_fee_warmer(self) -> None:
+        while not self._fee_stop.is_set():
+            try:
+                web3 = self._web3()
+                params = _fee_params(web3)
+                with self._cache_lock:
+                    self._fee_cache = (time.monotonic(), dict(params))
+            except Exception as exc:
+                LOGGER.warning("Could not refresh Arbitrum fee cache: %s", exc)
+            self._fee_stop.wait(1.0)
 
-        live = GTradePublicClient(self._settings).price(pair.pair)
+    def _current_price(self, pair: GTradePair, side: TradeSide) -> Decimal:
+        live = self._public.price(pair.pair)
         return Decimal(str(live["ask"] if side == TradeSide.LONG else live["bid"]))
 
     def _wait_for_position(
@@ -280,9 +521,87 @@ class GTradeWalletExecutor:
         pair_index: int,
         present: bool,
         timeout_seconds: float,
+        since: float,
         position_index: int | None = None,
     ) -> dict[str, Any]:
         started = time.perf_counter()
+        executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="gtrade-confirm")
+        futures = {
+            executor.submit(
+                self._events.wait_for_position_event,
+                owner=address,
+                pair_index=pair_index,
+                present=present,
+                since=since,
+                timeout_seconds=timeout_seconds,
+                position_index=position_index,
+            ): "gtrade_event_stream",
+            executor.submit(
+                self._wait_for_position_rest,
+                address=address,
+                pair_index=pair_index,
+                present=present,
+                timeout_seconds=timeout_seconds,
+                position_index=position_index,
+                delay_seconds=REST_FALLBACK_DELAY_SECONDS,
+            ): "gains_open_trades_rest",
+        }
+        results: dict[str, dict[str, Any]] = {}
+        try:
+            for future in as_completed(futures, timeout=timeout_seconds + 0.5):
+                source = futures[future]
+                try:
+                    result = future.result()
+                except Exception as exc:
+                    results[source] = {
+                        "source": source,
+                        "timedOut": True,
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                    continue
+                results[source] = result
+                if not result.get("timedOut"):
+                    winner = str(result.get("source") or source)
+                    return {
+                        **result,
+                        "race": {
+                            "winner": winner,
+                            "elapsedMs": _elapsed_ms(started),
+                            "restFallbackDelayMs": REST_FALLBACK_DELAY_SECONDS * 1000,
+                        },
+                    }
+        except TimeoutError:
+            pass
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+        return {
+            "source": "venue_confirmation_race",
+            "position": None,
+            "elapsedMs": _elapsed_ms(started),
+            "targetPresent": present,
+            "observedPresent": None,
+            "timedOut": True,
+            "race": {
+                "winner": None,
+                "elapsedMs": _elapsed_ms(started),
+                "restFallbackDelayMs": REST_FALLBACK_DELAY_SECONDS * 1000,
+                "results": results,
+            },
+        }
+
+    def _wait_for_position_rest(
+        self,
+        *,
+        address: str,
+        pair_index: int,
+        present: bool,
+        timeout_seconds: float,
+        position_index: int | None,
+        delay_seconds: float,
+    ) -> dict[str, Any]:
+        started = time.perf_counter()
+        if delay_seconds:
+            time.sleep(delay_seconds)
         deadline = time.monotonic() + timeout_seconds
         polls: list[dict[str, Any]] = []
         while time.monotonic() < deadline:
@@ -325,7 +644,7 @@ class GTradeWalletExecutor:
         }
 
     def _open_trades(self, address: str) -> list[dict[str, Any]]:
-        response = requests.get(
+        response = self._rest_session.get(
             f"{self._settings.gtrade_backend_url}/open-trades/{address}",
             timeout=4,
             headers={"user-agent": "tick-mvp/0.1"},
@@ -349,8 +668,14 @@ class GTradeWalletExecutor:
             raise GTradeError("no open position visible for close")
         return int(positions[0]["trade"]["index"])
 
-    def _usdc_balance(self, web3: Any, address: str) -> Decimal:
-        return Decimal(self._usdc(web3).functions.balanceOf(address).call()) / Decimal(10**6)
+    def _usdc_balance(
+        self,
+        web3: Any,
+        address: str,
+        block_identifier: int | str = "latest",
+    ) -> Decimal:
+        units = self._usdc(web3).functions.balanceOf(address).call(block_identifier=block_identifier)
+        return Decimal(units) / Decimal(10**6)
 
 
 def _web3_imports():
@@ -420,6 +745,20 @@ def _position_opened_at(position: dict[str, Any] | None) -> datetime | None:
     if not value:
         return None
     return datetime.fromtimestamp(int(value), UTC)
+
+
+def _close_event_financials(position_wait: dict[str, Any]) -> tuple[Decimal | None, Decimal | None]:
+    event = position_wait.get("event") or {}
+    details = event.get("details") or {}
+    trade = (event.get("position") or {}).get("trade") or {}
+    amount_sent = details.get("amountSentToTrader")
+    collateral_amount = trade.get("collateralAmount")
+    collateral_index = trade.get("collateralIndex")
+    if amount_sent is None or collateral_amount is None or int(collateral_index or -1) != 3:
+        return None, None
+    close_cashflow = Decimal(str(amount_sent)) / Decimal(10**6)
+    opened_collateral = Decimal(str(collateral_amount)) / Decimal(10**6)
+    return close_cashflow - opened_collateral, close_cashflow
 
 
 def _decimal_or_none(value: Any) -> Decimal | None:

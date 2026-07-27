@@ -104,6 +104,41 @@ class ExecutionRepository:
                 quote_payload=quote_payload,
             )
 
+    def load_user_wallet_credentials(self, user_id: str) -> tuple[str, str]:
+        with session_scope(self._session_factory) as session:
+            wallet = (
+                session.query(WalletAccount)
+                .filter(WalletAccount.user_id == user_id)
+                .order_by(WalletAccount.created_at.asc())
+                .first()
+            )
+            if wallet is None:
+                raise StoreNotFound("wallet not found")
+            return wallet.address, self._decrypt_wallet_key(wallet)
+
+    def mark_broadcast_pending(
+        self,
+        context: ExecutionContext,
+        *,
+        tx_hash: str,
+        nonce: int,
+    ) -> None:
+        now = _now()
+        with session_scope(self._session_factory) as session:
+            execution = _execution(session, context.execution_id)
+            execution.status = ExecutionAttemptStatus.BROADCAST_PENDING.value
+            execution.tx_hash = tx_hash
+            execution.nonce = nonce
+            execution.payload = {
+                **(execution.payload or {}),
+                "preparedTransaction": {
+                    "txHash": tx_hash,
+                    "nonce": nonce,
+                    "preparedAt": now.isoformat(),
+                },
+            }
+            execution.updated_at = now
+
     def mark_open_result(self, context: ExecutionContext, result: VenueOpenResult) -> None:
         now = _now()
         with session_scope(self._session_factory) as session:
@@ -177,6 +212,37 @@ class ExecutionRepository:
             position.updated_at = now
             intent.updated_at = now
         return wallet_delta_usd
+
+    def mark_close_reconciliation(
+        self,
+        context: ExecutionContext,
+        *,
+        account_balance_after_usd: Decimal,
+    ) -> Decimal | None:
+        now = _now()
+        with session_scope(self._session_factory) as session:
+            position = _position(session, context.position_id)
+            reconciliation = (
+                session.query(Reconciliation)
+                .filter(Reconciliation.position_id == position.id)
+                .order_by(Reconciliation.created_at.desc())
+                .first()
+            )
+            if reconciliation is None:
+                return None
+            wallet_delta_usd = whole_trade_wallet_delta(position.payload, account_balance_after_usd)
+            reconciliation.status = (
+                ReconciliationStatus.WALLET_RECONCILED.value
+                if wallet_delta_usd is not None
+                else ReconciliationStatus.VENUE_ACCOUNTED.value
+            )
+            reconciliation.wallet_delta_usd = wallet_delta_usd
+            reconciliation.payload = {
+                **(reconciliation.payload or {}),
+                "accountBalanceAfterCloseUsd": str(account_balance_after_usd),
+            }
+            reconciliation.updated_at = now
+            return wallet_delta_usd
 
     def mark_failed(self, context: ExecutionContext, error: str) -> None:
         now = _now()
