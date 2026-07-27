@@ -1,0 +1,19 @@
+{
+  "name": "TICK",
+  "short_name": "TICK",
+  "description": "Live market movement, compressed into a fast mobile loop.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#091214",
+  "theme_color": "#091214",
+  "icons": [
+    {
+      "src": "/tick-icon.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

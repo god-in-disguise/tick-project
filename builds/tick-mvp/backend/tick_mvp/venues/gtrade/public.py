@@ -97,6 +97,93 @@ class GTradePublicClient:
             "source": "gtrade_pricing_rest",
         }
 
+    def markets(self, *, limit: int = 10) -> dict[str, Any]:
+        self._ensure_pairs()
+        by_index = {row.pair_index: row for row in self._pairs_by_name.values()}
+        summaries: list[dict[str, Any]] = []
+        for pair_index in WATCHLIST_INDEXES:
+            row = by_index.get(pair_index)
+            if row is None:
+                continue
+            live = self._prices.price(pair_index)
+            if live is None:
+                continue
+            recent = self._prices.recent(pair_index, seconds=60)
+            prices = [Decimal(str(item["price"])) for item in recent]
+            current = Decimal(str(live["mid"]))
+            first = prices[0] if prices else current
+            move_pct = ((current - first) / first) * Decimal(100) if first else Decimal(0)
+            active_pct = _active_tape_pct(prices, current)
+            fee_hurdle_pct = row.open_fee_pct * Decimal(2)
+            surplus_pct = active_pct - fee_hurdle_pct
+            score = max(Decimal(0), active_pct * Decimal(1000) + surplus_pct * Decimal(500))
+            summaries.append(
+                {
+                    "market": row.pair,
+                    "symbol": row.symbol,
+                    "name": row.name,
+                    "assetClass": row.asset_class,
+                    "price": current,
+                    "movePct": move_pct,
+                    "activeTapePct": active_pct,
+                    "feeHurdlePct": fee_hurdle_pct,
+                    "activitySurplusPct": surplus_pct,
+                    "maxLeverage": row.max_leverage,
+                    "suggestedLeverage": _suggested_leverage(row.max_leverage),
+                    "openingAllowed": bool(live.get("isMarketOpen", True)),
+                    "feedStatus": _feed_status(live.get("ageMs")),
+                    "lastMarketTickAgeMs": live.get("ageMs"),
+                    "score": score,
+                }
+            )
+        summaries.sort(key=lambda item: Decimal(str(item["score"])), reverse=True)
+        return {
+            "venue": "gtrade",
+            "generatedAt": time.time(),
+            "markets": summaries[:limit],
+        }
+
+    def chart(self, pair_name: str, *, window_seconds: int = 90) -> dict[str, Any]:
+        row = self.pair(pair_name)
+        ticks = self._prices.recent(row.pair_index, seconds=window_seconds)
+        latest = ticks[-1] if ticks else self._prices.snapshot(row.pair_index).get("latest")
+        now = time.time()
+        return {
+            "venue": "gtrade",
+            "market": row.pair,
+            "requestedWindowSeconds": window_seconds,
+            "actualWindowSeconds": (
+                max(0.0, float(ticks[-1]["receivedAt"]) - float(ticks[0]["receivedAt"]))
+                if len(ticks) > 1
+                else 0.0
+            ),
+            "serverNow": now,
+            "partial": len(ticks) < 2 or float(ticks[0]["receivedAt"]) > now - window_seconds + 1,
+            "lastSeq": int(latest["sequence"]) if latest else 0,
+            "feedStatus": _feed_status(
+                (now - float(latest["receivedAt"])) * 1000 if latest else None
+            ),
+            "observations": [_observation(item) for item in ticks],
+        }
+
+    def tape(self, pair_name: str, *, since: int) -> dict[str, Any]:
+        row = self.pair(pair_name)
+        snapshot = self._prices.snapshot(row.pair_index, since=since)
+        ticks = snapshot["ticks"]
+        latest = snapshot["latest"]
+        now = time.time()
+        age_ms = (now - float(latest["receivedAt"])) * 1000 if latest else None
+        return {
+            "venue": "gtrade",
+            "market": row.pair,
+            "sequence": snapshot["sequence"],
+            "serverNow": now,
+            "feedStatus": _feed_status(age_ms),
+            "lastMarketTickAgeMs": age_ms,
+            "resyncRequired": len(ticks) > 240,
+            "observations": [_observation(item) for item in ticks[-240:]],
+        }
+
     def _ensure_pairs(self) -> None:
         now = time.time()
         if self._pairs_by_name and self._pairs_expires_at > now:
@@ -208,3 +295,40 @@ def _get_json(session: requests.Session, url: str) -> Any:
             last = exc
         time.sleep(0.5 * (attempt + 1))
     raise GTradeError(f"GET {url} failed: {last}") from last
+
+
+def _observation(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "seq": int(item["sequence"]),
+        "receivedTs": float(item["receivedAt"]),
+        "price": str(item["price"]),
+        "unchanged": bool(item.get("unchanged", False)),
+    }
+
+
+def _active_tape_pct(prices: list[Decimal], current: Decimal) -> Decimal:
+    if not prices or current <= 0:
+        return Decimal(0)
+    low = min(prices)
+    high = max(prices)
+    return ((high - low) / current) * Decimal(100)
+
+
+def _suggested_leverage(max_leverage: Decimal) -> Decimal:
+    for value in (Decimal("500"), Decimal("100"), Decimal("50"), Decimal("25")):
+        if max_leverage >= value:
+            return value
+    return max_leverage
+
+
+def _feed_status(age_ms: Any) -> str:
+    if age_ms is None:
+        return "resyncing"
+    age = float(age_ms)
+    if age <= 1200:
+        return "live"
+    if age <= 2500:
+        return "delayed"
+    if age <= 8000:
+        return "stale"
+    return "disconnected"

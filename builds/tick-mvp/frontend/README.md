@@ -1,33 +1,20 @@
-# iOS PWA
+# TICK PWA
 
-The first production client is an iPhone-shaped, installable PWA deployed
-separately from backend Compose.
+iPhone-first web app for the TICK trading loop.
 
-Use the visual and interaction lessons from
-`../../local-mvp/tick-mvp-local-expo/`, but rebuild against the production API
-contracts.
+## Local
 
-Initial screens:
+```bash
+npm install
+npm run dev
+```
 
-- live trade screen;
-- volatility feed;
-- active position;
-- deposit/withdraw;
-- history;
-- account/settings.
+Vite proxies `/api`, `/health`, and `/ready` to `http://127.0.0.1:8787`.
+The local app automatically creates a JWT session for the funded `funded-dev`
+user.
 
-The chart must remain truthful: real venue ticks only, no fake vertical motion.
+## Rendering
 
-The runtime contract is:
-
-- one backend price stream for the whitelisted market set
-- one canonical timestamped tape per market, shared by every user
-- wallet-scoped position and execution events
-- immediate optimistic `opening`/`closing` state after API acceptance
-- authoritative `open`/`closed` state after venue execution
-- settlement and wallet PnL reconciliation as a separate state
-- snapshot recovery after reconnect or iOS background suspension
-
-The trading surface owns vertical direction/close gestures and horizontal
-market navigation. Canvas rendering and gesture animation stay outside React's
-per-tick render path.
+The chart stores only real gTrade observations. Canvas owns the 60 FPS visual
+interpolation of the live edge; animation frames never become market history or
+affect PnL, chart extrema, or execution terms.

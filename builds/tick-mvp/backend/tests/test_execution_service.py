@@ -1,3 +1,4 @@
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -47,6 +48,17 @@ class FakeVenue:
         }
 
 
+class BalanceVenue:
+    def __init__(self, balances: list[Decimal]) -> None:
+        self._balances = iter(balances)
+        self.reads = 0
+
+    def collateral_balance_usd(self, *, private_key_hex: str) -> Decimal:
+        assert private_key_hex == "0x" + "1" * 64
+        self.reads += 1
+        return next(self._balances)
+
+
 def test_execution_service_dry_run_does_not_trade() -> None:
     service = ExecutionService(settings=Settings(tick_real_execution_enabled=False), repository=FakeRepository())
 
@@ -64,3 +76,19 @@ def test_execution_service_prepares_user_wallet_before_swipe() -> None:
 
     assert result["status"] == "ready"
     assert result["allowanceReady"] is True
+
+
+def test_close_balance_waits_for_returned_collateral() -> None:
+    repository = FakeRepository()
+    context = replace(
+        repository.load("exec_1"),
+        account_balance_before_open_usd=Decimal("42.76"),
+    )
+    venue = BalanceVenue([Decimal("32.76"), Decimal("32.76"), Decimal("41.50")])
+    service = ExecutionService(settings=Settings(), repository=repository)
+    service._venue = venue
+
+    balance = service._wait_for_close_balance(context, timeout_seconds=0.1, poll_seconds=0)
+
+    assert balance == Decimal("41.50")
+    assert venue.reads == 3

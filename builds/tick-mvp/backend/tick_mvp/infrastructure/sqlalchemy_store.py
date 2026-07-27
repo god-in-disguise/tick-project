@@ -78,6 +78,15 @@ class SQLAlchemyStore:
         if stop is not None:
             stop()
 
+    def markets(self, *, limit: int = 10) -> dict[str, Any]:
+        return self._market_method("markets")(limit=limit)
+
+    def chart(self, market: str, *, window_seconds: int = 90) -> dict[str, Any]:
+        return self._market_method("chart")(market, window_seconds=window_seconds)
+
+    def tape(self, market: str, *, since: int) -> dict[str, Any]:
+        return self._market_method("tape")(market, since=since)
+
     def upsert_google_user(
         self,
         *,
@@ -484,6 +493,12 @@ class SQLAlchemyStore:
         cipher = PrivateKeyCipher(self._settings.custody_private_key_encryption_key)
         generated = PlatformWalletFactory(cipher).create_arbitrum_wallet()
         return generated.address, generated.encrypted_private_key
+
+    def _market_method(self, name: str):
+        method = getattr(self._quote_engine, name, None)
+        if method is None:
+            raise StoreNotFound(f"market data method is unavailable: {name}")
+        return method
 
 
 def _primary_identity(session, user_id: str) -> AuthIdentity | None:

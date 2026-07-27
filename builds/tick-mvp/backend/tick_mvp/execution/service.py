@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from decimal import Decimal
 
 from tick_mvp.core.config import Settings, get_settings
@@ -10,6 +11,9 @@ from tick_mvp.venues.registry import create_venue
 
 
 LOGGER = logging.getLogger("tick.execution")
+BALANCE_SETTLEMENT_TIMEOUT_SECONDS = 4.0
+BALANCE_SETTLEMENT_POLL_SECONDS = 0.25
+BALANCE_SETTLEMENT_EPSILON_USD = Decimal("0.01")
 
 
 class ExecutionService:
@@ -92,9 +96,7 @@ class ExecutionService:
         wallet_delta_usd = self._repository.mark_close_result(context, result)
         if result.status == "closed" and wallet_delta_usd is None:
             try:
-                account_balance_after = self._venue.collateral_balance_usd(
-                    private_key_hex=context.private_key_hex,
-                )
+                account_balance_after = self._wait_for_close_balance(context)
                 wallet_delta_usd = self._repository.mark_close_reconciliation(
                     context,
                     account_balance_after_usd=account_balance_after,
@@ -110,3 +112,24 @@ class ExecutionService:
             "txHash": result.tx.tx_hash,
             "walletDeltaUsd": str(wallet_delta_usd) if wallet_delta_usd is not None else None,
         }
+
+    def _wait_for_close_balance(
+        self,
+        context: ExecutionContext,
+        *,
+        timeout_seconds: float = BALANCE_SETTLEMENT_TIMEOUT_SECONDS,
+        poll_seconds: float = BALANCE_SETTLEMENT_POLL_SECONDS,
+    ) -> Decimal:
+        deadline = time.monotonic() + timeout_seconds
+        open_state_balance = (
+            context.account_balance_before_open_usd - context.ticket_usd
+            if context.account_balance_before_open_usd is not None
+            else None
+        )
+        while True:
+            balance = self._venue.collateral_balance_usd(private_key_hex=context.private_key_hex)
+            if open_state_balance is None or balance > open_state_balance + BALANCE_SETTLEMENT_EPSILON_USD:
+                return balance
+            if time.monotonic() >= deadline:
+                return balance
+            time.sleep(poll_seconds)

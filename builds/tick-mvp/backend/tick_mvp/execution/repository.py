@@ -35,6 +35,7 @@ class ExecutionContext:
     liquidation_price: Decimal | None
     venue_position_id: str | None
     quote_payload: dict[str, Any]
+    account_balance_before_open_usd: Decimal | None = None
 
 
 class ExecutionRepository:
@@ -82,6 +83,7 @@ class ExecutionRepository:
                 quote_payload = dict((quote.payload if quote else {}) or {})
                 position_id = position.id
                 venue_position_id = position.venue_position_id
+            raw_balance_before_open = (position.payload or {}).get("accountBalanceBeforeOpenUsd")
 
             return ExecutionContext(
                 execution_id=execution.id,
@@ -102,6 +104,11 @@ class ExecutionRepository:
                 liquidation_price=liquidation_price,
                 venue_position_id=venue_position_id,
                 quote_payload=quote_payload,
+                account_balance_before_open_usd=(
+                    Decimal(str(raw_balance_before_open))
+                    if raw_balance_before_open is not None
+                    else None
+                ),
             )
 
     def load_user_wallet_credentials(self, user_id: str) -> tuple[str, str]:

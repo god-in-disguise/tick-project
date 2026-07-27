@@ -197,6 +197,7 @@ class PositionResponse(BaseModel):
     liquidationPrice: Decimal | None
     createdAt: datetime
     updatedAt: datetime
+    openedAt: datetime | None = None
 
 
 class ReconciliationResponse(BaseModel):

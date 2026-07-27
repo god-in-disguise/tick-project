@@ -1,0 +1,491 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { ApiError, api, idempotencyKey } from "./api";
+import type {
+  AcceptedTrade,
+  AccountState,
+  ClosedResult,
+  Market,
+  MarketObservation,
+  Position,
+  Quote,
+  Session,
+  Side,
+  TradeSettings,
+  WalletBalances
+} from "./types";
+
+const SETTINGS_KEY = "tick.trade.settings";
+const QUOTES_KEY = "tick.trade.quotes";
+const ACTIVE_STATUSES = new Set(["opening", "open", "closing", "unknown"]);
+const DEFAULT_SETTINGS: TradeSettings = { ticketUsd: 10, leverage: 500, maxLossUsd: 10 };
+
+type Quotes = { long: Quote | null; short: Quote | null };
+
+export function useTick() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [state, setState] = useState<AccountState | null>(null);
+  const [balances, setBalances] = useState<WalletBalances | null>(null);
+  const [markets, setMarkets] = useState<Market[]>([]);
+  const [activeMarketId, setActiveMarketId] = useState("");
+  const [quotes, setQuotes] = useState<Quotes>({ long: null, short: null });
+  const [settings, setSettingsState] = useState<TradeSettings>(readSettings);
+  const [busyAction, setBusyAction] = useState<Side | "close" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [closedResult, setClosedResult] = useState<ClosedResult | null>(null);
+  const sequences = useRef<Record<string, number>>({});
+  const chartRequests = useRef(new Map<string, Promise<void>>());
+  const tapeBusy = useRef(false);
+  const stateBusy = useRef(false);
+  const actionBusy = useRef(false);
+  const quoteCache = useRef<Record<string, Quote>>(readQuotes());
+  const shownReconciliations = useRef(new Set<string>());
+  const pendingReconciliations = useRef(new Set<string>());
+  const stateInitialized = useRef(false);
+  const errorTimer = useRef<number | null>(null);
+  const resultTimer = useRef<number | null>(null);
+
+  const rememberQuote = useCallback((quote: Quote) => {
+    quoteCache.current[quote.quoteId] = quote;
+    const recent = Object.fromEntries(Object.entries(quoteCache.current).slice(-20));
+    localStorage.setItem(QUOTES_KEY, JSON.stringify(recent));
+  }, []);
+
+  const activePosition = useMemo(
+    () => state?.positions.find((position) => ACTIVE_STATUSES.has(position.status)) ?? null,
+    [state]
+  );
+
+  const activeMarket = useMemo(
+    () => {
+      const marketId = activePosition?.market ?? activeMarketId;
+      return marketId ? markets.find((market) => market.market === marketId) ?? null : null;
+    },
+    [activeMarketId, activePosition?.market, markets]
+  );
+
+  const activeQuote = activePosition?.quoteId ? quoteCache.current[activePosition.quoteId] ?? null : null;
+  const estimatedNetPnl = useMemo(
+    () => positionNetPnl(activePosition, activeMarket, activeQuote),
+    [activeMarket?.price, activePosition, activeQuote]
+  );
+  const busy = Boolean(
+    busyAction
+    || activePosition?.status === "opening"
+    || activePosition?.status === "closing"
+  );
+
+  const showError = useCallback((cause: unknown) => {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    setError(message);
+    if (errorTimer.current) window.clearTimeout(errorTimer.current);
+    errorTimer.current = window.setTimeout(() => setError(null), 4_000);
+  }, []);
+
+  const loadMarketChart = useCallback((marketId: string) => {
+    const current = chartRequests.current.get(marketId);
+    if (current) return current;
+    const request = api.chart(marketId)
+      .then((chart) => {
+        sequences.current[marketId] = chart.sequence;
+        setMarkets((markets) =>
+          markets.map((market) =>
+            market.market === marketId
+              ? {
+                  ...market,
+                  price: chart.observations.at(-1)?.price ?? market.price,
+                  observations: chart.observations,
+                  sequence: chart.sequence,
+                  feedStatus: chart.feedStatus as Market["feedStatus"]
+                }
+              : market
+          )
+        );
+      })
+      .finally(() => {
+        chartRequests.current.delete(marketId);
+      });
+    chartRequests.current.set(marketId, request);
+    return request;
+  }, []);
+
+  const refreshState = useCallback(async () => {
+    if (stateBusy.current) return;
+    stateBusy.current = true;
+    try {
+      const next = await api.state();
+      setState(next);
+      setBusyAction(null);
+      if (!stateInitialized.current) {
+        for (const reconciliation of next.reconciliations) {
+          shownReconciliations.current.add(reconciliation.id);
+        }
+        stateInitialized.current = true;
+        return;
+      }
+      const terminal = next.positions.find(
+        (position) => position.status === "closed" || position.status === "liquidated"
+      );
+      if (terminal) {
+        const reconciliation = next.reconciliations.find((item) => item.positionId === terminal.id);
+        if (reconciliation && !shownReconciliations.current.has(reconciliation.id)) {
+          const pnl = reconciliation.walletDeltaUsd;
+          if (pnl === null) {
+            if (!pendingReconciliations.current.has(reconciliation.id)) {
+              pendingReconciliations.current.add(reconciliation.id);
+              setClosedResult({
+                id: reconciliation.id,
+                label: terminal.status === "liquidated" ? "Liquidated" : "Closed",
+                pnl: null,
+                market: terminal.market
+              });
+            }
+            return;
+          }
+          pendingReconciliations.current.delete(reconciliation.id);
+          shownReconciliations.current.add(reconciliation.id);
+          setClosedResult({
+            id: reconciliation.id,
+            label: terminal.status === "liquidated" ? "Liquidated" : pnl >= 0 ? "Net profit" : "Net loss",
+            pnl,
+            market: terminal.market
+          });
+          if (resultTimer.current) window.clearTimeout(resultTimer.current);
+          resultTimer.current = window.setTimeout(
+            () => setClosedResult((current) => current?.id === reconciliation.id ? null : current),
+            terminal.status === "liquidated" ? 5_000 : 3_200
+          );
+          void refreshBalances();
+        }
+      }
+    } catch (cause) {
+      showError(cause);
+    } finally {
+      stateBusy.current = false;
+    }
+  }, [showError]);
+
+  const refreshBalances = useCallback(async () => {
+    try {
+      setBalances(await api.balances());
+    } catch (cause) {
+      showError(cause);
+    }
+  }, [showError]);
+
+  useEffect(() => {
+    let alive = true;
+    const bootstrap = async () => {
+      try {
+        const [nextSession, nextMarkets] = await Promise.all([api.session(), api.markets()]);
+        if (!alive) return;
+        setSession(nextSession);
+        setMarkets(nextMarkets);
+        const firstMarket = nextMarkets[0]?.market;
+        if (firstMarket) {
+          await loadMarketChart(firstMarket);
+          if (!alive) return;
+          setActiveMarketId(firstMarket);
+          void Promise.allSettled(nextMarkets.slice(1).map((market) => loadMarketChart(market.market)));
+        }
+        await Promise.all([refreshState(), refreshBalances()]);
+      } catch (cause) {
+        showError(cause);
+      }
+    };
+    void bootstrap();
+    return () => {
+      alive = false;
+      if (errorTimer.current) window.clearTimeout(errorTimer.current);
+      if (resultTimer.current) window.clearTimeout(resultTimer.current);
+    };
+  }, [loadMarketChart, refreshBalances, refreshState, showError]);
+
+  useEffect(() => {
+    const marketTimer = window.setInterval(async () => {
+      try {
+        const incoming = await api.markets();
+        setMarkets((current) => mergeMarketSummaries(current, incoming));
+      } catch (cause) {
+        showError(cause);
+      }
+    }, 5_000);
+    const stateTimer = window.setInterval(refreshState, 250);
+    const balanceTimer = window.setInterval(refreshBalances, 5_000);
+    return () => {
+      window.clearInterval(marketTimer);
+      window.clearInterval(stateTimer);
+      window.clearInterval(balanceTimer);
+    };
+  }, [refreshBalances, refreshState, showError]);
+
+  useEffect(() => {
+    if (!activeMarket || activeMarket.observations.length) return;
+    void loadMarketChart(activeMarket.market).catch(showError);
+  }, [activeMarket?.market, activeMarket?.observations.length, loadMarketChart, showError]);
+
+  useEffect(() => {
+    if (!activeMarket) return;
+    const marketId = activeMarket.market;
+    const poll = async () => {
+      if (tapeBusy.current) return;
+      tapeBusy.current = true;
+      try {
+        const result = await api.tape(marketId, sequences.current[marketId] ?? 0);
+        if (result.resyncRequired) {
+          const chart = await api.chart(marketId);
+          sequences.current[marketId] = chart.sequence;
+          setMarkets((current) =>
+            updateMarketTape(current, marketId, chart.observations, chart.sequence, chart.feedStatus)
+          );
+        } else {
+          sequences.current[marketId] = Math.max(sequences.current[marketId] ?? 0, result.sequence);
+          setMarkets((current) =>
+            updateMarketTape(current, marketId, result.observations, result.sequence, result.feedStatus)
+          );
+        }
+      } catch (cause) {
+        showError(cause);
+      } finally {
+        tapeBusy.current = false;
+      }
+    };
+    void poll();
+    const timer = window.setInterval(poll, 200);
+    return () => window.clearInterval(timer);
+  }, [activeMarket?.market, showError]);
+
+  useEffect(() => {
+    if (!activeMarket || activePosition) {
+      setQuotes({ long: null, short: null });
+      return;
+    }
+    let canceled = false;
+    let quoteBlocked = false;
+    const refresh = async () => {
+      if (quoteBlocked) return;
+      const leverage = Math.min(settings.leverage, activeMarket.maxLeverage);
+      try {
+        const [long, short] = await Promise.all([
+          api.quote(activeMarket.market, "long", settings.ticketUsd, leverage, settings.maxLossUsd),
+          api.quote(activeMarket.market, "short", settings.ticketUsd, leverage, settings.maxLossUsd)
+        ]);
+        if (!canceled) {
+          rememberQuote(long);
+          rememberQuote(short);
+          setQuotes({ long, short });
+        }
+      } catch (cause) {
+        if (!canceled) {
+          if (cause instanceof ApiError && cause.status === 422) {
+            quoteBlocked = true;
+            setQuotes({ long: null, short: null });
+          }
+          showError(cause);
+        }
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 3_500);
+    return () => {
+      canceled = true;
+      window.clearInterval(timer);
+    };
+  }, [
+    activeMarket?.market,
+    activePosition?.id,
+    rememberQuote,
+    settings.leverage,
+    settings.maxLossUsd,
+    settings.ticketUsd,
+    showError
+  ]);
+
+  const setSettings = useCallback((next: TradeSettings) => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+    setSettingsState(next);
+  }, []);
+
+  const open = useCallback(async (side: Side) => {
+    if (!activeMarket || activePosition || actionBusy.current) return;
+    actionBusy.current = true;
+    setClosedResult(null);
+    setBusyAction(side);
+    try {
+      let quote = side === "long" ? quotes.long : quotes.short;
+      if (!quote || new Date(quote.expiresAt).getTime() < Date.now() + 650) {
+        quote = await api.quote(
+          activeMarket.market,
+          side,
+          settings.ticketUsd,
+          Math.min(settings.leverage, activeMarket.maxLeverage),
+          settings.maxLossUsd
+        );
+        rememberQuote(quote);
+      }
+      if (!quote.openingAllowed) throw new Error("This market is not accepting opens");
+      const accepted = await api.open(quote.quoteId, idempotencyKey("open"));
+      applyAccepted(accepted, setState);
+      void refreshState();
+    } catch (cause) {
+      setBusyAction(null);
+      showError(cause);
+      void refreshState();
+    } finally {
+      actionBusy.current = false;
+    }
+  }, [activeMarket, activePosition, quotes, refreshState, rememberQuote, settings, showError]);
+
+  const close = useCallback(async () => {
+    if (!activePosition || actionBusy.current) return;
+    actionBusy.current = true;
+    setBusyAction("close");
+    try {
+      const accepted = await api.close(activePosition.id, idempotencyKey("close"));
+      applyAccepted(accepted, setState);
+      void refreshState();
+    } catch (cause) {
+      setBusyAction(null);
+      showError(cause);
+      void refreshState();
+    } finally {
+      actionBusy.current = false;
+    }
+  }, [activePosition, refreshState, showError]);
+
+  const selectMarket = useCallback(async (marketId: string) => {
+    if (activePosition || busy) return;
+    const target = markets.find((market) => market.market === marketId);
+    if (!target) return;
+    const latest = target.observations.at(-1);
+    if (!latest || latest.receivedTs < Date.now() / 1_000 - 1.5) {
+      try {
+        await loadMarketChart(target.market);
+      } catch (cause) {
+        showError(cause);
+        return;
+      }
+    }
+    setClosedResult(null);
+    setActiveMarketId(target.market);
+  }, [activePosition, busy, loadMarketChart, markets, showError]);
+
+  const shiftMarket = useCallback(async (offset: number) => {
+    if (!activeMarket || activePosition || busy) return;
+    const index = markets.findIndex((market) => market.market === activeMarket.market);
+    const next = markets[(index + offset + markets.length) % markets.length];
+    if (next) await selectMarket(next.market);
+  }, [activeMarket, activePosition, busy, markets, selectMarket]);
+
+  return {
+    session,
+    state,
+    balances,
+    markets,
+    activeMarket,
+    activePosition,
+    activeQuote,
+    quotes,
+    settings,
+    setSettings,
+    estimatedNetPnl,
+    busy,
+    busyAction,
+    error,
+    closedResult,
+    open,
+    close,
+    shiftMarket,
+    selectMarket
+  };
+}
+
+function updateMarketTape(
+  markets: Market[],
+  marketId: string,
+  observations: MarketObservation[],
+  sequence: number,
+  feedStatus: string
+): Market[] {
+  if (!observations.length && !feedStatus) return markets;
+  return markets.map((market) => {
+    if (market.market !== marketId) return market;
+    const bySequence = new Map(market.observations.map((point) => [point.seq, point]));
+    for (const point of observations) bySequence.set(point.seq, point);
+    const cutoff = Date.now() / 1000 - 95;
+    const merged = [...bySequence.values()]
+      .filter((point) => point.receivedTs >= cutoff)
+      .sort((left, right) => left.receivedTs - right.receivedTs || left.seq - right.seq);
+    const latest = merged.at(-1);
+    return {
+      ...market,
+      price: latest?.price ?? market.price,
+      observations: merged,
+      sequence: Math.max(market.sequence, sequence),
+      feedStatus: feedStatus as Market["feedStatus"]
+    };
+  });
+}
+
+function mergeMarketSummaries(current: Market[], incoming: Market[]): Market[] {
+  if (!current.length) return incoming;
+  const updates = new Map(incoming.map((market) => [market.market, market]));
+  const stable = current.map((market) => {
+    const next = updates.get(market.market);
+    return next ? { ...market, ...next, observations: market.observations, sequence: market.sequence } : market;
+  });
+  for (const market of incoming) {
+    if (!stable.some((item) => item.market === market.market)) stable.push(market);
+  }
+  return stable;
+}
+
+function positionNetPnl(position: Position | null, market: Market | null, quote: Quote | null): number | null {
+  if (!position?.entryPrice || !market || position.market !== market.market) return null;
+  const estimatedCost = quote?.estimatedRoundTripCostUsd ?? 0;
+  const latestObservation = market.observations.at(-1);
+  const positionConfirmedAt = Date.parse(position.openedAt ?? position.updatedAt) / 1_000;
+  if (!latestObservation || latestObservation.receivedTs < positionConfirmedAt) {
+    return -estimatedCost;
+  }
+  const direction = position.side === "long" ? 1 : -1;
+  const gross = ((market.price - position.entryPrice) / position.entryPrice) * position.notionalUsd * direction;
+  return gross - estimatedCost;
+}
+
+function applyAccepted(
+  accepted: AcceptedTrade,
+  setState: React.Dispatch<React.SetStateAction<AccountState | null>>
+) {
+  setState((current) => {
+    if (!current) return current;
+    const positions = accepted.position
+      ? [accepted.position, ...current.positions.filter((item) => item.id !== accepted.position?.id)]
+      : current.positions;
+    return {
+      ...current,
+      positions,
+      intents: [accepted.intent, ...current.intents.filter((item) => item.id !== accepted.intent.id)],
+      executionAttempts: [
+        accepted.executionAttempt,
+        ...current.executionAttempts.filter((item) => item.id !== accepted.executionAttempt.id)
+      ]
+    };
+  });
+}
+
+function readSettings(): TradeSettings {
+  try {
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}") };
+  } catch {
+    return DEFAULT_SETTINGS;
+  }
+}
+
+function readQuotes(): Record<string, Quote> {
+  try {
+    return JSON.parse(localStorage.getItem(QUOTES_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}

@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, status
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, status
 
 from tick_mvp.api.auth import AuthError, UserSession, create_session_token, verify_session_token
 from tick_mvp.api.google_auth import GoogleAuthError, verify_google_identity
@@ -28,6 +28,7 @@ from tick_mvp.infrastructure.queue import (
     enqueue_wallet_preparation,
     enqueue_withdrawal_request,
 )
+from tick_mvp.venues.base import VenueError
 
 
 @asynccontextmanager
@@ -142,6 +143,30 @@ def create_app(store: Any | None = None) -> FastAPI:
     def positions(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> dict[str, object]:
         return {"positions": _store(app).state(_session(authorization, x_tick_user).user_id).positions}
 
+    @app.get("/api/markets")
+    def markets(limit: int = Query(default=10, ge=1, le=20)) -> dict[str, Any]:
+        try:
+            return _store(app).markets(limit=limit)
+        except StoreNotFound as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.get("/api/chart")
+    def chart(
+        market: str,
+        window_seconds: int = Query(default=90, alias="windowSeconds", ge=30, le=300),
+    ) -> dict[str, Any]:
+        try:
+            return _store(app).chart(market, window_seconds=window_seconds)
+        except StoreNotFound as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    @app.get("/api/tape")
+    def tape(market: str, since: int = Query(default=0, ge=0)) -> dict[str, Any]:
+        try:
+            return _store(app).tape(market, since=since)
+        except StoreNotFound as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     @app.get("/api/wallet/deposit-address", response_model=DepositAddressResponse)
     def deposit_address(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> DepositAddressResponse:
         try:
@@ -187,7 +212,10 @@ def create_app(store: Any | None = None) -> FastAPI:
         x_tick_user: str | None = Header(default=None),
     ) -> QuoteResponse:
         user_id = _session(authorization, x_tick_user).user_id
-        response = _store(app).create_quote(user_id, body)
+        try:
+            response = _store(app).create_quote(user_id, body)
+        except VenueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         if get_settings().tick_enqueue_jobs:
             background_tasks.add_task(
                 enqueue_wallet_preparation,

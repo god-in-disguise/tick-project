@@ -200,6 +200,20 @@ def test_price_stream_keeps_latest_real_tick_per_pair() -> None:
     assert eth is not None and str(eth["mid"]) == "3500.2"
 
 
+def test_price_stream_records_real_watchlist_observations_with_sequence() -> None:
+    stream = GTradePriceStream("wss://example.invalid")
+    stream._handle_raw(json.dumps([300, 64000.1, 313, 3500.2]))
+    stream._handle_raw(json.dumps([300, 64000.1, 313, 3500.4]))
+
+    btc = stream.snapshot(300)
+    eth = stream.snapshot(313, since=1)
+
+    assert [str(item["price"]) for item in btc["ticks"]] == ["64000.1", "64000.1"]
+    assert btc["ticks"][1]["unchanged"] is True
+    assert [item["sequence"] for item in eth["ticks"]] == [2, 4]
+    assert str(eth["latest"]["price"]) == "3500.4"
+
+
 def test_direct_close_cashflow_produces_immediate_net_result() -> None:
     pnl, cashflow = _close_event_financials(
         {

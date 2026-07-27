@@ -137,6 +137,7 @@ def position_response(position: Position) -> PositionResponse:
         liquidationPrice=position.liquidation_price,
         createdAt=position.created_at,
         updatedAt=position.updated_at,
+        openedAt=position.opened_at,
     )
 
 

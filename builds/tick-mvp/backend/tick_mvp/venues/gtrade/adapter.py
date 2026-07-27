@@ -92,3 +92,12 @@ class GTradeVenue:
         required_collateral_usd: Decimal,
     ) -> dict[str, Any]:
         return self._wallet.prepare_wallet(private_key_hex, required_collateral_usd)
+
+    def markets(self, *, limit: int = 10) -> dict[str, Any]:
+        return self._public.markets(limit=limit)
+
+    def chart(self, market: str, *, window_seconds: int = 90) -> dict[str, Any]:
+        return self._public.chart(market, window_seconds=window_seconds)
+
+    def tape(self, market: str, *, since: int) -> dict[str, Any]:
+        return self._public.tape(market, since=since)

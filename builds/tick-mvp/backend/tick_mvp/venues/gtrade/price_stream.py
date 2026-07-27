@@ -4,22 +4,31 @@ import json
 import logging
 import threading
 import time
+from collections import defaultdict, deque
 from decimal import Decimal
-from typing import Any
+from typing import Any, Iterable
 
 from websockets.sync.client import connect
+
+from tick_mvp.venues.gtrade.constants import WATCHLIST_INDEXES
 
 
 LOGGER = logging.getLogger("tick.gtrade.prices")
 MAX_PRICE_FRAME_BYTES = 8 * 1024 * 1024
+MAX_TICKS_PER_MARKET = 1800
 
 
 class GTradePriceStream:
     """One live gTrade price connection shared by every user in this process."""
 
-    def __init__(self, url: str) -> None:
+    def __init__(self, url: str, watched_indexes: Iterable[int] = WATCHLIST_INDEXES) -> None:
         self._url = url
+        self._watched_indexes = frozenset(watched_indexes)
         self._latest: dict[int, tuple[Decimal, float]] = {}
+        self._ticks: dict[int, deque[dict[str, Any]]] = defaultdict(
+            lambda: deque(maxlen=MAX_TICKS_PER_MARKET)
+        )
+        self._sequence = 0
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -66,6 +75,29 @@ class GTradePriceStream:
             "marketCount": market_count,
         }
 
+    def snapshot(self, pair_index: int, *, since: int = 0) -> dict[str, Any]:
+        with self._lock:
+            items = [
+                dict(item)
+                for item in self._ticks.get(pair_index, ())
+                if int(item["sequence"]) > since
+            ]
+            latest = dict(self._ticks[pair_index][-1]) if self._ticks.get(pair_index) else None
+        return {
+            "sequence": int(latest["sequence"]) if latest else since,
+            "ticks": items,
+            "latest": latest,
+        }
+
+    def recent(self, pair_index: int, *, seconds: float) -> list[dict[str, Any]]:
+        cutoff = time.time() - seconds
+        with self._lock:
+            return [
+                dict(item)
+                for item in self._ticks.get(pair_index, ())
+                if float(item["receivedAt"]) >= cutoff
+            ]
+
     def _run(self) -> None:
         while not self._stop.is_set():
             try:
@@ -106,4 +138,17 @@ class GTradePriceStream:
             return
         with self._lock:
             self._latest.update(updates)
+            for pair_index, (mid, observed_at) in updates.items():
+                if pair_index not in self._watched_indexes:
+                    continue
+                previous = self._ticks[pair_index][-1] if self._ticks[pair_index] else None
+                self._sequence += 1
+                self._ticks[pair_index].append(
+                    {
+                        "sequence": self._sequence,
+                        "receivedAt": observed_at,
+                        "price": mid,
+                        "unchanged": bool(previous and previous["price"] == mid),
+                    }
+                )
             self._last_message_at = received_at
