@@ -139,22 +139,7 @@ class GTradeWalletExecutor:
         )
         fn = self._trading(web3).functions.openTrade(trade, self._settings.gtrade_slippage_bps, ZERO_ADDRESS)
         listen_since = time.time()
-        tx = self._send(
-            account,
-            address,
-            fn,
-            label="open",
-            gas=self._settings.gtrade_fixed_open_gas,
-            prepared=prepared_tx,
-            on_transaction_prepared=on_transaction_prepared,
-        )
         with ThreadPoolExecutor(max_workers=2, thread_name_prefix="gtrade-open-confirm") as executor:
-            balance_future = executor.submit(
-                self._usdc_balance,
-                web3,
-                address,
-                max(0, (tx.block_number or 1) - 1),
-            )
             position_future = executor.submit(
                 self._wait_for_position,
                 address=address,
@@ -162,6 +147,21 @@ class GTradeWalletExecutor:
                 present=True,
                 timeout_seconds=self._settings.gtrade_open_wait_seconds,
                 since=listen_since,
+            )
+            tx = self._send(
+                account,
+                address,
+                fn,
+                label="open",
+                gas=self._settings.gtrade_fixed_open_gas,
+                prepared=prepared_tx,
+                on_transaction_prepared=on_transaction_prepared,
+            )
+            balance_future = executor.submit(
+                self._usdc_balance,
+                web3,
+                address,
+                max(0, (tx.block_number or 1) - 1),
             )
             position_wait = position_future.result()
             try:
@@ -222,23 +222,26 @@ class GTradeWalletExecutor:
         prepared_at = time.perf_counter()
         fn = self._trading(web3).functions.closeTradeMarket(position_index, _price_units(price))
         listen_since = time.time()
-        tx = self._send(
-            account,
-            address,
-            fn,
-            label="close",
-            gas=self._settings.gtrade_fixed_close_gas,
-            prepared=prepared_tx,
-            on_transaction_prepared=on_transaction_prepared,
-        )
-        position_wait = self._wait_for_position(
-            address=address,
-            pair_index=pair.pair_index,
-            present=False,
-            timeout_seconds=self._settings.gtrade_close_wait_seconds,
-            position_index=position_index,
-            since=listen_since,
-        )
+        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="gtrade-close-confirm") as executor:
+            position_future = executor.submit(
+                self._wait_for_position,
+                address=address,
+                pair_index=pair.pair_index,
+                present=False,
+                timeout_seconds=self._settings.gtrade_close_wait_seconds,
+                position_index=position_index,
+                since=listen_since,
+            )
+            tx = self._send(
+                account,
+                address,
+                fn,
+                label="close",
+                gas=self._settings.gtrade_fixed_close_gas,
+                prepared=prepared_tx,
+                on_transaction_prepared=on_transaction_prepared,
+            )
+            position_wait = position_future.result()
         closed = position_wait.get("observedPresent") is False and not position_wait.get("timedOut")
         venue_realized_pnl_usd, close_cashflow_usd = _close_event_financials(position_wait)
         return VenueCloseResult(

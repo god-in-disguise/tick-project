@@ -5,7 +5,7 @@ import logging
 import threading
 import time
 from collections import deque
-from typing import Any
+from typing import Any, Callable
 
 from websockets.sync.client import connect
 
@@ -26,6 +26,7 @@ class GTradeEventStream:
         *,
         arb_wss_url: str = "",
         diamond_address: str = "",
+        on_event: Callable[[dict[str, Any]], None] | None = None,
     ) -> None:
         self._backend_url = backend_url
         self._events: deque[dict[str, Any]] = deque(maxlen=2048)
@@ -36,6 +37,7 @@ class GTradeEventStream:
         self._backend_connected = False
         self._backend_last_message_at = 0.0
         self._backend_last_error: str | None = None
+        self._on_event = on_event
         self._onchain = GTradeOnchainEventStream(
             arb_wss_url,
             diamond_address,
@@ -201,6 +203,11 @@ class GTradeEventStream:
                 return
             self._events.append(event)
             self._condition.notify_all()
+        if self._on_event is not None:
+            try:
+                self._on_event(event)
+            except Exception:
+                LOGGER.exception("gTrade event subscriber failed")
 
 
 def _find_trade_container(value: Any) -> dict[str, Any] | None:

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass
 from decimal import Decimal
+from threading import RLock
 from typing import Any
 
 import requests
@@ -46,8 +48,13 @@ class GTradePublicClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._session = requests.Session()
+        self._metadata_session = requests.Session()
+        self._pairs_lock = RLock()
+        self._pairs_refresh_lock = RLock()
         self._pairs_by_name: dict[str, GTradePair] = {}
         self._pairs_expires_at = 0.0
+        self._metadata_stop = threading.Event()
+        self._metadata_thread: threading.Thread | None = None
         self._charts_payload: dict[str, Any] | None = None
         self._charts_expires_at = 0.0
         self._prices = GTradePriceStream(settings.gtrade_pricing_ws_url)
@@ -55,12 +62,24 @@ class GTradePublicClient:
     def start(self) -> None:
         self._prices.start()
         try:
-            self._ensure_pairs()
+            self._refresh_pairs()
         except Exception as exc:
             LOGGER.warning("Could not warm gTrade market metadata: %s", exc)
+        if not self._metadata_thread or not self._metadata_thread.is_alive():
+            self._metadata_stop.clear()
+            self._metadata_thread = threading.Thread(
+                target=self._run_metadata_warmer,
+                name="gtrade-market-metadata",
+                daemon=True,
+            )
+            self._metadata_thread.start()
 
     def stop(self) -> None:
+        self._metadata_stop.set()
+        if self._metadata_thread:
+            self._metadata_thread.join(timeout=2)
         self._prices.stop()
+        self._metadata_session.close()
         self._session.close()
 
     def health(self) -> dict[str, Any]:
@@ -69,14 +88,16 @@ class GTradePublicClient:
     def pair(self, pair_name: str) -> GTradePair:
         normalized = normalize_pair(pair_name)
         self._ensure_pairs()
-        pair = self._pairs_by_name.get(normalized)
+        with self._pairs_lock:
+            pair = self._pairs_by_name.get(normalized)
         if pair is None:
             raise GTradeError(f"gTrade pair not found: {pair_name}")
         return pair
 
     def pairs(self) -> dict[str, GTradePair]:
         self._ensure_pairs()
-        return dict(self._pairs_by_name)
+        with self._pairs_lock:
+            return dict(self._pairs_by_name)
 
     def price(self, pair_name: str) -> dict[str, Any]:
         row = self.pair(pair_name)
@@ -99,7 +120,8 @@ class GTradePublicClient:
 
     def markets(self, *, limit: int = 10) -> dict[str, Any]:
         self._ensure_pairs()
-        by_index = {row.pair_index: row for row in self._pairs_by_name.values()}
+        with self._pairs_lock:
+            by_index = {row.pair_index: row for row in self._pairs_by_name.values()}
         summaries: list[dict[str, Any]] = []
         for pair_index in WATCHLIST_INDEXES:
             row = by_index.get(pair_index)
@@ -185,18 +207,42 @@ class GTradePublicClient:
         }
 
     def _ensure_pairs(self) -> None:
-        now = time.time()
-        if self._pairs_by_name and self._pairs_expires_at > now:
-            return
-        payload = _get_json(self._session, f"{self._settings.gtrade_backend_url}/trading-variables")
-        rows = _build_pairs(payload)
-        by_name = {row.pair: row for row in rows}
-        by_index = {row.pair_index: row for row in rows}
-        for index in WATCHLIST_INDEXES:
-            if index in by_index:
-                by_name.setdefault(by_index[index].pair, by_index[index])
-        self._pairs_by_name = by_name
-        self._pairs_expires_at = now + self._settings.gtrade_pairs_ttl_seconds
+        # A stale metadata snapshot is safer than adding a network request to a
+        # user's execution gesture. The background warmer refreshes it.
+        with self._pairs_lock:
+            if self._pairs_by_name:
+                return
+        self._refresh_pairs()
+
+    def _refresh_pairs(self) -> None:
+        with self._pairs_refresh_lock:
+            payload = _get_json(
+                self._metadata_session,
+                f"{self._settings.gtrade_backend_url}/trading-variables",
+            )
+            rows = _build_pairs(payload)
+            by_name = {row.pair: row for row in rows}
+            by_index = {row.pair_index: row for row in rows}
+            for index in WATCHLIST_INDEXES:
+                if index in by_index:
+                    by_name.setdefault(by_index[index].pair, by_index[index])
+            with self._pairs_lock:
+                self._pairs_by_name = by_name
+                self._pairs_expires_at = time.time() + self._settings.gtrade_pairs_ttl_seconds
+
+    def _run_metadata_warmer(self) -> None:
+        while not self._metadata_stop.is_set():
+            with self._pairs_lock:
+                expires_at = self._pairs_expires_at
+            refresh_ahead = min(30.0, max(5.0, self._settings.gtrade_pairs_ttl_seconds * 0.1))
+            delay = max(1.0, expires_at - time.time() - refresh_ahead)
+            if self._metadata_stop.wait(delay):
+                return
+            try:
+                self._refresh_pairs()
+            except Exception as exc:
+                LOGGER.warning("Could not refresh gTrade market metadata: %s", exc)
+                self._metadata_stop.wait(5.0)
 
     def _charts(self) -> dict[str, Any]:
         now = time.time()

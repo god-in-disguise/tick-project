@@ -85,7 +85,7 @@ function draw(
   if (width <= 1 || height <= 1) return;
 
   const top = 22;
-  const bottom = height - 18;
+  const bottom = height - (props.entry !== null ? 124 : 62);
   const left = 0;
   const right = width - 58;
   const now = Date.now() / 1000;
@@ -137,7 +137,9 @@ function draw(
 
   const coordinates = source.map((point) => ({ x: x(point.receivedTs), y: y(point.price) }));
   const lastReal = coordinates.at(-1) ?? { x: right, y: y(props.market.price) };
-  const edge = { x: right, y: y(displayPrice) };
+  // The path and marker always use the real venue price. Only the numeric
+  // label is tweened; animation must not invent a rebound at the live edge.
+  const edge = { x: right, y: y(props.market.price) };
 
   context.beginPath();
   traceMonotone(context, coordinates.length === 1 ? [{ x: left, y: coordinates[0].y }, ...coordinates] : coordinates);

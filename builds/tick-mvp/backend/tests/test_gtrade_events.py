@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from eth_abi import encode
 
 from tick_mvp.core.config import Settings
+from tick_mvp.domain.states import PositionStatus
 from tick_mvp.venues.gtrade.events import GTradeEventStream
 from tick_mvp.venues.gtrade.onchain_events import (
     MARKET_EXECUTED_DATA_TYPES,
@@ -15,6 +16,7 @@ from tick_mvp.venues.gtrade.onchain_events import (
     decode_execution_log,
 )
 from tick_mvp.venues.gtrade.price_stream import GTradePriceStream
+from tick_mvp.venues.gtrade.terminal_monitor import _terminal_event
 from tick_mvp.venues.gtrade.wallet import GTradeWalletExecutor, _close_event_financials
 from tick_mvp.venues.base import VenueTxResult
 
@@ -284,6 +286,47 @@ def test_wallet_preparation_approves_once_before_the_trade(monkeypatch) -> None:
     assert result["allowanceReady"] is True
     assert result["approvalSubmitted"] is True
     assert wallet._allowance_cache[OWNER_A.lower()] > Decimal("10")
+
+
+def test_terminal_event_distinguishes_stop_loss_from_liquidation() -> None:
+    base = {
+        "name": "LimitExecuted",
+        "source": "gtrade_onchain_ws",
+        "present": False,
+        "receivedAt": 1_785_176_993,
+        "transactionHash": "0xabc",
+        "blockNumber": 123,
+        "logIndex": 4,
+        "position": {
+            "trade": {
+                "user": OWNER_A,
+                "pairIndex": 452,
+                "index": 6,
+            }
+        },
+    }
+
+    stopped = _terminal_event(
+        {
+            **base,
+            "details": {"orderType": 5, "amountSentToTrader": "2219538"},
+        }
+    )
+    liquidated = _terminal_event(
+        {
+            **base,
+            "transactionHash": "0xdef",
+            "details": {"orderType": 6, "amountSentToTrader": "0"},
+        }
+    )
+
+    assert stopped is not None
+    assert stopped.reason == "stop_loss"
+    assert stopped.status == PositionStatus.CLOSED
+    assert stopped.returned_collateral_usd == Decimal("2.219538")
+    assert liquidated is not None
+    assert liquidated.reason == "liquidation"
+    assert liquidated.status == PositionStatus.LIQUIDATED
 
 
 def _register_trade(owner: str, *, pair_index: int, position_index: int) -> str:

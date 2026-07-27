@@ -44,7 +44,9 @@ class ExecutionService:
         return {"userId": user_id, "status": "ready", **result}
 
     def execute(self, execution_attempt_id: str) -> dict[str, object]:
+        started = time.perf_counter()
         context = self._repository.load(execution_attempt_id)
+        loaded_at = time.perf_counter()
         if not self._settings.tick_real_execution_enabled:
             LOGGER.info("real execution disabled", extra={"executionAttemptId": execution_attempt_id})
             return {
@@ -53,7 +55,16 @@ class ExecutionService:
                 "reason": "TICK_REAL_EXECUTION_ENABLED=false",
             }
         try:
-            return self._execute_live(context)
+            result = self._execute_live(context)
+            finished_at = time.perf_counter()
+            LOGGER.info(
+                "execution timing executionAttemptId=%s contextLoadMs=%.1f venueAndPersistenceMs=%.1f totalMs=%.1f",
+                execution_attempt_id,
+                (loaded_at - started) * 1000,
+                (finished_at - loaded_at) * 1000,
+                (finished_at - started) * 1000,
+            )
+            return result
         except Exception as exc:
             self._repository.mark_failed(context, f"{type(exc).__name__}: {exc}")
             raise
