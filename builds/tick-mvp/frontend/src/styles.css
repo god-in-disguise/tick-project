@@ -412,9 +412,9 @@ button:disabled {
   height: 48px;
   margin-top: 7px;
   border-radius: 7px;
-  border: 1px solid rgba(231, 240, 237, 0.18);
-  color: var(--text);
-  background: rgba(231, 240, 237, 0.08);
+  border: 1px solid rgba(242, 248, 246, 0.92);
+  color: #071011;
+  background: #f2f8f6;
   font-size: 16px;
   font-weight: 900;
 }
@@ -424,7 +424,7 @@ button:disabled {
 }
 
 .close-button:disabled {
-  opacity: 0.5;
+  opacity: 0.46;
 }
 
 .bottom-nav {

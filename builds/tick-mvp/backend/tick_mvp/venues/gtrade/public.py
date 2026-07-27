@@ -150,6 +150,7 @@ class GTradePublicClient:
                     "activeTapePct": active_pct,
                     "feeHurdlePct": fee_hurdle_pct,
                     "activitySurplusPct": surplus_pct,
+                    "minLeverage": _minimum_execution_leverage(row),
                     "maxLeverage": row.max_leverage,
                     "suggestedLeverage": _suggested_leverage(row.max_leverage),
                     "openingAllowed": bool(live.get("isMarketOpen", True)),
@@ -272,9 +273,20 @@ def normalize_pair(pair_name: str) -> str:
 
 
 def gtrade_execution_leverage(pair: GTradePair, requested: Decimal) -> Decimal:
+    minimum = _minimum_execution_leverage(pair)
+    if requested < minimum or requested > pair.max_leverage:
+        if minimum == pair.max_leverage:
+            raise GTradeError(f"{pair.pair} only supports {minimum}x")
+        raise GTradeError(
+            f"{pair.pair} supports leverage from {minimum}x to {pair.max_leverage}x"
+        )
+    return requested
+
+
+def _minimum_execution_leverage(pair: GTradePair) -> Decimal:
     if pair.raw_symbol.endswith("DEGEN") and pair.max_leverage >= Decimal("500"):
         return Decimal("500")
-    return min(requested, pair.max_leverage)
+    return Decimal("1")
 
 
 def _build_pairs(payload: dict[str, Any]) -> list[GTradePair]:

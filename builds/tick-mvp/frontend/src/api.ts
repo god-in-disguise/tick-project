@@ -125,7 +125,12 @@ export const api = {
 
   markets: async (): Promise<Market[]> => {
     const response = await json<{ markets: Omit<Market, "observations" | "sequence">[] }>("/api/markets");
-    return response.markets.map((market) => ({ ...market, observations: [], sequence: 0 }));
+    return response.markets.map((market) => ({
+      ...market,
+      minLeverage: Number(market.minLeverage ?? 1),
+      observations: [],
+      sequence: 0
+    }));
   },
 
   chart: async (market: string): Promise<{ observations: MarketObservation[]; sequence: number; feedStatus: string }> => {

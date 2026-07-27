@@ -52,7 +52,6 @@ export function App() {
             session={tick.session}
             state={tick.state}
             balances={tick.balances}
-            maxLeverage={tick.activeMarket.maxLeverage}
             settings={tick.settings}
             onSettings={tick.setSettings}
           />

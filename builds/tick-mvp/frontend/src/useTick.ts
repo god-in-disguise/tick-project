@@ -241,14 +241,20 @@ export function useTick() {
         showError(cause);
       }
     }, 5_000);
-    const stateTimer = window.setInterval(refreshState, 250);
     const balanceTimer = window.setInterval(refreshBalances, 5_000);
     return () => {
       window.clearInterval(marketTimer);
-      window.clearInterval(stateTimer);
       window.clearInterval(balanceTimer);
     };
   }, [refreshBalances, refreshState, showError]);
+
+  useEffect(() => {
+    const stateTimer = window.setInterval(
+      refreshState,
+      activePosition?.status === "opening" || activePosition?.status === "closing" ? 100 : 350
+    );
+    return () => window.clearInterval(stateTimer);
+  }, [activePosition?.status, refreshState]);
 
   useEffect(() => {
     if (!activeMarket || activeMarket.observations.length) return;
@@ -495,17 +501,17 @@ function routeMarkets(markets: Market[], desiredLeverage: number): Market[] {
   }
   return [...bySymbol.values()]
     .map((routes) => {
-      const eligible = routes.filter((route) => route.maxLeverage >= desiredLeverage);
-      const candidates = eligible.length ? eligible : routes;
-      return [...candidates].sort((left, right) => {
-        if (!eligible.length && left.maxLeverage !== right.maxLeverage) {
-          return right.maxLeverage - left.maxLeverage;
-        }
+      const eligible = routes.filter(
+        (route) =>
+          desiredLeverage >= (route.minLeverage ?? 1)
+          && desiredLeverage <= route.maxLeverage
+      );
+      return [...eligible].sort((left, right) => {
         if (left.feeHurdlePct !== right.feeHurdlePct) {
           return left.feeHurdlePct - right.feeHurdlePct;
         }
         return right.score - left.score;
-      })[0];
+      })[0] ?? null;
     })
     .filter((market): market is Market => Boolean(market))
     .sort((left, right) => right.score - left.score);

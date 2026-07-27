@@ -19,6 +19,7 @@ export type Market = {
   activeTapePct: number;
   feeHurdlePct: number;
   activitySurplusPct: number;
+  minLeverage: number;
   maxLeverage: number;
   suggestedLeverage: number;
   openingAllowed: boolean;

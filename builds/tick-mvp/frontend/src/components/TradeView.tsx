@@ -37,8 +37,10 @@ export function TradeView(props: Props) {
   const [cue, setCue] = useState<Cue | null>(null);
   const pointer = useRef<{ id: number; x: number; y: number } | null>(null);
   const cueTimer = useRef<number | null>(null);
-  const leverage = Math.min(props.settings.leverage, props.market.maxLeverage);
-  const previewQuote = props.quotes.long ?? props.quotes.short;
+  const previewQuote = [props.quotes.long, props.quotes.short].find(
+    (quote) => quote?.market === props.market.market
+  ) ?? null;
+  const leverage = props.position?.leverage ?? previewQuote?.leverage ?? props.settings.leverage;
   const cost = previewQuote?.estimatedRoundTripCostUsd ?? 0;
   const positionOpening = props.position?.status === "opening";
   const positionClosing = props.position?.status === "closing" || props.busyAction === "close";

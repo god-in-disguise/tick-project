@@ -7,13 +7,12 @@ type Props = {
   session: Session | null;
   state: AccountState | null;
   balances: WalletBalances | null;
-  maxLeverage: number;
   settings: TradeSettings;
   onSettings: (settings: TradeSettings) => void;
 };
 
 export function Profile(props: Props) {
-  const leverageOptions = [25, 50, 100, 500].filter((value) => value <= props.maxLeverage);
+  const leverageOptions = [25, 50, 100, 500];
   const address = props.session?.walletAddress ?? props.balances?.address;
   const completed = props.state?.positions.filter(
     (position) => position.status === "closed" || position.status === "liquidated"
