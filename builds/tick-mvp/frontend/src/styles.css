@@ -329,14 +329,13 @@ button:disabled {
 .execution-dock {
   position: absolute;
   z-index: 3;
-  right: 14px;
-  bottom: 7px;
-  left: 14px;
-  padding: 7px 5px;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: 8px 14px 7px;
   border-top: 0.5px solid rgba(220, 235, 231, 0.12);
-  border-bottom: 0.5px solid rgba(220, 235, 231, 0.08);
-  border-radius: 6px;
-  background: rgba(10, 21, 22, 0.68);
+  border-radius: 0;
+  background: rgba(10, 21, 22, 0.82);
   backdrop-filter: blur(16px) saturate(115%);
   -webkit-backdrop-filter: blur(16px) saturate(115%);
 }
@@ -881,7 +880,7 @@ button:disabled {
   }
 
   .execution-dock {
-    bottom: 6px;
+    bottom: 0;
   }
 
   .pnl-panel {

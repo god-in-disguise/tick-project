@@ -1,4 +1,4 @@
-import { Radar } from "lucide-react";
+import { ChartNoAxesCombined } from "lucide-react";
 
 import { percent, price } from "../format";
 import { themeFor } from "../theme";
@@ -10,11 +10,6 @@ type Props = {
 };
 
 export function Dashboard({ markets, onMarket }: Props) {
-  const tickerCounts = markets.reduce<Record<string, number>>((counts, market) => {
-    counts[market.symbol] = (counts[market.symbol] ?? 0) + 1;
-    return counts;
-  }, {});
-
   return (
     <main className="page">
       <header className="page-header">
@@ -22,7 +17,7 @@ export function Dashboard({ markets, onMarket }: Props) {
           <span>VOLATILITY SCANNER</span>
           <h1>Pulse</h1>
         </div>
-        <Radar size={22} />
+        <ChartNoAxesCombined size={22} />
       </header>
       <div className="scanner-meta">
         <span>Markets moving now</span>
@@ -31,15 +26,12 @@ export function Dashboard({ markets, onMarket }: Props) {
       <section className="hot-market-list">
         {markets.map((market, index) => {
           const theme = themeFor(market.market);
-          const ticker = tickerCounts[market.symbol] > 1
-            ? market.market.replace(/-USD$/, "").replace(/-/g, " ")
-            : market.symbol;
           return (
             <button key={market.market} className="market-row" onClick={() => onMarket(market.market)}>
               <span className="market-rank">{String(index + 1).padStart(2, "0")}</span>
               <span className="market-identity">
-                <strong>{ticker}</strong>
-                <small>{market.name} · {market.maxLeverage}x</small>
+                <strong>{market.symbol}</strong>
+                <small>{market.name}</small>
               </span>
               <span className="activity-track">
                 <i

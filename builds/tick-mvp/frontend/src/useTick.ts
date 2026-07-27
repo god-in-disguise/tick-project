@@ -55,13 +55,23 @@ export function useTick() {
     () => state?.positions.find((position) => ACTIVE_STATUSES.has(position.status)) ?? null,
     [state]
   );
+  const routedMarkets = useMemo(
+    () => routeMarkets(markets, settings.leverage),
+    [markets, settings.leverage]
+  );
 
   const activeMarket = useMemo(
     () => {
-      const marketId = activePosition?.market ?? activeMarketId;
-      return marketId ? markets.find((market) => market.market === marketId) ?? null : null;
+      if (activePosition) {
+        return markets.find((market) => market.market === activePosition.market) ?? null;
+      }
+      if (!activeMarketId) return null;
+      const exact = routedMarkets.find((market) => market.market === activeMarketId);
+      if (exact) return exact;
+      const previous = markets.find((market) => market.market === activeMarketId);
+      return routedMarkets.find((market) => market.symbol === previous?.symbol) ?? routedMarkets[0] ?? null;
     },
-    [activeMarketId, activePosition?.market, markets]
+    [activeMarketId, activePosition, markets, routedMarkets]
   );
 
   const activeQuote = activePosition?.quoteId ? quoteCache.current[activePosition.quoteId] ?? null : null;
@@ -181,12 +191,16 @@ export function useTick() {
         if (!alive) return;
         setSession(nextSession);
         setMarkets(nextMarkets);
-        const firstMarket = nextMarkets[0]?.market;
+        const firstMarket = routeMarkets(nextMarkets, settings.leverage)[0]?.market;
         if (firstMarket) {
           await loadMarketChart(firstMarket);
           if (!alive) return;
           setActiveMarketId(firstMarket);
-          void Promise.allSettled(nextMarkets.slice(1).map((market) => loadMarketChart(market.market)));
+          void Promise.allSettled(
+            nextMarkets
+              .filter((market) => market.market !== firstMarket)
+              .map((market) => loadMarketChart(market.market))
+          );
         }
         await Promise.all([refreshState(), refreshBalances()]);
       } catch (cause) {
@@ -355,7 +369,7 @@ export function useTick() {
 
   const selectMarket = useCallback(async (marketId: string) => {
     if (activePosition || busy) return;
-    const target = markets.find((market) => market.market === marketId);
+    const target = routedMarkets.find((market) => market.market === marketId);
     if (!target) return;
     const latest = target.observations.at(-1);
     if (!latest || latest.receivedTs < Date.now() / 1_000 - 1.5) {
@@ -368,20 +382,22 @@ export function useTick() {
     }
     setClosedResult(null);
     setActiveMarketId(target.market);
-  }, [activePosition, busy, loadMarketChart, markets, showError]);
+  }, [activePosition, busy, loadMarketChart, routedMarkets, showError]);
 
   const shiftMarket = useCallback(async (offset: number) => {
     if (!activeMarket || activePosition || busy) return;
-    const index = markets.findIndex((market) => market.market === activeMarket.market);
-    const next = markets[(index + offset + markets.length) % markets.length];
+    const index = routedMarkets.findIndex((market) => market.market === activeMarket.market);
+    const next = routedMarkets[
+      (index + offset + routedMarkets.length) % routedMarkets.length
+    ];
     if (next) await selectMarket(next.market);
-  }, [activeMarket, activePosition, busy, markets, selectMarket]);
+  }, [activeMarket, activePosition, busy, routedMarkets, selectMarket]);
 
   return {
     session,
     state,
     balances,
-    markets,
+    markets: routedMarkets,
     activeMarket,
     activePosition,
     activeQuote,
@@ -438,6 +454,31 @@ function mergeMarketSummaries(current: Market[], incoming: Market[]): Market[] {
     if (!stable.some((item) => item.market === market.market)) stable.push(market);
   }
   return stable;
+}
+
+function routeMarkets(markets: Market[], desiredLeverage: number): Market[] {
+  const bySymbol = new Map<string, Market[]>();
+  for (const market of markets) {
+    const group = bySymbol.get(market.symbol) ?? [];
+    group.push(market);
+    bySymbol.set(market.symbol, group);
+  }
+  return [...bySymbol.values()]
+    .map((routes) => {
+      const eligible = routes.filter((route) => route.maxLeverage >= desiredLeverage);
+      const candidates = eligible.length ? eligible : routes;
+      return [...candidates].sort((left, right) => {
+        if (!eligible.length && left.maxLeverage !== right.maxLeverage) {
+          return right.maxLeverage - left.maxLeverage;
+        }
+        if (left.feeHurdlePct !== right.feeHurdlePct) {
+          return left.feeHurdlePct - right.feeHurdlePct;
+        }
+        return right.score - left.score;
+      })[0];
+    })
+    .filter((market): market is Market => Boolean(market))
+    .sort((left, right) => right.score - left.score);
 }
 
 function positionNetPnl(position: Position | null, market: Market | null, quote: Quote | null): number | null {

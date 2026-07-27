@@ -180,5 +180,17 @@ export const api = {
 };
 
 export function idempotencyKey(action: string): string {
-  return `${action}-${crypto.randomUUID()}`;
+  const randomUuid = globalThis.crypto?.randomUUID?.();
+  if (randomUuid) return `${action}-${randomUuid}`;
+
+  const entropy = new Uint8Array(12);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(entropy);
+  } else {
+    for (let index = 0; index < entropy.length; index += 1) {
+      entropy[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  const suffix = Array.from(entropy, (value) => value.toString(16).padStart(2, "0")).join("");
+  return `${action}-${Date.now().toString(36)}-${suffix}`;
 }
