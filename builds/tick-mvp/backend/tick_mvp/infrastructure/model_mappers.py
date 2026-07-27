@@ -135,6 +135,7 @@ def position_response(position: Position) -> PositionResponse:
         entryPrice=position.entry_price,
         stopLossPrice=position.stop_loss_price,
         liquidationPrice=position.liquidation_price,
+        terminalReason=(position.payload or {}).get("terminalReason"),
         createdAt=position.created_at,
         updatedAt=position.updated_at,
         openedAt=position.opened_at,

@@ -91,6 +91,7 @@ export type Position = {
   entryPrice: number | null;
   stopLossPrice: number | null;
   liquidationPrice: number | null;
+  terminalReason: "manual_close" | "external_close" | "take_profit" | "stop_loss" | "liquidation" | null;
   createdAt: string;
   updatedAt: string;
   openedAt: string | null;
@@ -148,6 +149,7 @@ export type ClosedResult = {
   label: string;
   pnl: number | null;
   market: string;
+  reason: Position["terminalReason"];
 };
 
 export type TradeSettings = {

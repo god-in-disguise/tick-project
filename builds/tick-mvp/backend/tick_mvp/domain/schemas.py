@@ -195,6 +195,7 @@ class PositionResponse(BaseModel):
     entryPrice: Decimal | None
     stopLossPrice: Decimal | None
     liquidationPrice: Decimal | None
+    terminalReason: str | None = None
     createdAt: datetime
     updatedAt: datetime
     openedAt: datetime | None = None

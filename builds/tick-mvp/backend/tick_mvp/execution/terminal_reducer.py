@@ -85,26 +85,25 @@ class TerminalEventReducer:
                 if position.closed_at is None or event.observed_at < position.closed_at:
                     position.closed_at = event.observed_at
                     existing_event.observed_at = event.observed_at
-                return position.id
-
-            event_type = _event_type(event.reason)
-            session.add(
-                VenueEvent(
-                    id=f"event_{uuid.uuid4().hex}",
-                    position_id=position.id,
-                    execution_attempt_id=None,
-                    venue="gtrade",
-                    event_type=event_type.value,
-                    source=event.source,
-                    chain_id=self._settings.arb_chain_id,
-                    block_number=event.block_number,
-                    block_hash=None,
-                    transaction_hash=event.transaction_hash,
-                    log_index=event.log_index,
-                    payload=event.payload,
-                    observed_at=event.observed_at,
+            else:
+                event_type = _event_type(event.reason)
+                session.add(
+                    VenueEvent(
+                        id=f"event_{uuid.uuid4().hex}",
+                        position_id=position.id,
+                        execution_attempt_id=None,
+                        venue="gtrade",
+                        event_type=event_type.value,
+                        source=event.source,
+                        chain_id=self._settings.arb_chain_id,
+                        block_number=event.block_number,
+                        block_hash=None,
+                        transaction_hash=event.transaction_hash,
+                        log_index=event.log_index,
+                        payload=event.payload,
+                        observed_at=event.observed_at,
+                    )
                 )
-            )
 
             existing_reason = str((position.payload or {}).get("terminalReason") or "")
             use_event_as_terminal_truth = _prefer_terminal_reason(
@@ -129,9 +128,19 @@ class TerminalEventReducer:
                 }
 
             reconciliation = _reconciliation(session, position.id)
+            if reconciliation is None:
+                now = datetime.now(UTC)
+                reconciliation = Reconciliation(
+                    id=f"recon_{uuid.uuid4().hex}",
+                    position_id=position.id,
+                    status=ReconciliationStatus.PENDING.value,
+                    payload={},
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(reconciliation)
             if (
                 use_event_as_terminal_truth
-                and reconciliation is not None
                 and event.returned_collateral_usd is not None
             ):
                 reconciliation.status = ReconciliationStatus.VENUE_ACCOUNTED.value

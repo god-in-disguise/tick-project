@@ -22,6 +22,14 @@ const DEFAULT_SETTINGS: TradeSettings = { ticketUsd: 10, leverage: 500, maxLossU
 
 type Quotes = { long: Quote | null; short: Quote | null };
 
+function terminalLabel(position: Position, pnl: number | null = null): string {
+  if (position.terminalReason === "liquidation") return "Liquidated";
+  if (position.terminalReason === "stop_loss") return "Stopped";
+  if (position.terminalReason === "take_profit") return "Target hit";
+  if (pnl === null) return "Closed";
+  return pnl >= 0 ? "Net profit" : "Net loss";
+}
+
 export function useTick() {
   const [session, setSession] = useState<Session | null>(null);
   const [state, setState] = useState<AccountState | null>(null);
@@ -145,9 +153,10 @@ export function useTick() {
               pendingReconciliations.current.add(reconciliation.id);
               setClosedResult({
                 id: reconciliation.id,
-                label: terminal.status === "liquidated" ? "Liquidated" : "Closed",
+                label: terminalLabel(terminal),
                 pnl: null,
-                market: terminal.market
+                market: terminal.market,
+                reason: terminal.terminalReason
               });
             }
             return;
@@ -156,14 +165,15 @@ export function useTick() {
           shownReconciliations.current.add(reconciliation.id);
           setClosedResult({
             id: reconciliation.id,
-            label: terminal.status === "liquidated" ? "Liquidated" : pnl >= 0 ? "Net profit" : "Net loss",
+            label: terminalLabel(terminal, pnl),
             pnl,
-            market: terminal.market
+            market: terminal.market,
+            reason: terminal.terminalReason
           });
           if (resultTimer.current) window.clearTimeout(resultTimer.current);
           resultTimer.current = window.setTimeout(
             () => setClosedResult((current) => current?.id === reconciliation.id ? null : current),
-            terminal.status === "liquidated" ? 5_000 : 3_200
+            terminal.terminalReason === "liquidation" ? 4_600 : 3_800
           );
           void refreshBalances();
         }

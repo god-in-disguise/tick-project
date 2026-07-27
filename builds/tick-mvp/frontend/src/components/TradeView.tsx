@@ -162,8 +162,14 @@ export function TradeView(props: Props) {
         ) : null}
 
         {props.closedResult ? (
-          <div className="result-pop" role="status">
-            <span>{props.closedResult.label}</span>
+          <div
+            className={`result-pop result-${props.closedResult.reason ?? "closed"}`}
+            role="status"
+          >
+            <div className="result-copy">
+              <span>{props.closedResult.label}</span>
+              <small>{props.closedResult.market}</small>
+            </div>
             <strong
               className={
                 props.closedResult.pnl === null
@@ -175,7 +181,9 @@ export function TradeView(props: Props) {
             >
               {props.closedResult.pnl === null ? "Settling" : signedMoney(props.closedResult.pnl)}
             </strong>
-            <small>{props.closedResult.market}</small>
+            <small className="result-state">
+              {props.closedResult.pnl === null ? "venue confirmed" : "final net"}
+            </small>
           </div>
         ) : null}
 
