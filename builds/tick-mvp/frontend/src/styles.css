@@ -401,11 +401,12 @@ button:disabled {
   display: grid;
   grid-template-columns: 1fr 1.3fr 1fr;
   align-items: center;
-  height: calc(52px + env(safe-area-inset-bottom));
-  margin: 3px 12px 2px;
-  padding: 4px 4px env(safe-area-inset-bottom);
+  align-self: start;
+  height: 52px;
+  margin: 6px 12px 0;
+  padding: 4px;
   border: 0.5px solid var(--line);
-  border-radius: 24px;
+  border-radius: 26px;
   background: rgba(17, 29, 31, 0.98);
   min-width: 0;
   overflow: hidden;
@@ -872,7 +873,7 @@ button:disabled {
   }
 
   .bottom-nav {
-    height: calc(53px + env(safe-area-inset-bottom));
+    height: 52px;
   }
 
   .bottom-nav button {
