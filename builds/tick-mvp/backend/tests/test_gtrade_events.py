@@ -17,7 +17,12 @@ from tick_mvp.venues.gtrade.onchain_events import (
 )
 from tick_mvp.venues.gtrade.price_stream import GTradePriceStream
 from tick_mvp.venues.gtrade.terminal_monitor import _terminal_event
-from tick_mvp.venues.gtrade.wallet import GTradeWalletExecutor, _close_event_financials
+from tick_mvp.venues.gtrade.wallet import (
+    GTradeWalletExecutor,
+    _close_event_financials,
+    _event_detail_price,
+    _position_stop_loss_price,
+)
 from tick_mvp.venues.base import VenueTxResult
 
 
@@ -233,6 +238,16 @@ def test_direct_close_cashflow_produces_immediate_net_result() -> None:
 
     assert str(cashflow) == "7.492387"
     assert str(pnl) == "-2.507613"
+
+
+def test_open_confirmation_uses_actual_venue_risk_levels() -> None:
+    position = {"trade": {"sl": 4_846_519_041_311}}
+    position_wait = {
+        "event": {"details": {"liquidationPrice": "4846753728828"}}
+    }
+
+    assert str(_position_stop_loss_price(position)) == "484.6519041311"
+    assert str(_event_detail_price(position_wait, "liquidationPrice")) == "484.6753728828"
 
 
 def test_wallet_preparation_caches_nonce_and_existing_allowance(monkeypatch) -> None:

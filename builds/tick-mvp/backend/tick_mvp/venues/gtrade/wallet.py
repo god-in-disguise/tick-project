@@ -171,14 +171,19 @@ class GTradeWalletExecutor:
         position = position_wait.get("position")
         venue_position_id = _venue_position_id(pair.pair_index, position)
         entry = _position_entry_price(position) or price
+        confirmed_stop_loss = _position_stop_loss_price(position) or stop_loss_price
+        confirmed_liquidation = (
+            _event_detail_price(position_wait, "liquidationPrice")
+            or _decimal_or_none(quote_payload.get("liquidationPrice"))
+        )
         opened_at = _position_opened_at(position) or datetime.now(UTC)
         return VenueOpenResult(
             status="open" if position else "pending_execution",
             tx=tx,
             venue_position_id=venue_position_id,
             entry_price=entry,
-            liquidation_price=_decimal_or_none(quote_payload.get("liquidationPrice")),
-            stop_loss_price=stop_loss_price,
+            liquidation_price=confirmed_liquidation,
+            stop_loss_price=confirmed_stop_loss,
             opened_at=opened_at if position else None,
             account_balance_before_usd=account_balance_before,
             payload={
@@ -736,6 +741,22 @@ def _position_entry_price(position: dict[str, Any] | None) -> Decimal | None:
     if not position:
         return None
     value = position.get("trade", {}).get("openPrice")
+    if value is None:
+        return None
+    return Decimal(str(value)) / Decimal(10**10)
+
+
+def _position_stop_loss_price(position: dict[str, Any] | None) -> Decimal | None:
+    if not position:
+        return None
+    value = position.get("trade", {}).get("sl")
+    if not value:
+        return None
+    return Decimal(str(value)) / Decimal(10**10)
+
+
+def _event_detail_price(position_wait: dict[str, Any], field: str) -> Decimal | None:
+    value = ((position_wait.get("event") or {}).get("details") or {}).get(field)
     if value is None:
         return None
     return Decimal(str(value)) / Decimal(10**10)
