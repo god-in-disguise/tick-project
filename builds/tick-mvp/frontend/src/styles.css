@@ -445,7 +445,7 @@ button:disabled {
 
 @media (min-height: 780px) and (max-width: 699px) {
   .bottom-nav {
-    transform: translateY(10px);
+    transform: translateY(22px);
   }
 }
 
