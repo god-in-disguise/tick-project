@@ -32,6 +32,7 @@ class ExecutionContext:
     leverage: Decimal
     notional_usd: Decimal
     stop_loss_price: Decimal | None
+    take_profit_price: Decimal | None
     liquidation_price: Decimal | None
     venue_position_id: str | None
     quote_payload: dict[str, Any]
@@ -66,6 +67,7 @@ class ExecutionRepository:
                 leverage = Decimal(quote.leverage)
                 notional_usd = Decimal(quote.notional_usd)
                 stop_loss_price = Decimal(quote.stop_loss_price) if quote.stop_loss_price is not None else None
+                take_profit_price = Decimal(quote.take_profit_price) if quote.take_profit_price is not None else None
                 liquidation_price = Decimal(quote.liquidation_price) if quote.liquidation_price is not None else None
                 quote_payload = dict(quote.payload or {})
                 position_id = position.id
@@ -79,6 +81,7 @@ class ExecutionRepository:
                 leverage = Decimal(position.leverage)
                 notional_usd = Decimal(position.notional_usd)
                 stop_loss_price = Decimal(position.stop_loss_price) if position.stop_loss_price is not None else None
+                take_profit_price = Decimal(position.take_profit_price) if position.take_profit_price is not None else None
                 liquidation_price = Decimal(position.liquidation_price) if position.liquidation_price is not None else None
                 quote_payload = dict((quote.payload if quote else {}) or {})
                 position_id = position.id
@@ -101,6 +104,7 @@ class ExecutionRepository:
                 leverage=leverage,
                 notional_usd=notional_usd,
                 stop_loss_price=stop_loss_price,
+                take_profit_price=take_profit_price,
                 liquidation_price=liquidation_price,
                 venue_position_id=venue_position_id,
                 quote_payload=quote_payload,
@@ -166,6 +170,7 @@ class ExecutionRepository:
                 position.entry_price = result.entry_price
                 position.liquidation_price = result.liquidation_price or position.liquidation_price
                 position.stop_loss_price = result.stop_loss_price or position.stop_loss_price
+                position.take_profit_price = result.take_profit_price or position.take_profit_price
                 position.opened_at = result.opened_at
                 intent.status = TradeIntentStatus.CONSUMED.value
             elif result.tx.status == "confirmed":

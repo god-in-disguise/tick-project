@@ -160,10 +160,17 @@ export const api = {
     };
   },
 
-  quote: (market: string, side: Side, ticketUsd: number, leverage: number, maxLossUsd: number) =>
+  quote: (
+    market: string,
+    side: Side,
+    ticketUsd: number,
+    leverage: number,
+    maxLossUsd: number | null,
+    takeProfitUsd: number | null
+  ) =>
     json<Quote>("/api/trade/quote", {
       method: "POST",
-      body: JSON.stringify({ market, side, ticketUsd, leverage, maxLossUsd })
+      body: JSON.stringify({ market, side, ticketUsd, leverage, maxLossUsd, takeProfitUsd })
     }),
 
   open: (quoteId: string, idempotencyKey: string) =>

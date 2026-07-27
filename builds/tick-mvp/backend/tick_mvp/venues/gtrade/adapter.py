@@ -35,10 +35,19 @@ class GTradeVenue:
         ticket_usd: Decimal,
         leverage: Decimal,
         max_loss_usd: Decimal | None,
+        take_profit_usd: Decimal | None,
     ) -> VenueQuote:
         pair = self._public.pair(market)
         live = self._public.price(pair.pair)
-        return estimate_open(pair, live, side, ticket_usd, leverage, max_loss_usd)
+        return estimate_open(
+            pair,
+            live,
+            side,
+            ticket_usd,
+            leverage,
+            max_loss_usd,
+            take_profit_usd,
+        )
 
     def open_position(
         self,
@@ -50,6 +59,7 @@ class GTradeVenue:
         leverage: Decimal,
         quote_payload: dict[str, Any],
         stop_loss_price: Decimal | None,
+        take_profit_price: Decimal | None,
         on_transaction_prepared: TransactionPreparedHandler | None = None,
     ) -> VenueOpenResult:
         pair = self._public.pair(market)
@@ -61,6 +71,7 @@ class GTradeVenue:
             leverage=leverage,
             quote_payload=quote_payload,
             stop_loss_price=stop_loss_price,
+            take_profit_price=take_profit_price,
             on_transaction_prepared=on_transaction_prepared,
         )
 

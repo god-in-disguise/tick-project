@@ -8,6 +8,7 @@ type Props = {
   theme: Theme;
   entry: number | null;
   stopLoss: number | null;
+  takeProfit: number | null;
   liquidation: number | null;
   side: Side | null;
 };
@@ -132,8 +133,9 @@ function draw(
   }
 
   overlay(context, props.entry, domain, y, right, props.side === "short" ? "#ff6070" : "#38d39f", "ENTRY");
-  overlay(context, props.stopLoss, domain, y, right, "#ffc166", "SL");
-  overlay(context, props.liquidation, domain, y, right, "#ff6070", "LIQ");
+  overlay(context, props.takeProfit, domain, y, right, "#38d39f", "TP", 0);
+  overlay(context, props.stopLoss, domain, y, right, "#ffc166", "SL", 1);
+  overlay(context, props.liquidation, domain, y, right, "#ff6070", "LIQ", 2);
 
   const coordinates = source.map((point) => ({ x: x(point.receivedTs), y: y(point.price) }));
   const lastReal = coordinates.at(-1) ?? { x: right, y: y(props.market.price) };
@@ -255,7 +257,8 @@ function overlay(
   y: (value: number) => number,
   right: number,
   color: string,
-  label: string
+  label: string,
+  edgeSlot = 0
 ) {
   if (!value || !Number.isFinite(value)) return;
   if (value < domain.min || value > domain.max) {
@@ -263,7 +266,10 @@ function overlay(
     context.font = "800 9px -apple-system, BlinkMacSystemFont, sans-serif";
     context.textAlign = "left";
     context.textBaseline = value > domain.max ? "top" : "bottom";
-    context.fillText(`${label} ${value > domain.max ? "↑" : "↓"}`, 8, value > domain.max ? 25 : context.canvas.height / (window.devicePixelRatio || 1) - 21);
+    const edgeY = value > domain.max
+      ? 25 + edgeSlot * 14
+      : context.canvas.height / (window.devicePixelRatio || 1) - 21 - edgeSlot * 14;
+    context.fillText(`${label} ${value > domain.max ? "↑" : "↓"}`, 8, edgeY);
     return;
   }
   context.save();

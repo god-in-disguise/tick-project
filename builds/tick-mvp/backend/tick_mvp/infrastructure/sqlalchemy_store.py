@@ -210,6 +210,7 @@ class SQLAlchemyStore:
                 ticket_usd=request.ticketUsd,
                 leverage=request.leverage,
                 max_loss_usd=request.maxLossUsd,
+                take_profit_usd=request.takeProfitUsd,
             )
             venue = venue_quote.venue
             market = venue_quote.market
@@ -222,12 +223,14 @@ class SQLAlchemyStore:
             estimated_round_trip = venue_quote.estimated_round_trip_cost_usd
             liquidation_price = venue_quote.liquidation_price
             stop_loss_price = venue_quote.stop_loss_price
+            take_profit_price = venue_quote.take_profit_price
             opening_allowed = venue_quote.opening_allowed
             payload = {
                 **venue_quote.payload,
                 "quoteSource": "live_venue",
                 "liquidationPrice": str(liquidation_price) if liquidation_price is not None else None,
                 "stopLossPrice": str(stop_loss_price) if stop_loss_price is not None else None,
+                "takeProfitPrice": str(take_profit_price) if take_profit_price is not None else None,
             }
         else:
             venue = self.default_venue
@@ -241,6 +244,7 @@ class SQLAlchemyStore:
             estimated_round_trip = estimated_open + estimated_close
             liquidation_price = None
             stop_loss_price = None
+            take_profit_price = None
             opening_allowed = True
             payload = {"quoteSource": "static_placeholder"}
         quote = Quote(
@@ -253,11 +257,13 @@ class SQLAlchemyStore:
             leverage=leverage,
             notional_usd=notional,
             max_loss_usd=request.maxLossUsd,
+            take_profit_usd=request.takeProfitUsd,
             estimated_open_cost_usd=estimated_open,
             estimated_close_cost_usd=estimated_close,
             estimated_round_trip_cost_usd=estimated_round_trip,
             liquidation_price=liquidation_price,
             stop_loss_price=stop_loss_price,
+            take_profit_price=take_profit_price,
             opening_allowed=opening_allowed,
             risk_decision_id=_id("risk"),
             payload=payload,
@@ -338,6 +344,7 @@ class SQLAlchemyStore:
                 notional_usd=quote.notional_usd,
                 entry_price=None,
                 stop_loss_price=quote.stop_loss_price,
+                take_profit_price=quote.take_profit_price,
                 liquidation_price=quote.liquidation_price,
                 payload={},
                 created_at=now,

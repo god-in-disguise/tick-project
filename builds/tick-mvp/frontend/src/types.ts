@@ -68,11 +68,13 @@ export type Quote = {
   leverage: number;
   notionalUsd: number;
   maxLossUsd: number | null;
+  takeProfitUsd: number | null;
   estimatedOpenCostUsd: number;
   estimatedCloseCostUsd: number;
   estimatedRoundTripCostUsd: number;
   liquidationPrice: number | null;
   stopLossPrice: number | null;
+  takeProfitPrice: number | null;
   openingAllowed: boolean;
   createdAt: string;
   expiresAt: string;
@@ -90,6 +92,7 @@ export type Position = {
   notionalUsd: number;
   entryPrice: number | null;
   stopLossPrice: number | null;
+  takeProfitPrice: number | null;
   liquidationPrice: number | null;
   terminalReason: "manual_close" | "external_close" | "take_profit" | "stop_loss" | "liquidation" | null;
   createdAt: string;
@@ -156,6 +159,9 @@ export type TradeSettings = {
   ticketUsd: number;
   leverage: number;
   maxLossUsd: number;
+  stopLossEnabled: boolean;
+  takeProfitUsd: number;
+  takeProfitEnabled: boolean;
 };
 
 export type Theme = {

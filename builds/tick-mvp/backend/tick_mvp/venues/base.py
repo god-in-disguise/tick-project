@@ -28,6 +28,7 @@ class VenueQuote:
     estimated_round_trip_cost_usd: Decimal
     liquidation_price: Decimal | None
     stop_loss_price: Decimal | None
+    take_profit_price: Decimal | None
     opening_allowed: bool
     payload: dict[str, Any]
 
@@ -51,6 +52,7 @@ class VenueOpenResult:
     entry_price: Decimal | None
     liquidation_price: Decimal | None
     stop_loss_price: Decimal | None
+    take_profit_price: Decimal | None
     opened_at: datetime | None
     account_balance_before_usd: Decimal | None
     payload: dict[str, Any]

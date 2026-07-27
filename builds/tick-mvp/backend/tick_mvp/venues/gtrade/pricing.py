@@ -15,6 +15,7 @@ def estimate_open(
     ticket_usd: Decimal,
     requested_leverage: Decimal,
     max_loss_usd: Decimal | None,
+    take_profit_usd: Decimal | None,
 ) -> VenueQuote:
     if ticket_usd <= 0:
         raise GTradeError("ticket must be positive")
@@ -38,6 +39,7 @@ def estimate_open(
 
     liquidation = _liquidation_estimate(execution_price, side, leverage)
     stop_loss = _stop_loss_estimate(execution_price, side, notional, max_loss_usd)
+    take_profit = _take_profit_estimate(execution_price, side, notional, take_profit_usd)
     return VenueQuote(
         venue="gtrade",
         market=pair.pair,
@@ -50,6 +52,7 @@ def estimate_open(
         estimated_round_trip_cost_usd=round_trip,
         liquidation_price=liquidation,
         stop_loss_price=stop_loss,
+        take_profit_price=take_profit,
         opening_allowed=bool(live.get("isMarketOpen", True)),
         payload={
             "pairIndex": pair.pair_index,
@@ -89,3 +92,14 @@ def _stop_loss_estimate(
     distance = max_loss_usd / notional
     return entry * (Decimal(1) - distance if side == TradeSide.LONG else Decimal(1) + distance)
 
+
+def _take_profit_estimate(
+    entry: Decimal,
+    side: TradeSide,
+    notional: Decimal,
+    take_profit_usd: Decimal | None,
+) -> Decimal | None:
+    if take_profit_usd is None or take_profit_usd <= 0 or notional <= 0:
+        return None
+    distance = take_profit_usd / notional
+    return entry * (Decimal(1) + distance if side == TradeSide.LONG else Decimal(1) - distance)

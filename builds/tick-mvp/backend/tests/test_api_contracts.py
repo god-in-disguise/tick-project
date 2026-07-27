@@ -16,10 +16,12 @@ def test_quote_open_close_contract() -> None:
             ticketUsd="50",
             leverage="100",
             maxLossUsd="10",
+            takeProfitUsd="20",
         ),
     )
     assert quote.market == "BTCDEGEN-USD"
     assert quote.notionalUsd == 5000
+    assert quote.takeProfitUsd == 20
     assert quote.openingAllowed is True
 
     opened = store.accept_open("dev-user", OpenRequest(quoteId=quote.quoteId, idempotencyKey="open-key-0001"))

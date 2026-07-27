@@ -25,6 +25,7 @@ class QuoteRequest(BaseModel):
     ticketUsd: Decimal = Field(gt=0)
     leverage: Decimal = Field(gt=0)
     maxLossUsd: Decimal | None = Field(default=None, gt=0)
+    takeProfitUsd: Decimal | None = Field(default=None, gt=0)
 
 
 class DevSessionRequest(BaseModel):
@@ -89,11 +90,13 @@ class QuoteResponse(BaseModel):
     leverage: Decimal
     notionalUsd: Decimal
     maxLossUsd: Decimal | None
+    takeProfitUsd: Decimal | None
     estimatedOpenCostUsd: Decimal
     estimatedCloseCostUsd: Decimal
     estimatedRoundTripCostUsd: Decimal
     liquidationPrice: Decimal | None
     stopLossPrice: Decimal | None
+    takeProfitPrice: Decimal | None
     openingAllowed: bool
     riskDecisionId: str
     createdAt: datetime
@@ -194,6 +197,7 @@ class PositionResponse(BaseModel):
     notionalUsd: Decimal
     entryPrice: Decimal | None
     stopLossPrice: Decimal | None
+    takeProfitPrice: Decimal | None
     liquidationPrice: Decimal | None
     terminalReason: str | None = None
     createdAt: datetime

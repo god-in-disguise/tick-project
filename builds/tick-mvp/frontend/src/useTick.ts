@@ -18,7 +18,14 @@ import type {
 const SETTINGS_KEY = "tick.trade.settings";
 const QUOTES_KEY = "tick.trade.quotes";
 const ACTIVE_STATUSES = new Set(["opening", "open", "closing", "unknown"]);
-const DEFAULT_SETTINGS: TradeSettings = { ticketUsd: 10, leverage: 500, maxLossUsd: 10 };
+const DEFAULT_SETTINGS: TradeSettings = {
+  ticketUsd: 10,
+  leverage: 500,
+  maxLossUsd: 10,
+  stopLossEnabled: true,
+  takeProfitUsd: 10,
+  takeProfitEnabled: false
+};
 
 type Quotes = { long: Quote | null; short: Quote | null };
 
@@ -289,10 +296,12 @@ export function useTick() {
     const refresh = async () => {
       if (quoteBlocked) return;
       const leverage = Math.min(settings.leverage, activeMarket.maxLeverage);
+      const maxLossUsd = settings.stopLossEnabled ? settings.maxLossUsd : null;
+      const takeProfitUsd = settings.takeProfitEnabled ? settings.takeProfitUsd : null;
       try {
         const [long, short] = await Promise.all([
-          api.quote(activeMarket.market, "long", settings.ticketUsd, leverage, settings.maxLossUsd),
-          api.quote(activeMarket.market, "short", settings.ticketUsd, leverage, settings.maxLossUsd)
+          api.quote(activeMarket.market, "long", settings.ticketUsd, leverage, maxLossUsd, takeProfitUsd),
+          api.quote(activeMarket.market, "short", settings.ticketUsd, leverage, maxLossUsd, takeProfitUsd)
         ]);
         if (!canceled) {
           rememberQuote(long);
@@ -321,6 +330,9 @@ export function useTick() {
     rememberQuote,
     settings.leverage,
     settings.maxLossUsd,
+    settings.stopLossEnabled,
+    settings.takeProfitEnabled,
+    settings.takeProfitUsd,
     settings.ticketUsd,
     showError
   ]);
@@ -337,13 +349,21 @@ export function useTick() {
     setBusyAction(side);
     try {
       let quote = side === "long" ? quotes.long : quotes.short;
-      if (!quote || new Date(quote.expiresAt).getTime() < Date.now() + 650) {
+      const leverage = Math.min(settings.leverage, activeMarket.maxLeverage);
+      const maxLossUsd = settings.stopLossEnabled ? settings.maxLossUsd : null;
+      const takeProfitUsd = settings.takeProfitEnabled ? settings.takeProfitUsd : null;
+      if (
+        !quote ||
+        new Date(quote.expiresAt).getTime() < Date.now() + 650 ||
+        !quoteMatchesSettings(quote, settings.ticketUsd, leverage, maxLossUsd, takeProfitUsd)
+      ) {
         quote = await api.quote(
           activeMarket.market,
           side,
           settings.ticketUsd,
-          Math.min(settings.leverage, activeMarket.maxLeverage),
-          settings.maxLossUsd
+          leverage,
+          maxLossUsd,
+          takeProfitUsd
         );
         rememberQuote(quote);
       }
@@ -531,6 +551,25 @@ function readSettings(): TradeSettings {
   } catch {
     return DEFAULT_SETTINGS;
   }
+}
+
+function quoteMatchesSettings(
+  quote: Quote,
+  ticketUsd: number,
+  leverage: number,
+  maxLossUsd: number | null,
+  takeProfitUsd: number | null
+): boolean {
+  return (
+    Number(quote.ticketUsd) === ticketUsd &&
+    Number(quote.leverage) === leverage &&
+    nullableNumber(quote.maxLossUsd) === maxLossUsd &&
+    nullableNumber(quote.takeProfitUsd) === takeProfitUsd
+  );
+}
+
+function nullableNumber(value: number | null): number | null {
+  return value === null ? null : Number(value);
 }
 
 function readQuotes(): Record<string, Quote> {

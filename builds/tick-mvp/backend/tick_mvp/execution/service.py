@@ -79,6 +79,7 @@ class ExecutionService:
                 leverage=context.leverage,
                 quote_payload=context.quote_payload,
                 stop_loss_price=context.stop_loss_price,
+                take_profit_price=context.take_profit_price,
                 on_transaction_prepared=lambda tx_hash, nonce: self._repository.mark_broadcast_pending(
                     context,
                     tx_hash=tx_hash,

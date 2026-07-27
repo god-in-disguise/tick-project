@@ -111,6 +111,7 @@ class GTradeWalletExecutor:
         leverage: Decimal,
         quote_payload: dict[str, Any],
         stop_loss_price: Decimal | None,
+        take_profit_price: Decimal | None,
         on_transaction_prepared: TransactionPreparedHandler | None = None,
     ) -> VenueOpenResult:
         started = time.perf_counter()
@@ -131,7 +132,7 @@ class GTradeWalletExecutor:
             0,
             _usdc_units(ticket_usd),
             _price_units(price),
-            0,
+            _price_units(take_profit_price) if take_profit_price and take_profit_price > 0 else 0,
             _price_units(stop_loss_price) if stop_loss_price and stop_loss_price > 0 else 0,
             False,
             0,
@@ -172,6 +173,7 @@ class GTradeWalletExecutor:
         venue_position_id = _venue_position_id(pair.pair_index, position)
         entry = _position_entry_price(position) or price
         confirmed_stop_loss = _position_stop_loss_price(position) or stop_loss_price
+        confirmed_take_profit = _position_take_profit_price(position) or take_profit_price
         confirmed_liquidation = (
             _event_detail_price(position_wait, "liquidationPrice")
             or _decimal_or_none(quote_payload.get("liquidationPrice"))
@@ -184,6 +186,7 @@ class GTradeWalletExecutor:
             entry_price=entry,
             liquidation_price=confirmed_liquidation,
             stop_loss_price=confirmed_stop_loss,
+            take_profit_price=confirmed_take_profit,
             opened_at=opened_at if position else None,
             account_balance_before_usd=account_balance_before,
             payload={
@@ -750,6 +753,15 @@ def _position_stop_loss_price(position: dict[str, Any] | None) -> Decimal | None
     if not position:
         return None
     value = position.get("trade", {}).get("sl")
+    if not value:
+        return None
+    return Decimal(str(value)) / Decimal(10**10)
+
+
+def _position_take_profit_price(position: dict[str, Any] | None) -> Decimal | None:
+    if not position:
+        return None
+    value = position.get("trade", {}).get("tp")
     if not value:
         return None
     return Decimal(str(value)) / Decimal(10**10)

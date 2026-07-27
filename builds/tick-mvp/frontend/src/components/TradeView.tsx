@@ -39,7 +39,6 @@ export function TradeView(props: Props) {
   const cueTimer = useRef<number | null>(null);
   const leverage = Math.min(props.settings.leverage, props.market.maxLeverage);
   const previewQuote = props.quotes.long ?? props.quotes.short;
-  const exposure = previewQuote?.notionalUsd ?? props.settings.ticketUsd * leverage;
   const cost = previewQuote?.estimatedRoundTripCostUsd ?? 0;
   const positionOpening = props.position?.status === "opening";
   const positionClosing = props.position?.status === "closing" || props.busyAction === "close";
@@ -125,6 +124,7 @@ export function TradeView(props: Props) {
           theme={theme}
           entry={props.position?.entryPrice ?? null}
           stopLoss={props.position?.stopLossPrice ?? props.quote?.stopLossPrice ?? null}
+          takeProfit={props.position?.takeProfitPrice ?? props.quote?.takeProfitPrice ?? null}
           liquidation={props.position?.liquidationPrice ?? props.quote?.liquidationPrice ?? null}
           side={props.position?.side ?? null}
         />
@@ -194,15 +194,15 @@ export function TradeView(props: Props) {
             {props.position ? (
               <>
                 <Term label="Collateral" value={money(props.position.ticketUsd)} />
-                <Term label="Venue SL" value={price(props.position.stopLossPrice ?? 0)} />
                 <Term label="SL away" value={distance(props.market.price, props.position.stopLossPrice)} />
+                <Term label="TP away" value={distance(props.market.price, props.position.takeProfitPrice)} />
                 <Term label="Liq away" value={distance(props.market.price, props.position.liquidationPrice)} />
               </>
             ) : (
               <>
                 <Term label="Collateral" value={money(props.settings.ticketUsd)} />
-                <Term label="Max loss" value={money(props.settings.maxLossUsd)} />
-                <Term label="Exposure" value={money(exposure)} />
+                <Term label="Stop loss" value={props.settings.stopLossEnabled ? money(props.settings.maxLossUsd) : "Off"} />
+                <Term label="Take profit" value={props.settings.takeProfitEnabled ? money(props.settings.takeProfitUsd) : "Off"} />
                 <Term label="Est. cost" value={money(cost)} />
               </>
             )}

@@ -110,18 +110,53 @@ export function Profile(props: Props) {
           ))}
         </div>
 
-        <label>Venue stop loss</label>
-        <div className="segmented">
-          {[5, 10, 20, 50].map((value) => (
-            <button
-              key={value}
-              className={props.settings.maxLossUsd === value ? "active" : ""}
-              onClick={() => props.onSettings({ ...props.settings, maxLossUsd: value })}
-            >
-              ${value}
-            </button>
-          ))}
-        </div>
+        <SettingToggle
+          label="Venue stop loss"
+          enabled={props.settings.stopLossEnabled}
+          onToggle={() =>
+            props.onSettings({
+              ...props.settings,
+              stopLossEnabled: !props.settings.stopLossEnabled
+            })
+          }
+        />
+        {props.settings.stopLossEnabled ? (
+          <div className="segmented">
+            {[5, 10, 20, 50].map((value) => (
+              <button
+                key={value}
+                className={props.settings.maxLossUsd === value ? "active" : ""}
+                onClick={() => props.onSettings({ ...props.settings, maxLossUsd: value })}
+              >
+                ${value}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <SettingToggle
+          label="Venue take profit"
+          enabled={props.settings.takeProfitEnabled}
+          onToggle={() =>
+            props.onSettings({
+              ...props.settings,
+              takeProfitEnabled: !props.settings.takeProfitEnabled
+            })
+          }
+        />
+        {props.settings.takeProfitEnabled ? (
+          <div className="segmented">
+            {[5, 10, 20, 50].map((value) => (
+              <button
+                key={value}
+                className={props.settings.takeProfitUsd === value ? "active" : ""}
+                onClick={() => props.onSettings({ ...props.settings, takeProfitUsd: value })}
+              >
+                ${value}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <div className="section-heading">
@@ -165,6 +200,32 @@ export function Profile(props: Props) {
         <div><span>Wallet</span><strong>Platform custody</strong></div>
       </section>
     </main>
+  );
+}
+
+function SettingToggle({
+  label,
+  enabled,
+  onToggle
+}: {
+  label: string;
+  enabled: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="setting-toggle-row">
+      <label>{label}</label>
+      <button
+        className="setting-toggle"
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        aria-label={`${label} ${enabled ? "on" : "off"}`}
+        onClick={onToggle}
+      >
+        <span />
+      </button>
+    </div>
   );
 }
 

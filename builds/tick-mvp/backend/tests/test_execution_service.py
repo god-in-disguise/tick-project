@@ -29,6 +29,7 @@ class FakeRepository:
             leverage=Decimal("500"),
             notional_usd=Decimal("5000"),
             stop_loss_price=None,
+            take_profit_price=None,
             liquidation_price=None,
             venue_position_id=None,
             quote_payload={},
