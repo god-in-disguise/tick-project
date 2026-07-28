@@ -44,7 +44,7 @@ await authenticate(page);
 await page.locator(".trade-view").waitFor({ timeout: 20_000 });
 await page.waitForTimeout(1_000);
 await page.locator(".market-context").waitFor();
-await page.locator(".move-cost-meter").waitFor();
+await page.locator(".tape-heat").waitFor();
 await page.screenshot({ path: "/tmp/tick-trade.png", fullPage: true });
 
 await page.getByRole("button", { name: "Pulse" }).click();
@@ -59,7 +59,7 @@ await page.locator(`canvas[aria-label="${switchSymbol} live price chart"]`).wait
 
 await page.getByRole("button", { name: "Pulse" }).click();
 await page.locator(".hot-market-list").waitFor();
-assert.ok(await page.locator(".hot-market-list .move-cost-meter").count() > 0);
+assert.ok(await page.locator(".hot-market-list .tape-heat").count() > 0);
 assert.equal(
   await page.locator(".page").evaluate((element) => element.scrollWidth - element.clientWidth),
   0,
@@ -72,6 +72,13 @@ await page.locator(".profile-page").waitFor();
 assert.notEqual(await page.locator(".profile-page .page-header h1").innerText(), "Me");
 assert.equal(await page.locator(".profile-page .page-header > svg").count(), 0);
 await page.screenshot({ path: "/tmp/tick-profile.png", fullPage: true });
+await page.getByRole("button", { name: "Deposit" }).click();
+await page.getByRole("heading", { name: "Deposit USDC" }).waitFor();
+const depositAddress = page.locator(".wallet-address-full > span");
+assert.match(await depositAddress.innerText(), /^0x[0-9a-fA-F]{40}$/);
+await page.getByRole("button", { name: "Copy deposit address" }).click();
+await page.getByRole("button", { name: "Address copied" }).waitFor();
+await page.getByRole("button", { name: "Close wallet" }).click();
 await page.locator(".preset-summary").click();
 await page.locator(".preset-sheet").waitFor();
 await page.waitForTimeout(250);

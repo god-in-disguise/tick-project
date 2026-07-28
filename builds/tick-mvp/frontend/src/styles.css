@@ -357,81 +357,84 @@ button:disabled {
   color: var(--green);
 }
 
-.move-cost-status {
-  margin-bottom: 4px;
-  color: var(--silver);
-  font-size: 8px;
-  line-height: 10px;
-  font-weight: 800;
-  letter-spacing: 0.03em;
-}
-
-.move-cost-values {
+.tape-heat-heading,
+.tape-heat-values {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  margin-top: 4px;
   color: var(--silver);
   font-size: 7px;
   line-height: 10px;
-  font-weight: 750;
+  font-weight: 800;
+  letter-spacing: 0.02em;
 }
 
-.move-cost-values strong {
+.tape-heat-heading {
+  margin-bottom: 3px;
+}
+
+.tape-heat-heading strong {
+  color: var(--orange);
+  font-size: 8px;
+  letter-spacing: 0.05em;
+}
+
+.tape-heat-values {
+  margin-top: 3px;
+}
+
+.tape-heat-values strong {
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
-.move-cost-track,
-.cost-recovery-track {
-  position: relative;
-  height: 3px;
-  border-radius: 2px;
-  background: rgba(231, 240, 237, 0.11);
-}
-
-.move-cost-track i,
-.cost-recovery-track i {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: var(--move-width);
-  border-radius: inherit;
-  background: var(--meter-accent);
-  box-shadow: 0 0 8px color-mix(in srgb, var(--meter-accent) 36%, transparent);
-}
-
-.move-cost-track b {
-  position: absolute;
-  top: -3px;
-  bottom: -3px;
-  left: var(--cost-left);
-  width: 1px;
-  background: var(--orange);
-  box-shadow: 0 0 5px rgba(255, 156, 50, 0.42);
-}
-
-.move-cost-scale {
+.tape-heat-samples {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  margin-top: 3px;
-  color: var(--muted);
-  font-size: 6px;
-  line-height: 7px;
-  font-weight: 750;
+  grid-template-columns: repeat(5, 1fr);
+  align-items: end;
+  gap: 2px;
+  height: 13px;
+  padding: 1px 2px;
+  border-bottom: 0.5px solid rgba(231, 240, 237, 0.1);
 }
 
-.move-cost-scale span:nth-child(1) {
-  text-align: left;
+.tape-heat-samples i {
+  display: block;
+  height: max(1px, var(--sample-height));
+  min-height: 1px;
+  border-radius: 1px 1px 0 0;
+  background: color-mix(in srgb, var(--heat-accent) 74%, var(--silver));
+  opacity: 0.82;
+  transition: height 180ms linear, opacity 180ms linear;
 }
 
-.move-cost-scale span:nth-child(2) {
-  color: var(--orange);
-  text-align: center;
+.tape-heat-samples i:last-child {
+  box-shadow: 0 0 7px color-mix(in srgb, var(--heat-accent) 32%, transparent);
+  opacity: 1;
 }
 
-.move-cost-scale span:nth-child(3) {
-  text-align: right;
+.tape-heat.compact {
+  width: 100%;
+}
+
+.tape-heat.compact .tape-heat-heading {
+  margin-bottom: 1px;
+}
+
+.tape-heat.compact .tape-heat-heading span {
+  display: none;
+}
+
+.tape-heat.compact .tape-heat-heading strong {
+  font-size: 7px;
+}
+
+.tape-heat.compact .tape-heat-samples {
+  height: 10px;
+}
+
+.tape-heat.compact .tape-heat-values {
+  display: none;
 }
 
 .position-context .market-story {
@@ -444,22 +447,21 @@ button:disabled {
   color: var(--orange);
 }
 
+.cost-recovery-track {
+  position: relative;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(231, 240, 237, 0.11);
+}
+
 .cost-recovery-track i {
+  position: absolute;
+  inset: 0 auto 0 0;
   width: var(--recovery-width);
+  border-radius: inherit;
+  background: var(--meter-accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--meter-accent) 36%, transparent);
   transition: width 180ms linear;
-}
-
-.move-cost-meter.compact {
-  width: 100%;
-}
-
-.move-cost-meter.compact .move-cost-values {
-  margin-top: 3px;
-  font-size: 7px;
-}
-
-.move-cost-meter.compact .move-cost-track {
-  height: 2px;
 }
 
 @keyframes market-story-in {
@@ -1569,10 +1571,30 @@ button:disabled {
 }
 
 .wallet-address-full span {
-  overflow: hidden;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 9px;
-  text-overflow: ellipsis;
+  line-height: 13px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.wallet-address-full button {
+  display: inline-flex;
+  min-width: 68px;
+  min-height: 40px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 0.5px solid var(--line-strong);
+  border-radius: 6px;
+  color: var(--text);
+  background: var(--panel-strong);
+  font-size: 10px;
+  font-weight: 850;
 }
 
 .withdraw-form {

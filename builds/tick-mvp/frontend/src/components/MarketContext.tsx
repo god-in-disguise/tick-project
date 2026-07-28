@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 
 import { buildMicroBars, describeMarket } from "../marketActivity";
 import type { Market, Position, Quote, Theme } from "../types";
-import { MoveCostMeter } from "./MoveCostMeter";
+import { TapeHeat } from "./TapeHeat";
 
 type Props = {
   market: Market;
@@ -14,11 +14,16 @@ type Props = {
 };
 
 export function MarketContext({ market, position, quote, estimatedNetPnl, theme }: Props) {
+  const [now, setNow] = useState(Date.now() / 1_000);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now() / 1_000), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const bars = useMemo(
-    () => buildMicroBars(market.observations, Date.now() / 1_000),
-    [market.observations]
+    () => buildMicroBars(market.observations, now),
+    [market.observations, now]
   );
-  const pulse = describeMarket(market, bars);
+  const pulse = describeMarket(market, bars, now);
   const story = useStableStory(market.market, pulse.story);
   const storyTone = story.includes("90s LOW")
     ? "market-story-low"
@@ -42,11 +47,9 @@ export function MarketContext({ market, position, quote, estimatedNetPnl, theme 
       <div className={`market-story ${storyTone}`}>
         <strong key={story}>{story}</strong>
       </div>
-      <MoveCostMeter
-        movePct={pulse.recentRangePct}
-        costPct={market.feeHurdlePct}
+      <TapeHeat
+        pulse={pulse}
         accent={theme.accent}
-        moveLabel="10s SWING"
       />
     </div>
   );

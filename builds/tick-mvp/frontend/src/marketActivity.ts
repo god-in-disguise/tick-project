@@ -15,8 +15,11 @@ export type MicroBar = {
 export type MarketPulse = {
   story: string;
   pace: "QUIET" | "ACTIVE" | "FAST";
+  heat: "QUIET" | "WARM" | "ACTIVE" | "HOT";
   rangePositionPct: number;
   recentRangePct: number;
+  tempoRatio: number;
+  heatSamples: number[];
 };
 
 export function buildMicroBars(
@@ -72,57 +75,86 @@ export function buildMicroBars(
   return [...buckets.values()].sort((left, right) => left.startTs - right.startTs);
 }
 
-export function describeMarket(market: Market, bars: MicroBar[]): MarketPulse {
+export function describeMarket(
+  market: Market,
+  bars: MicroBar[],
+  nowSeconds = Date.now() / 1_000
+): MarketPulse {
   const rangePositionPct = rangePosition(market);
-  const pace = paceFor(bars);
-  const latestEndTs = bars.at(-1)?.endTs ?? 0;
-  const recentBars = bars.filter((bar) => bar.endTs > latestEndTs - 10);
+  const recentBars = bars.filter((bar) => bar.endTs > nowSeconds - 10);
   const baselineBars = bars.filter(
-    (bar) => bar.endTs <= latestEndTs - 10 && bar.endTs > latestEndTs - 40
+    (bar) => bar.endTs <= nowSeconds - 10 && bar.endTs > nowSeconds - 40
   );
   const recentRangePct = barRangePct(recentBars, market.price);
-
-  if (!market.openingAllowed) {
-    return { story: "MARKET PAUSED", pace, rangePositionPct, recentRangePct };
-  }
-
   const recent = activityAverage(recentBars);
   const baseline = activityAverage(baselineBars);
+  const tempoRatio = baseline > 0 ? recent / baseline : recent > 0 ? 1 : 0;
+  const heat = heatFor(tempoRatio);
+  const pace: MarketPulse["pace"] = heat === "HOT"
+    ? "FAST"
+    : heat === "QUIET"
+      ? "QUIET"
+      : "ACTIVE";
+  const heatSamples = activitySamples(recentBars, baseline, nowSeconds);
+  const pulse = { pace, heat, rangePositionPct, recentRangePct, tempoRatio, heatSamples };
+
+  if (!market.openingAllowed) {
+    return { story: "MARKET PAUSED", ...pulse };
+  }
+
   if (baseline > 0 && recent >= baseline * 1.65) {
-    return { story: "COST TEMPO RISING", pace, rangePositionPct, recentRangePct };
+    return { story: "TAPE ACCELERATING", ...pulse };
   }
   if (rangePositionPct >= 94) {
-    return { story: "NEAR 90s HIGH", pace, rangePositionPct, recentRangePct };
+    return { story: "NEAR 90s HIGH", ...pulse };
   }
   if (rangePositionPct <= 6) {
-    return { story: "NEAR 90s LOW", pace, rangePositionPct, recentRangePct };
+    return { story: "NEAR 90s LOW", ...pulse };
   }
   if (baseline > 0 && recent <= baseline * 0.48) {
-    return { story: "COST TEMPO COOLING", pace, rangePositionPct, recentRangePct };
+    return { story: "TAPE COOLING", ...pulse };
   }
   return {
-    story: pace === "FAST" ? "COST TEMPO FAST" : pace === "ACTIVE" ? "COST TEMPO ACTIVE" : "COST TEMPO QUIET",
-    pace,
-    rangePositionPct,
-    recentRangePct
+    story: rangePositionPct >= 75
+      ? "90s HIGH ZONE"
+      : rangePositionPct <= 25
+        ? "90s LOW ZONE"
+        : "MID 90s RANGE",
+    ...pulse
   };
 }
 
-function paceFor(bars: MicroBar[]): MarketPulse["pace"] {
-  if (bars.length < 3) return "QUIET";
-  const recent = activityAverage(bars.slice(-5));
-  const baseline = activityAverage(bars.slice(-20));
-  if (recent > 0 && recent >= baseline * 1.55) return "FAST";
-  if (recent > 0 && recent >= baseline * 0.7) return "ACTIVE";
+function heatFor(tempoRatio: number): MarketPulse["heat"] {
+  if (tempoRatio >= 1.55) return "HOT";
+  if (tempoRatio >= 1) return "ACTIVE";
+  if (tempoRatio >= 0.6) return "WARM";
   return "QUIET";
+}
+
+function activitySamples(
+  bars: MicroBar[],
+  baseline: number,
+  nowSeconds: number
+): number[] {
+  const bucketSeconds = 2;
+  const end = Math.floor(nowSeconds / bucketSeconds) * bucketSeconds + bucketSeconds;
+  const byStart = new Map(bars.map((bar) => [bar.startTs, bar]));
+  const raw = Array.from({ length: 5 }, (_, index) => {
+    const start = end - (5 - index) * bucketSeconds;
+    return barActivity(byStart.get(start));
+  });
+  const scale = Math.max(baseline * 2, ...raw, Number.EPSILON);
+  return raw.map((value) => clamp(value / scale, 0, 1));
+}
+
+function barActivity(bar: MicroBar | undefined): number {
+  if (!bar) return 0;
+  return bar.movementPct + Math.log1p(bar.changedUpdates) * 0.0001;
 }
 
 function activityAverage(bars: MicroBar[]): number {
   if (!bars.length) return 0;
-  return bars.reduce(
-    (total, bar) => total + bar.movementPct + Math.log1p(bar.changedUpdates) * 0.0001,
-    0
-  ) / bars.length;
+  return bars.reduce((total, bar) => total + barActivity(bar), 0) / bars.length;
 }
 
 function barRangePct(bars: MicroBar[], current: number): number {

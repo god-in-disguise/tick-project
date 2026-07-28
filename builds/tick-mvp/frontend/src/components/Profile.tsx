@@ -1,6 +1,7 @@
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  Check,
   ChevronRight,
   Copy,
   History,
@@ -33,6 +34,7 @@ export function Profile(props: Props) {
   const [withdrawAddress, setWithdrawAddress] = useState("");
   const [walletBusy, setWalletBusy] = useState(false);
   const [walletMessage, setWalletMessage] = useState<string | null>(null);
+  const [addressCopied, setAddressCopied] = useState(false);
   const [editingPreset, setEditingPreset] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<"all" | "wins" | "losses" | "liquidations">("all");
   const leverageOptions = [25, 50, 100, 500].filter(
@@ -93,6 +95,18 @@ export function Profile(props: Props) {
     }
   };
 
+  const copyAddress = async () => {
+    if (!address) return;
+    try {
+      await copyText(address);
+      setAddressCopied(true);
+      setWalletMessage("Address copied");
+      window.setTimeout(() => setAddressCopied(false), 1_800);
+    } catch {
+      setWalletMessage("Press and hold the address to copy it");
+    }
+  };
+
   return (
     <main className="page profile-page">
       <header className="page-header">
@@ -142,12 +156,13 @@ export function Profile(props: Props) {
         </div>
         <button
           className="wallet-detail-button"
-          onClick={() => address && navigator.clipboard.writeText(address)}
+          type="button"
+          onClick={copyAddress}
           title="Copy deposit address"
         >
           <span>Wallet &amp; network</span>
           <strong>Arbitrum · {shortAddress(address)}</strong>
-          <Copy size={13} />
+          {addressCopied ? <Check size={13} /> : <Copy size={13} />}
         </button>
       </section>
 
@@ -356,14 +371,18 @@ export function Profile(props: Props) {
                     />
                   </div>
                 ) : null}
-                <button
-                  className="wallet-address-full"
-                  type="button"
-                  onClick={() => address && navigator.clipboard.writeText(address)}
-                >
+                <div className="wallet-address-full">
                   <span>{address ?? "Address unavailable"}</span>
-                  <Copy size={16} />
-                </button>
+                  <button
+                    type="button"
+                    onClick={copyAddress}
+                    disabled={!address}
+                    aria-label={addressCopied ? "Address copied" : "Copy deposit address"}
+                  >
+                    {addressCopied ? <Check size={16} /> : <Copy size={16} />}
+                    {addressCopied ? "Copied" : "Copy"}
+                  </button>
+                </div>
               </>
             ) : (
               <>
@@ -421,6 +440,32 @@ export function Profile(props: Props) {
       ) : null}
     </main>
   );
+}
+
+async function copyText(value: string): Promise<void> {
+  if (window.isSecureContext && navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return;
+    } catch {
+      // Local-network iOS PWAs often reject the Clipboard API; use the
+      // synchronous selection fallback while the tap gesture is still active.
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.inset = "0 auto auto -9999px";
+  textarea.style.fontSize = "16px";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, value.length);
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("clipboard unavailable");
 }
 
 function ProtectionSelector({
