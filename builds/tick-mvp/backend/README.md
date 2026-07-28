@@ -69,7 +69,8 @@ Docker uses `TICK_STORE_BACKEND=postgres` and runs migrations from `migrations/0
 
 Verified local Docker smoke:
 
-- API, Postgres, Redis, worker, market-feed, and venue-events start from Compose.
+- API, Postgres, Redis, worker, and venue-events start from production Compose.
+  The current MVP shares one live market feed from the API process.
 - `GET /health` and `GET /ready` return ok.
 - invite redemption creates/reuses one user and platform Arbitrum wallet.
 - deposit address returns the platform wallet.
@@ -158,7 +159,9 @@ Runtime shape follows the ARQ/FastAPI boilerplate pattern, but reduced to the pi
 
 - API process handles sessions, validation, and intent acceptance.
 - ARQ worker process consumes execution jobs from Redis.
-- Market-feed and venue-event processes remain separate long-running services.
+- Venue events run as a separate long-running service. Market data is shared
+  from the API process in the current MVP and can be extracted after the feed
+  contract is stable.
 - Docker Compose wires Postgres and Redis with healthchecks.
 - Signed Arbitrum writes race the configured RPC and direct sequencer using
   identical raw bytes; reads, receipts, and recovery remain on the configured

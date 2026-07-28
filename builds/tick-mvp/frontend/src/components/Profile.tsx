@@ -6,6 +6,7 @@ import {
   Copy,
   History,
   LogOut,
+  RefreshCw,
   Settings2,
   X
 } from "lucide-react";
@@ -33,6 +34,7 @@ export function Profile(props: Props) {
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [withdrawAddress, setWithdrawAddress] = useState("");
   const [walletBusy, setWalletBusy] = useState(false);
+  const [balanceBusy, setBalanceBusy] = useState(false);
   const [walletMessage, setWalletMessage] = useState<string | null>(null);
   const [addressCopied, setAddressCopied] = useState(false);
   const [editingPreset, setEditingPreset] = useState(false);
@@ -78,7 +80,7 @@ export function Profile(props: Props) {
 
   const withdraw = async (event: FormEvent) => {
     event.preventDefault();
-    const amount = Number(withdrawAmount);
+    const amount = Number(withdrawAmount.replace(",", "."));
     if (!Number.isFinite(amount) || amount <= 0) return;
     setWalletBusy(true);
     setWalletMessage(null);
@@ -104,6 +106,16 @@ export function Profile(props: Props) {
       window.setTimeout(() => setAddressCopied(false), 1_800);
     } catch {
       setWalletMessage("Press and hold the address to copy it");
+    }
+  };
+
+  const refreshBalance = async () => {
+    if (balanceBusy) return;
+    setBalanceBusy(true);
+    try {
+      await props.onBalances();
+    } finally {
+      setBalanceBusy(false);
     }
   };
 
@@ -134,7 +146,18 @@ export function Profile(props: Props) {
       </section>
 
       <section className="wallet-summary">
-        <span>Available to trade</span>
+        <div className="wallet-summary-heading">
+          <span>Available to trade</span>
+          <button
+            type="button"
+            onClick={() => void refreshBalance()}
+            disabled={balanceBusy}
+            aria-label="Refresh balance"
+            title="Refresh balance"
+          >
+            <RefreshCw className={balanceBusy ? "spinning" : ""} size={15} />
+          </button>
+        </div>
         <strong>{money(available)}</strong>
         <div className="wallet-actions">
           <button
@@ -394,13 +417,17 @@ export function Profile(props: Props) {
                     Amount
                     <div className="amount-input">
                       <input
-                        type="number"
+                        type="text"
                         inputMode="decimal"
-                        min="0.01"
-                        step="0.01"
+                        pattern="[0-9]+([.][0-9]{1,6})?"
                         placeholder="0.00"
                         value={withdrawAmount}
-                        onChange={(event) => setWithdrawAmount(event.target.value)}
+                        onChange={(event) => {
+                          const normalized = event.target.value.replace(/,/g, ".");
+                          if (/^\d*\.?\d{0,6}$/.test(normalized)) {
+                            setWithdrawAmount(normalized);
+                          }
+                        }}
                         required
                       />
                       <button

@@ -71,6 +71,8 @@ await page.getByRole("button", { name: "Me" }).click();
 await page.locator(".profile-page").waitFor();
 assert.notEqual(await page.locator(".profile-page .page-header h1").innerText(), "Me");
 assert.equal(await page.locator(".profile-page .page-header > svg").count(), 0);
+await page.getByRole("button", { name: "Refresh balance" }).click();
+await page.getByRole("button", { name: "Refresh balance" }).waitFor({ state: "attached" });
 await page.screenshot({ path: "/tmp/tick-profile.png", fullPage: true });
 await page.getByRole("button", { name: "Deposit" }).click();
 await page.getByRole("heading", { name: "Deposit USDC" }).waitFor();

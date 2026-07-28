@@ -18,7 +18,7 @@ The backend is one codebase with multiple process roles:
 
 - `api` - FastAPI HTTP API and client event stream.
 - `worker` - durable execution jobs and reconciliation.
-- `market-feed` - price/feed ingestion and volatility scanner.
+- shared API market feed - price ingestion and scanner data for the current MVP.
 - `venue-events` - direct venue event listener and state observations.
 
 Avoid microservices until the state model is stable.
@@ -41,8 +41,9 @@ The PWA is a distribution choice for the first deployable MVP. The product refer
 
 ## Current Implementation Status
 
-- Backend runs with Docker Compose, Postgres, Redis, ARQ worker, market-feed
-  process, and venue-events process.
+- Backend runs with Docker Compose, Postgres, Redis, an ARQ worker, and a
+  venue-events process. The current MVP keeps one shared live feed in the API
+  process instead of running a placeholder feed container.
 - Real delegated gTrade open/close execution is extracted and live-tested.
   The user wallet owns collateral and the position; TICK's platform agent pays
   Arbitrum gas.
@@ -57,7 +58,5 @@ The PWA is a distribution choice for the first deployable MVP. The product refer
   scanner, and filtered history.
 - A normal browser shows an install landing. The trading product opens only in
   standalone PWA mode, with `?app=1` available for development preview.
-- DigitalOcean backend and Vercel frontend deployment definitions are present.
-  The July 28 deployment attempt was not executed because the configured
-  DigitalOcean token returned HTTP 401 and the machine has no active Vercel
-  login.
+- DigitalOcean backend and Vercel frontend deployment definitions are present
+  under `deploy/`.

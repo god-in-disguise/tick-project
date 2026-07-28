@@ -23,7 +23,7 @@ New production work should happen in `builds/tick-mvp/`. Pull proven pieces out 
 
 Current production-shaped status:
 
-- `builds/tick-mvp/backend` runs with Docker Compose, Postgres, Redis, ARQ worker, market-feed, and venue-events processes.
+- `builds/tick-mvp/backend` runs with Docker Compose, Postgres, Redis, an ARQ worker, and venue-events process. The MVP shares one live market feed inside the API process.
 - Auth/session, platform wallet creation, deposit address, quote, open intent, close intent, idempotency, and withdrawal contracts are wired.
 - Live gTrade execution has not yet been extracted into the new backend; the local MVP remains the live execution reference.
 - The first frontend target is PWA for fast sharing, but the UX should follow the local Expo canary.

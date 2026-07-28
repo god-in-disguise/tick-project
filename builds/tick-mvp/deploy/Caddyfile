@@ -1,0 +1,15 @@
+{$API_HOST} {
+	encode zstd gzip
+
+	@internal_docs path /docs /redoc /openapi.json
+	respond @internal_docs 404
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+	}
+
+	reverse_proxy api:8787
+}

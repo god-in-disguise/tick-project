@@ -1054,7 +1054,7 @@ button:disabled {
   background: transparent;
 }
 
-.wallet-summary > span {
+.wallet-summary-heading > span {
   color: var(--muted);
   font-size: 11px;
   font-weight: 800;
@@ -1073,6 +1073,39 @@ button:disabled {
   grid-template-columns: 1fr 1fr;
   gap: 7px;
   margin-top: 13px;
+}
+
+.wallet-summary-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+}
+
+.wallet-summary-heading button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: -6px -4px -6px 0;
+  padding: 0;
+  color: var(--silver);
+  background: transparent;
+  border: 0;
+}
+
+.wallet-summary-heading button:disabled {
+  opacity: 0.55;
+}
+
+.spinning {
+  animation: spin 700ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .wallet-actions button {
