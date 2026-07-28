@@ -10,6 +10,7 @@ import {
   X
 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 
 import { api, idempotencyKey } from "../api";
@@ -231,7 +232,7 @@ export function Profile(props: Props) {
         Sign out
       </button>
 
-      {editingPreset ? (
+      {editingPreset ? createPortal(
         <div className="wallet-sheet-backdrop" role="presentation">
           <section className="wallet-sheet preset-sheet" role="dialog" aria-modal="true">
             <button
@@ -327,10 +328,11 @@ export function Profile(props: Props) {
               ) : null}
             </div>
           </section>
-        </div>
+        </div>,
+        document.body
       ) : null}
 
-      {walletAction ? (
+      {walletAction ? createPortal(
         <div className="wallet-sheet-backdrop" role="presentation">
           <section className="wallet-sheet" role="dialog" aria-modal="true">
             <button
@@ -420,7 +422,8 @@ export function Profile(props: Props) {
             )}
             {walletMessage ? <span className="wallet-message">{walletMessage}</span> : null}
           </section>
-        </div>
+        </div>,
+        document.body
       ) : null}
     </main>
   );

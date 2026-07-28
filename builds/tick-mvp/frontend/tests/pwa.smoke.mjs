@@ -46,7 +46,14 @@ await page.screenshot({ path: "/tmp/tick-profile.png", fullPage: true });
 await page.locator(".preset-summary").click();
 await page.locator(".preset-sheet").waitFor();
 await page.waitForTimeout(250);
-await page.screenshot({ path: "/tmp/tick-preset.png", fullPage: true });
+const takeProfitToggle = page.getByRole("switch", { name: /Take profit/ });
+await takeProfitToggle.scrollIntoViewIfNeeded();
+const originalTakeProfit = await takeProfitToggle.getAttribute("aria-checked");
+await takeProfitToggle.click();
+assert.notEqual(await takeProfitToggle.getAttribute("aria-checked"), originalTakeProfit);
+await page.screenshot({ path: "/tmp/tick-preset.png" });
+await takeProfitToggle.click();
+assert.equal(await takeProfitToggle.getAttribute("aria-checked"), originalTakeProfit);
 await page.getByRole("button", { name: "Close preset" }).click();
 
 const overflow = await page.evaluate(() => ({
@@ -128,7 +135,7 @@ for (const device of iphonePortraitViewports) {
       profileGeometry.lastSettingBottom < profileGeometry.navTop,
       "Profile settings cannot scroll above navigation"
     );
-    await devicePage.screenshot({ path: "/tmp/tick-iphone-pro-max.png", fullPage: true });
+    await devicePage.screenshot({ path: "/tmp/tick-iphone-pro-max.png" });
   }
   await context.close();
 }

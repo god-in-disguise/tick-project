@@ -7,8 +7,8 @@
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#091214",
-  "theme_color": "#091214",
+  "background_color": "#050606",
+  "theme_color": "#050606",
   "icons": [
     {
       "src": "/tick-icon.png",
