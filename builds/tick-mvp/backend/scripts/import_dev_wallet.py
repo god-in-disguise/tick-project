@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 from eth_account import Account
 
 from tick_mvp.core.config import get_settings
+from tick_mvp.domain.invitations import hash_invite_code
 from tick_mvp.domain.states import WalletStatus, WalletType
 from tick_mvp.infrastructure.custody import PrivateKeyCipher
 from tick_mvp.infrastructure.database import create_session_factory, session_scope
@@ -31,11 +32,11 @@ def main() -> None:
     account = Account.from_key(private_key)
     cipher = PrivateKeyCipher(settings.custody_private_key_encryption_key)
     store = SQLAlchemyStore(default_venue=settings.default_venue)
-    user, _ = store.upsert_google_user(
-        provider_subject=f"dev:{args.user_id}",
-        email=f"{args.user_id}@dev.tick.local",
-        display_name=args.user_id,
-        avatar_url=None,
+    user, _ = store.redeem_invite_code(
+        code_hash=hash_invite_code(
+            args.invite_code,
+            secret=settings.tick_invite_code_secret,
+        ),
         chain_id=settings.arb_chain_id,
         custody_provider=settings.custody_provider,
     )
@@ -86,15 +87,17 @@ def main() -> None:
         session.flush()
         wallet_id = wallet.id
 
-    print(f"USER_ID={args.user_id}")
+    print(f"USER_ID={user.id}")
     print(f"ADDRESS={account.address}")
     print(f"WALLET_ID={wallet_id}")
     print("IMPORTED=true")
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Import a dev wallet private key into the local TICK backend database.")
-    parser.add_argument("--user-id", default="funded-dev")
+    parser = argparse.ArgumentParser(
+        description="Import a private key into the wallet owned by an existing TICK invite.",
+    )
+    parser.add_argument("--invite-code", required=True)
     parser.add_argument("--private-key-env", default="DEV_WALLET_PRIVATE_KEY")
     return parser.parse_args()
 

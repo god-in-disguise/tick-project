@@ -49,7 +49,7 @@ The production-oriented MVP has moved beyond scaffolding:
 - The gTrade route performs real delegated opens and closes. Each user has a
   platform-created encrypted Arbitrum wallet that owns collateral and the
   position; a platform agent pays ETH gas.
-- Google and private-demo authentication issue backend JWT sessions.
+- Private invite codes issue backend JWT sessions.
 - Deposits, spendable USDC, automatic withdrawals, venue-native SL/TP,
   idempotent intents, callback-event processing, and wallet reconciliation are
   wired.
@@ -81,7 +81,7 @@ These decisions override the older two-venue-start and Ostium-first language in 
 | Wallet delta | Keep as the canary aggregate invariant. Store venue-derived cash flows and PnL fields too. |
 | User positions | One active position and one in-flight command per user in V1. |
 | Scanner gating | Main TICK feed blocks opening unless cost coverage, freshness, venue health, and risk checks pass. |
-| Wallet model | Current MVP uses Google login and platform-created Arbitrum wallets with encrypted Postgres key material. This is deliberate for the demo/private MVP, not a final broad-public custody architecture. |
+| Wallet model | Current MVP uses invitation-code login and platform-created Arbitrum wallets with encrypted Postgres key material. Each account starts with an internal placeholder email and can link a verified identity later without changing wallets. This is deliberate for the demo/private MVP, not a final broad-public custody architecture. |
 | Wallet execution | V1 uses one platform-created Arbitrum wallet per user plus a TICK execution agent. The user wallet owns collateral and positions; after one-time delegation and allowance setup, the agent submits normal gTrade opens/closes and pays ETH gas. TICK charges actual gas to the user's spendable-USDC ledger. |
 | Allowance | Max allowance is local/internal only. External users should get bounded allowance or explicit revocation, unless the cohort is intentionally founder/demo wallets. |
 | Build strategy | Strangler-style extraction. Preserve the working gTrade behavior and mobile loop, but move execution truth to Postgres, durable workers, event journals, and a single reducer. |
@@ -463,7 +463,8 @@ tick_backend/
 
 Responsibilities:
 
-- Google login for the current MVP
+- Invitation-code login for the current MVP
+- Verified email/account linking later
 - user identity
 - wallet mapping
 - session permissions
@@ -472,7 +473,7 @@ Responsibilities:
 
 Current MVP decision:
 
-- user signs in with Google
+- user enters a private invite code
 - backend issues a TICK session JWT
 - backend creates a per-user Arbitrum wallet
 - private key is encrypted before storage in Postgres using an env encryption key

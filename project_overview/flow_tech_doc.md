@@ -421,7 +421,7 @@ Start simple, but keep the data model clean. We will need historical execution d
 
 Current MVP model:
 
-- User signs in with Google
+- User enters a private invite code
 - TICK creates a per-user Arbitrum wallet
 - wallet private key is encrypted in Postgres using an env encryption key
 - platform workers execute approved setup/trading/withdrawal actions

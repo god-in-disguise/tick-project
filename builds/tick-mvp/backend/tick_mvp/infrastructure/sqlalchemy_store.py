@@ -8,6 +8,7 @@ from decimal import Decimal
 from typing import Any
 
 from tick_mvp.core.config import get_settings
+from tick_mvp.domain.invitations import InviteAuthError
 from tick_mvp.domain.schemas import (
     AcceptedTradeResponse,
     CloseRequest,
@@ -47,6 +48,7 @@ from tick_mvp.infrastructure.model_mappers import (
 from tick_mvp.infrastructure.models import (
     AuthIdentity,
     ExecutionAttempt,
+    InviteCode,
     LedgerEvent,
     Position,
     Quote,
@@ -88,9 +90,97 @@ class SQLAlchemyStore:
     def tape(self, market: str, *, since: int) -> dict[str, Any]:
         return self._market_method("tape")(market, since=since)
 
-    def upsert_google_user(
+    def upsert_auth_user(
         self,
         *,
+        provider: AuthProvider,
+        provider_subject: str,
+        email: str,
+        display_name: str | None,
+        avatar_url: str | None,
+        chain_id: int,
+        custody_provider: str,
+    ):
+        with session_scope(self._session_factory) as session:
+            return self._upsert_auth_user(
+                session,
+                provider=provider,
+                provider_subject=provider_subject,
+                email=email,
+                display_name=display_name,
+                avatar_url=avatar_url,
+                chain_id=chain_id,
+                custody_provider=custody_provider,
+            )
+
+    def create_invite_code(
+        self,
+        *,
+        code_hash: str,
+        display_name: str | None = None,
+        expires_at: datetime | None = None,
+    ) -> str:
+        now = _now()
+        with session_scope(self._session_factory) as session:
+            invite = InviteCode(
+                id=_id("invite"),
+                code_hash=code_hash,
+                display_name=display_name,
+                status="active",
+                expires_at=expires_at,
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(invite)
+            session.flush()
+            return invite.id
+
+    def redeem_invite_code(
+        self,
+        *,
+        code_hash: str,
+        chain_id: int,
+        custody_provider: str,
+    ):
+        now = _now()
+        with session_scope(self._session_factory) as session:
+            invite = (
+                session.query(InviteCode)
+                .filter(InviteCode.code_hash == code_hash)
+                .with_for_update()
+                .one_or_none()
+            )
+            if (
+                invite is None
+                or invite.status != "active"
+                or (invite.expires_at is not None and invite.expires_at <= now)
+            ):
+                raise InviteAuthError("invalid or expired invite")
+
+            user, wallet = self._upsert_auth_user(
+                session,
+                provider=AuthProvider.INVITE_CODE,
+                provider_subject=invite.id,
+                email=_placeholder_email(invite.id),
+                display_name=invite.display_name or "TICK trader",
+                avatar_url=None,
+                chain_id=chain_id,
+                custody_provider=custody_provider,
+            )
+            if invite.redeemed_by_user_id not in {None, user.id}:
+                raise InviteAuthError("invalid or expired invite")
+            invite.redeemed_by_user_id = user.id
+            invite.redeemed_at = invite.redeemed_at or now
+            invite.last_used_at = now
+            invite.updated_at = now
+            session.flush()
+            return user, wallet
+
+    def _upsert_auth_user(
+        self,
+        session,
+        *,
+        provider: AuthProvider,
         provider_subject: str,
         email: str,
         display_name: str | None,
@@ -99,54 +189,62 @@ class SQLAlchemyStore:
         custody_provider: str,
     ):
         now = _now()
-        normalized_email = email.lower()
-        with session_scope(self._session_factory) as session:
-            identity = (
-                session.query(AuthIdentity)
-                .filter(AuthIdentity.provider == AuthProvider.GOOGLE.value, AuthIdentity.provider_subject == provider_subject)
-                .one_or_none()
+        normalized_email = email.strip().lower()
+        identity = (
+            session.query(AuthIdentity)
+            .filter(
+                AuthIdentity.provider == provider.value,
+                AuthIdentity.provider_subject == provider_subject,
             )
-            if identity is None:
-                user = session.query(User).filter(User.email == normalized_email).one_or_none()
-                if user is None:
-                    user = User(
-                        id=_id("user"),
-                        email=normalized_email,
-                        display_name=display_name,
-                        avatar_url=avatar_url,
-                        status=UserStatus.ACTIVE.value,
-                        created_at=now,
-                        updated_at=now,
-                        last_login_at=now,
-                    )
-                    session.add(user)
-                    session.flush()
-                identity = AuthIdentity(
-                    id=_id("auth"),
-                    user_id=user.id,
-                    provider=AuthProvider.GOOGLE.value,
-                    provider_subject=provider_subject,
+            .one_or_none()
+        )
+        if identity is None:
+            user = session.query(User).filter(User.email == normalized_email).one_or_none()
+            if user is None:
+                user = User(
+                    id=_id("user"),
                     email=normalized_email,
-                    payload={},
+                    display_name=display_name,
+                    avatar_url=avatar_url,
+                    status=UserStatus.ACTIVE.value,
                     created_at=now,
                     updated_at=now,
+                    last_login_at=now,
                 )
-                session.add(identity)
-            else:
-                user = session.get(User, identity.user_id)
-                if user is None:
-                    raise StoreNotFound("user not found")
+                session.add(user)
+                session.flush()
+            identity = AuthIdentity(
+                id=_id("auth"),
+                user_id=user.id,
+                provider=provider.value,
+                provider_subject=provider_subject,
+                email=normalized_email,
+                payload={},
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(identity)
+        else:
+            user = session.get(User, identity.user_id)
+            if user is None:
+                raise StoreNotFound("user not found")
 
-            user.email = normalized_email
-            user.display_name = display_name
-            user.avatar_url = avatar_url
-            user.updated_at = now
-            user.last_login_at = now
-            identity.email = normalized_email
-            identity.updated_at = now
-            wallet = self._wallet_for_user(session, user.id, chain_id=chain_id, custody_provider=custody_provider, now=now)
-            session.flush()
-            return user_response(user, identity), wallet_response(wallet)
+        user.email = normalized_email
+        user.display_name = display_name or user.display_name
+        user.avatar_url = avatar_url or user.avatar_url
+        user.updated_at = now
+        user.last_login_at = now
+        identity.email = normalized_email
+        identity.updated_at = now
+        wallet = self._wallet_for_user(
+            session,
+            user.id,
+            chain_id=chain_id,
+            custody_provider=custody_provider,
+            now=now,
+        )
+        session.flush()
+        return user_response(user, identity), wallet_response(wallet)
 
     def user(self, user_id: str):
         with session_scope(self._session_factory) as session:
@@ -589,6 +687,10 @@ def _id(prefix: str) -> str:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _placeholder_email(invite_id: str) -> str:
+    return f"invite+{invite_id}@pending.tick.local"
 
 
 def _market(value: str) -> str:

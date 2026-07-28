@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { clearSession, storedSession } from "./api";
+import { api, ApiError, clearSession, storedSession } from "./api";
 import { AuthGate } from "./components/AuthGate";
 import { BottomNav, type Tab } from "./components/BottomNav";
 import { Dashboard } from "./components/Dashboard";
@@ -15,6 +15,19 @@ export function App() {
   const installed = useStandaloneMode();
   const appPreview = new URLSearchParams(window.location.search).get("app") === "1"
     || import.meta.env.VITE_FORCE_APP === "true";
+
+  useEffect(() => {
+    if (!session) return;
+    let active = true;
+    api.me().catch((cause) => {
+      if (!active || !(cause instanceof ApiError) || ![401, 404].includes(cause.status)) return;
+      clearSession();
+      setSession(null);
+    });
+    return () => {
+      active = false;
+    };
+  }, [session?.token]);
 
   if (!installed && !appPreview) {
     return <InstallLanding />;

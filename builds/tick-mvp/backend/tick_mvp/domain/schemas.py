@@ -28,22 +28,8 @@ class QuoteRequest(BaseModel):
     takeProfitUsd: Decimal | None = Field(default=None, gt=0)
 
 
-class DevSessionRequest(BaseModel):
-    userId: str = Field(default="dev-user", min_length=1, max_length=120)
-    walletAddress: str | None = Field(default=None, max_length=120)
-
-
-class DemoSessionRequest(BaseModel):
-    email: str = Field(min_length=3, max_length=320)
-    displayName: str | None = Field(default=None, max_length=160)
+class InviteSessionRequest(BaseModel):
     accessCode: str = Field(min_length=1, max_length=160)
-
-
-class GoogleSessionRequest(BaseModel):
-    idToken: str = Field(min_length=1)
-    nonce: str | None = Field(default=None, max_length=160)
-    devEmail: str | None = Field(default=None, max_length=320)
-    devName: str | None = Field(default=None, max_length=160)
 
 
 class UserResponse(BaseModel):

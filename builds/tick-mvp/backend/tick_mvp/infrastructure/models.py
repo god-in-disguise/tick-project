@@ -37,6 +37,21 @@ class AuthIdentity(Base, TimestampMixin):
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
 
+class InviteCode(Base):
+    __tablename__ = "invite_codes"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    code_hash: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    display_name: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    redeemed_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    redeemed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[object | None] = mapped_column(DateTime(timezone=True))
+    last_used_at: Mapped[object | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class Asset(Base, TimestampMixin):
     __tablename__ = "assets"
     __table_args__ = (

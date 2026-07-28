@@ -41,8 +41,11 @@ def main() -> None:
         health = timed(timeline, "health", lambda: client.get("/health"))
         session = timed(
             timeline,
-            "dev_session",
-            lambda: client.post("/api/auth/dev-session", {"userId": args.user_id}),
+            "invite_session",
+            lambda: client.post(
+                "/api/auth/invite",
+                {"accessCode": args.invite_code},
+            ),
         )
         token = session["token"]
         auth = {"Authorization": f"Bearer {token}"}
@@ -404,7 +407,7 @@ def json_safe(value: Any) -> Any:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run one TICK backend API canary through quote/open/close.")
     parser.add_argument("--base-url", default="http://127.0.0.1:8787")
-    parser.add_argument("--user-id", default=f"canary-{int(time.time())}")
+    parser.add_argument("--invite-code", default=os.getenv("TICK_CANARY_INVITE_CODE"))
     parser.add_argument("--market", default="BTCDEGEN/USD")
     parser.add_argument("--side", choices=["long", "short"], default="long")
     parser.add_argument("--ticket-usd", type=Decimal, default=Decimal("10"))
@@ -418,7 +421,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--db-url", default=os.getenv("CANARY_DATABASE_URL", ""))
     parser.add_argument("--no-close", action="store_false", dest="close")
     parser.set_defaults(close=True)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.invite_code:
+        parser.error("--invite-code is required")
+    return args
 
 
 if __name__ == "__main__":

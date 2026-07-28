@@ -42,6 +42,9 @@ export function TradeView(props: Props) {
   ) ?? null;
   const leverage = props.position?.leverage ?? previewQuote?.leverage ?? props.settings.leverage;
   const cost = previewQuote?.estimatedRoundTripCostUsd ?? 0;
+  const amount = previewQuote?.ticketUsd ?? props.settings.ticketUsd;
+  const exposure = previewQuote?.notionalUsd ?? amount * leverage;
+  const costPct = amount > 0 ? cost / amount * 100 : 0;
   const positionOpening = props.position?.status === "opening";
   const positionClosing = props.position?.status === "closing" || props.busyAction === "close";
   const executionPending = positionOpening || positionClosing || props.busy;
@@ -104,7 +107,7 @@ export function TradeView(props: Props) {
           <div className="market-name">
             <div className="market-name-row">
               <strong>{props.market.symbol}</strong>
-              <b style={{ color: theme.glow }}>{leverage}x</b>
+              <b className="leverage-chip">{leverage}x</b>
               <span>{props.market.name}</span>
             </div>
             <div className="market-price-row">
@@ -148,15 +151,19 @@ export function TradeView(props: Props) {
             )}
             {executionPending ? <ExecutionProgress /> : null}
             <small>
-              {positionClosing ? "waiting for venue" : positionOpening ? "waiting for venue" : "estimated net"}
+              {positionClosing
+                ? "position remains exposed"
+                : positionOpening
+                  ? "waiting for venue execution"
+                  : "estimated net if closed now"}
             </small>
           </div>
         ) : props.busyAction === "long" || props.busyAction === "short" ? (
           <div className="pnl-panel execution-pending">
             <span>{props.busyAction.toUpperCase()} · {leverage}x</span>
-            <strong>Sending</strong>
+            <strong>Submitting</strong>
             <ExecutionProgress />
-            <small>signing route</small>
+            <small>sending execution request</small>
           </div>
         ) : null}
 
@@ -184,10 +191,10 @@ export function TradeView(props: Props) {
                     : "negative"
               }
             >
-              {props.closedResult.pnl === null ? "Settling" : signedMoney(props.closedResult.pnl)}
+              {props.closedResult.pnl === null ? "Finalizing" : signedMoney(props.closedResult.pnl)}
             </strong>
             <small className="result-state">
-              {props.closedResult.pnl === null ? "venue confirmed" : "final net"}
+              {props.closedResult.pnl === null ? "closed · finalizing result" : "final net"}
             </small>
           </div>
         ) : null}
@@ -198,17 +205,21 @@ export function TradeView(props: Props) {
           <div className="terms">
             {props.position ? (
               <>
-                <Term label="Collateral" value={money(props.position.ticketUsd)} />
+                <Term label="Amount" value={money(props.position.ticketUsd)} />
                 <Term label="SL away" value={distance(props.market.price, props.position.stopLossPrice)} />
                 <Term label="TP away" value={distance(props.market.price, props.position.takeProfitPrice)} />
                 <Term label="Liq away" value={distance(props.market.price, props.position.liquidationPrice)} />
               </>
             ) : (
               <>
-                <Term label="Collateral" value={money(props.settings.ticketUsd)} />
-                <Term label="Stop loss" value={props.settings.stopLossEnabled ? money(props.settings.maxLossUsd) : "Off"} />
-                <Term label="Take profit" value={props.settings.takeProfitEnabled ? money(props.settings.takeProfitUsd) : "Off"} />
-                <Term label="Est. cost" value={money(cost)} />
+                <Term label="Amount" value={money(amount)} />
+                <Term label="Leverage" value={`${leverage}x`} />
+                <Term label="Exposure" value={money(exposure)} />
+                <Term
+                  label="Est. cost"
+                  value={money(cost)}
+                  detail={cost > 0 ? `${costPct.toFixed(1)}% of amount` : undefined}
+                />
               </>
             )}
           </div>
@@ -223,11 +234,20 @@ export function TradeView(props: Props) {
   );
 }
 
-function Term({ label, value }: { label: string; value: string }) {
+function Term({
+  label,
+  value,
+  detail
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+}) {
   return (
     <div className="term">
       <span>{label}</span>
       <strong>{value === "0.00000" ? "--" : value}</strong>
+      {detail ? <small>{detail}</small> : null}
     </div>
   );
 }

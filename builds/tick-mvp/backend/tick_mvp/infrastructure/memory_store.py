@@ -26,6 +26,7 @@ from tick_mvp.domain.schemas import (
     WithdrawalRequest,
     WithdrawalResponse,
 )
+from tick_mvp.domain.invitations import InviteAuthError
 from tick_mvp.domain.states import (
     AuthProvider,
     ExecutionAttemptStatus,
@@ -60,6 +61,18 @@ class TradeBundle:
     position: PositionResponse | None = None
 
 
+@dataclass(slots=True)
+class InviteRecord:
+    id: str
+    code_hash: str
+    display_name: str | None
+    status: str
+    expires_at: datetime | None
+    redeemed_by_user_id: str | None = None
+    redeemed_at: datetime | None = None
+    last_used_at: datetime | None = None
+
+
 @dataclass
 class MemoryStore:
     default_venue: str
@@ -68,6 +81,7 @@ class MemoryStore:
     _quotes: dict[str, QuoteRecord] = field(default_factory=dict)
     _users: dict[str, UserResponse] = field(default_factory=dict)
     _user_by_provider: dict[tuple[AuthProvider, str], str] = field(default_factory=dict)
+    _invites_by_hash: dict[str, InviteRecord] = field(default_factory=dict)
     _wallets: dict[str, WalletAccountResponse] = field(default_factory=dict)
     _wallet_by_user: dict[str, str] = field(default_factory=dict)
     _intents: dict[str, TradeIntentResponse] = field(default_factory=dict)
@@ -78,9 +92,10 @@ class MemoryStore:
     _idempotency: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)
     _withdrawal_idempotency: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)
 
-    def upsert_google_user(
+    def upsert_auth_user(
         self,
         *,
+        provider: AuthProvider,
         provider_subject: str,
         email: str,
         display_name: str | None,
@@ -89,15 +104,16 @@ class MemoryStore:
         custody_provider: str,
     ) -> tuple[UserResponse, WalletAccountResponse]:
         now = _now()
+        normalized_email = email.strip().lower()
         with self._lock:
-            key = (AuthProvider.GOOGLE, provider_subject)
+            key = (provider, provider_subject)
             existing_user_id = self._user_by_provider.get(key)
             if existing_user_id is None:
                 user = UserResponse(
                     id=_id("user"),
-                    authProvider=AuthProvider.GOOGLE,
+                    authProvider=provider,
                     providerSubject=provider_subject,
-                    email=email.lower(),
+                    email=normalized_email,
                     displayName=display_name,
                     avatarUrl=avatar_url,
                     status=UserStatus.ACTIVE,
@@ -110,15 +126,68 @@ class MemoryStore:
                 previous = self._users[existing_user_id]
                 user = previous.model_copy(
                     update={
-                        "email": email.lower(),
-                        "displayName": display_name,
-                        "avatarUrl": avatar_url,
+                        "authProvider": provider,
+                        "providerSubject": provider_subject,
+                        "email": normalized_email,
+                        "displayName": display_name or previous.displayName,
+                        "avatarUrl": avatar_url or previous.avatarUrl,
                         "lastLoginAt": now,
                     }
                 )
                 self._users[user.id] = user
 
             wallet = self._wallet_for_user(user.id, chain_id=chain_id, custody_provider=custody_provider, now=now)
+            return user, wallet
+
+    def create_invite_code(
+        self,
+        *,
+        code_hash: str,
+        display_name: str | None = None,
+        expires_at: datetime | None = None,
+    ) -> str:
+        with self._lock:
+            invite = InviteRecord(
+                id=_id("invite"),
+                code_hash=code_hash,
+                display_name=display_name,
+                status="active",
+                expires_at=expires_at,
+            )
+            self._invites_by_hash[code_hash] = invite
+            return invite.id
+
+    def redeem_invite_code(
+        self,
+        *,
+        code_hash: str,
+        chain_id: int,
+        custody_provider: str,
+    ) -> tuple[UserResponse, WalletAccountResponse]:
+        now = _now()
+        with self._lock:
+            invite = self._invites_by_hash.get(code_hash)
+            if (
+                invite is None
+                or invite.status != "active"
+                or (invite.expires_at is not None and invite.expires_at <= now)
+            ):
+                raise InviteAuthError("invalid or expired invite")
+
+            user, wallet = self.upsert_auth_user(
+                provider=AuthProvider.INVITE_CODE,
+                provider_subject=invite.id,
+                email=_placeholder_email(invite.id),
+                display_name=invite.display_name or "TICK trader",
+                avatar_url=None,
+                chain_id=chain_id,
+                custody_provider=custody_provider,
+            )
+            if invite.redeemed_by_user_id not in {None, user.id}:
+                raise InviteAuthError("invalid or expired invite")
+            invite.redeemed_by_user_id = user.id
+            invite.redeemed_at = invite.redeemed_at or now
+            invite.last_used_at = now
             return user, wallet
 
     def user(self, user_id: str) -> UserResponse:
@@ -432,6 +501,10 @@ def _id(prefix: str) -> str:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _placeholder_email(invite_id: str) -> str:
+    return f"invite+{invite_id}@pending.tick.local"
 
 
 def _market(value: str) -> str:

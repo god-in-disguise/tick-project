@@ -1,7 +1,9 @@
 from tick_mvp.app import create_app
 from tick_mvp.auth import create_session_token, verify_session_token
+from tick_mvp.core.config import get_settings
+from tick_mvp.domain.invitations import InviteAuthError, hash_invite_code
 from tick_mvp.schemas import CloseRequest, OpenRequest, QuoteRequest, WithdrawalRequest
-from tick_mvp.states import PositionStatus
+from tick_mvp.states import AuthProvider, PositionStatus
 from tick_mvp.store import MemoryStore
 
 
@@ -73,19 +75,20 @@ def test_one_active_position_per_user() -> None:
         raise AssertionError("expected active-position conflict")
 
 
-def test_google_user_gets_platform_wallet_and_deposit_address() -> None:
+def test_invite_user_gets_platform_wallet_and_deposit_address() -> None:
     store = MemoryStore(default_venue="gtrade")
 
-    user, wallet = store.upsert_google_user(
-        provider_subject="google-subject-1",
-        email="Alice@Example.com",
+    user, wallet = store.upsert_auth_user(
+        provider=AuthProvider.INVITE_CODE,
+        provider_subject="invite-subject-1",
+        email="invite+subject-1@pending.tick.local",
         display_name="Alice",
         avatar_url=None,
         chain_id=42161,
         custody_provider="encrypted_postgres",
     )
 
-    assert user.email == "alice@example.com"
+    assert user.email.endswith("@pending.tick.local")
     assert wallet.userId == user.id
     assert wallet.chainId == 42161
     assert wallet.address.startswith("0x")
@@ -95,16 +98,56 @@ def test_google_user_gets_platform_wallet_and_deposit_address() -> None:
     assert deposit.asset == "USDC"
 
 
-def test_withdrawal_request_is_idempotent() -> None:
+def test_invite_code_creates_and_reuses_one_wallet() -> None:
     store = MemoryStore(default_venue="gtrade")
-    user, _ = store.upsert_google_user(
-        provider_subject="google-subject-2",
-        email="bob@example.com",
-        display_name="Bob",
-        avatar_url=None,
+    settings = get_settings()
+    raw_code = "tick_private_alice"
+    code_hash = hash_invite_code(raw_code, secret=settings.tick_invite_code_secret)
+    store.create_invite_code(
+        code_hash=code_hash,
+        display_name="Chronos",
+    )
+
+    first_user, first_wallet = store.redeem_invite_code(
+        code_hash=code_hash,
         chain_id=42161,
         custody_provider="encrypted_postgres",
     )
+    second_user, second_wallet = store.redeem_invite_code(
+        code_hash=code_hash,
+        chain_id=42161,
+        custody_provider="encrypted_postgres",
+    )
+
+    assert first_user.authProvider == "invite_code"
+    assert first_user.displayName == "Chronos"
+    assert second_user.id == first_user.id
+    assert first_user.email.endswith("@pending.tick.local")
+    assert second_wallet.id == first_wallet.id
+    assert second_wallet.address == first_wallet.address
+
+
+def test_unknown_invite_code_is_rejected() -> None:
+    store = MemoryStore(default_venue="gtrade")
+    settings = get_settings()
+    code_hash = hash_invite_code("tick_private_alice", secret=settings.tick_invite_code_secret)
+    store.create_invite_code(code_hash=code_hash)
+
+    try:
+        store.redeem_invite_code(
+            code_hash=hash_invite_code("wrong-code", secret=settings.tick_invite_code_secret),
+            chain_id=42161,
+            custody_provider="encrypted_postgres",
+        )
+    except InviteAuthError as exc:
+        assert str(exc) == "invalid or expired invite"
+    else:
+        raise AssertionError("expected unknown invite rejection")
+
+
+def test_withdrawal_request_is_idempotent() -> None:
+    store = MemoryStore(default_venue="gtrade")
+    user, _ = _test_user(store, "withdrawal", "Bob")
 
     request = WithdrawalRequest(
         amount="12.50",
@@ -121,14 +164,7 @@ def test_withdrawal_request_is_idempotent() -> None:
 
 def test_pending_withdrawal_blocks_a_new_position() -> None:
     store = MemoryStore(default_venue="gtrade")
-    user, _ = store.upsert_google_user(
-        provider_subject="google-subject-withdrawal-lock",
-        email="withdrawal-lock@example.com",
-        display_name="Withdrawal Lock",
-        avatar_url=None,
-        chain_id=42161,
-        custody_provider="encrypted_postgres",
-    )
+    user, _ = _test_user(store, "withdrawal-lock", "Withdrawal Lock")
     store.request_withdrawal(
         user.id,
         WithdrawalRequest(
@@ -160,14 +196,7 @@ def test_pending_withdrawal_blocks_a_new_position() -> None:
 
 def test_active_position_blocks_withdrawal() -> None:
     store = MemoryStore(default_venue="gtrade")
-    user, _ = store.upsert_google_user(
-        provider_subject="google-subject-position-lock",
-        email="position-lock@example.com",
-        display_name="Position Lock",
-        avatar_url=None,
-        chain_id=42161,
-        custody_provider="encrypted_postgres",
-    )
+    user, _ = _test_user(store, "position-lock", "Position Lock")
     quote = store.create_quote(
         user.id,
         QuoteRequest(
@@ -207,9 +236,7 @@ def test_session_token_round_trip() -> None:
 def test_api_routes_are_present() -> None:
     app = create_app(MemoryStore(default_venue="gtrade"))
     paths = {route.path for route in app.routes}
-    assert "/api/auth/dev-session" in paths
-    assert "/api/auth/demo" in paths
-    assert "/api/auth/google" in paths
+    assert "/api/auth/invite" in paths
     assert "/api/me" in paths
     assert "/api/wallet/deposit-address" in paths
     assert "/api/wallet/balances" in paths
@@ -219,3 +246,15 @@ def test_api_routes_are_present() -> None:
     assert "/api/trade/close" in paths
     assert "/api/state" in paths
     assert "/api/events" in paths
+
+
+def _test_user(store: MemoryStore, subject: str, name: str):
+    return store.upsert_auth_user(
+        provider=AuthProvider.INVITE_CODE,
+        provider_subject=f"invite-{subject}",
+        email=f"invite+{subject}@pending.tick.local",
+        display_name=name,
+        avatar_url=None,
+        chain_id=42161,
+        custody_provider="encrypted_postgres",
+    )

@@ -9,13 +9,10 @@ class Settings:
     tick_env: str = "local"
     tick_api_host: str = "0.0.0.0"
     tick_api_port: int = 8787
-    tick_allow_dev_auth: bool = True
-    tick_demo_access_code: str = ""
+    tick_invite_code_secret: str = "dev-only-invite-secret"
     tick_enqueue_jobs: bool = False
     jwt_secret: str = "dev-only-change-me"
     jwt_ttl_seconds: int = 86400
-    google_client_id: str = ""
-    tick_google_auth_dev: bool = True
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     database_url: str = "postgresql://tick:tick@postgres:5432/tick"
@@ -93,13 +90,13 @@ def get_settings() -> Settings:
         tick_env=os.getenv("TICK_ENV", "local"),
         tick_api_host=os.getenv("TICK_API_HOST", "0.0.0.0"),
         tick_api_port=_int_env("TICK_API_PORT", 8787),
-        tick_allow_dev_auth=_bool_env("TICK_ALLOW_DEV_AUTH", True),
-        tick_demo_access_code=os.getenv("TICK_DEMO_ACCESS_CODE", ""),
+        tick_invite_code_secret=os.getenv(
+            "TICK_INVITE_CODE_SECRET",
+            os.getenv("JWT_SECRET", "dev-only-invite-secret"),
+        ),
         tick_enqueue_jobs=_bool_env("TICK_ENQUEUE_JOBS", False),
         jwt_secret=os.getenv("JWT_SECRET", "dev-only-change-me"),
         jwt_ttl_seconds=_int_env("JWT_TTL_SECONDS", 86400),
-        google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
-        tick_google_auth_dev=_bool_env("TICK_GOOGLE_AUTH_DEV", True),
         cors_origins=os.getenv(
             "CORS_ORIGINS",
             "http://localhost:5173,http://127.0.0.1:5173",

@@ -71,6 +71,11 @@ class UnexpectedBalanceReadVenue:
         raise AssertionError("open hot path must not read collateral balance")
 
 
+class NoGasAccounting:
+    def total_charges_usdc(self, user_id: str) -> Decimal:
+        return Decimal(0)
+
+
 def test_execution_service_dry_run_does_not_trade() -> None:
     service = ExecutionService(settings=Settings(tick_real_execution_enabled=False), repository=FakeRepository())
 
@@ -118,7 +123,11 @@ def test_open_without_prepared_balance_does_not_block_on_rpc() -> None:
 def test_open_rejects_known_insufficient_spendable_balance() -> None:
     repository = FakeRepository()
     context = repository.load("exec_1")
-    service = ExecutionService(settings=Settings(), repository=repository)
+    service = ExecutionService(
+        settings=Settings(),
+        repository=repository,
+        gas_accounting=NoGasAccounting(),
+    )
     service._remember_balance(context.user_id, Decimal("9.99"))
 
     with pytest.raises(InsufficientSpendableUSDC):

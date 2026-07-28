@@ -17,7 +17,7 @@ class UserStatus(StrEnum):
 
 
 class AuthProvider(StrEnum):
-    GOOGLE = "google"
+    INVITE_CODE = "invite_code"
 
 
 class WalletType(StrEnum):

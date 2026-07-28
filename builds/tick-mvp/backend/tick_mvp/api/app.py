@@ -1,4 +1,3 @@
-import hmac
 import asyncio
 import hashlib
 from contextlib import asynccontextmanager
@@ -9,15 +8,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from tick_mvp.api.auth import AuthError, UserSession, create_session_token, verify_session_token
-from tick_mvp.api.google_auth import GoogleAuthError, verify_google_identity
 from tick_mvp.core.config import get_settings
+from tick_mvp.domain.invitations import InviteAuthError, hash_invite_code
 from tick_mvp.domain.schemas import (
     AcceptedTradeResponse,
     CloseRequest,
     DepositAddressResponse,
-    DemoSessionRequest,
-    DevSessionRequest,
-    GoogleSessionRequest,
+    InviteSessionRequest,
     MeResponse,
     OpenRequest,
     QuoteRequest,
@@ -84,79 +81,20 @@ def create_app(store: Any | None = None) -> FastAPI:
     def ready() -> dict[str, object]:
         return {"ok": True}
 
-    @app.post("/api/auth/dev-session", response_model=SessionResponse)
-    def dev_session(body: DevSessionRequest) -> SessionResponse:
-        current_settings = get_settings()
-        if not current_settings.tick_allow_dev_auth:
-            raise HTTPException(status_code=404, detail="dev auth is disabled")
-        user, wallet = _store(app).upsert_google_user(
-            provider_subject=f"dev:{body.userId}",
-            email=f"{body.userId}@dev.tick.local",
-            display_name=body.userId,
-            avatar_url=None,
-            chain_id=current_settings.arb_chain_id,
-            custody_provider=current_settings.custody_provider,
-        )
-        token = create_session_token(
-            user_id=user.id,
-            wallet_address=wallet.address,
-            secret=current_settings.jwt_secret,
-            ttl_seconds=current_settings.jwt_ttl_seconds,
-        )
-        return SessionResponse(
-            token=token,
-            userId=user.id,
-            walletAddress=wallet.address,
-            expiresIn=current_settings.jwt_ttl_seconds,
-            user=user,
-            wallet=wallet,
-        )
-
-    @app.post("/api/auth/google", response_model=SessionResponse)
-    def google_session(body: GoogleSessionRequest) -> SessionResponse:
+    @app.post("/api/auth/invite", response_model=SessionResponse)
+    def invite_session(body: InviteSessionRequest) -> SessionResponse:
         current_settings = get_settings()
         try:
-            identity = verify_google_identity(body, current_settings)
-        except GoogleAuthError as exc:
-            raise HTTPException(status_code=401, detail=str(exc)) from exc
-        user, wallet = _store(app).upsert_google_user(
-            provider_subject=identity.subject,
-            email=identity.email,
-            display_name=identity.display_name,
-            avatar_url=identity.avatar_url,
-            chain_id=current_settings.arb_chain_id,
-            custody_provider=current_settings.custody_provider,
-        )
-        token = create_session_token(
-            user_id=user.id,
-            wallet_address=wallet.address,
-            secret=current_settings.jwt_secret,
-            ttl_seconds=current_settings.jwt_ttl_seconds,
-        )
-        return SessionResponse(
-            token=token,
-            userId=user.id,
-            walletAddress=wallet.address,
-            expiresIn=current_settings.jwt_ttl_seconds,
-            user=user,
-            wallet=wallet,
-        )
-
-    @app.post("/api/auth/demo", response_model=SessionResponse)
-    def demo_session(body: DemoSessionRequest) -> SessionResponse:
-        current_settings = get_settings()
-        expected = current_settings.tick_demo_access_code
-        if not expected or not hmac.compare_digest(body.accessCode, expected):
-            raise HTTPException(status_code=401, detail="invalid demo access code")
-        email = body.email.strip().lower()
-        user, wallet = _store(app).upsert_google_user(
-            provider_subject=f"demo:{email}",
-            email=email,
-            display_name=body.displayName or email.split("@", 1)[0],
-            avatar_url=None,
-            chain_id=current_settings.arb_chain_id,
-            custody_provider=current_settings.custody_provider,
-        )
+            user, wallet = _store(app).redeem_invite_code(
+                code_hash=hash_invite_code(
+                    body.accessCode,
+                    secret=current_settings.tick_invite_code_secret,
+                ),
+                chain_id=current_settings.arb_chain_id,
+                custody_provider=current_settings.custody_provider,
+            )
+        except InviteAuthError as exc:
+            raise HTTPException(status_code=401, detail="invalid or expired invite") from exc
         token = create_session_token(
             user_id=user.id,
             wallet_address=wallet.address,

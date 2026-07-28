@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
 
+const inviteCode = process.env.TICK_SMOKE_INVITE_CODE;
+assert.ok(inviteCode, "TICK_SMOKE_INVITE_CODE is required");
+
 const browser = await chromium.launch({
   executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   headless: true
@@ -23,13 +26,23 @@ assert.match(await page.locator("h1").innerText(), /Catch what is moving now/);
 await page.screenshot({ path: "/tmp/tick-landing.png", fullPage: true });
 
 await page.goto("http://127.0.0.1:5173/?app=1", { waitUntil: "domcontentloaded" });
+await authenticate(page);
 await page.locator(".trade-view").waitFor({ timeout: 20_000 });
 await page.waitForTimeout(1_000);
 await page.screenshot({ path: "/tmp/tick-trade.png", fullPage: true });
 
+await page.getByRole("button", { name: "Pulse" }).click();
+await page.locator(".hot-market-list").waitFor();
+await page.screenshot({ path: "/tmp/tick-pulse.png", fullPage: true });
+
 await page.getByRole("button", { name: "Me" }).click();
 await page.locator(".profile-page").waitFor();
 await page.screenshot({ path: "/tmp/tick-profile.png", fullPage: true });
+await page.locator(".preset-summary").click();
+await page.locator(".preset-sheet").waitFor();
+await page.waitForTimeout(250);
+await page.screenshot({ path: "/tmp/tick-preset.png", fullPage: true });
+await page.getByRole("button", { name: "Close preset" }).click();
 
 const overflow = await page.evaluate(() => ({
   x: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -63,6 +76,7 @@ for (const device of iphonePortraitViewports) {
   });
   const devicePage = await context.newPage();
   await devicePage.goto("http://127.0.0.1:5173/", { waitUntil: "domcontentloaded" });
+  await authenticate(devicePage);
   await devicePage.locator(".trade-view").waitFor({ timeout: 20_000 });
   await devicePage.addStyleTag({
     content: `:root { --safe-area-top: ${device.safeTop}px !important; --safe-area-bottom: 34px !important; }`
@@ -89,3 +103,11 @@ for (const device of iphonePortraitViewports) {
 
 await browser.close();
 console.log("PWA smoke passed");
+
+async function authenticate(page) {
+  await page.locator(".trade-view, .auth-gate").first().waitFor({ timeout: 20_000 });
+  if (await page.locator(".auth-gate").isVisible()) {
+    await page.getByPlaceholder("Invite code").fill(inviteCode);
+    await page.getByRole("button", { name: "Enter TICK" }).click();
+  }
+}

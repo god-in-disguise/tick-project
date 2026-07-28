@@ -21,23 +21,34 @@ export function Dashboard({ markets, onMarket }: Props) {
       </header>
       <div className="scanner-meta">
         <span>Markets moving now</span>
-        <strong>{markets.filter((market) => market.openingAllowed).length} live</strong>
+        <strong>
+          {markets.filter(
+            (market) => market.openingAllowed && market.activitySurplusPct >= 0
+          ).length} cost-covered
+        </strong>
       </div>
       <section className="hot-market-list">
         {markets.map((market, index) => {
           const theme = themeFor(market.market);
+          const covered = market.activitySurplusPct >= 0 && market.openingAllowed;
           return (
             <button key={market.market} className="market-row" onClick={() => onMarket(market.market)}>
               <span className="market-rank">{String(index + 1).padStart(2, "0")}</span>
               <span className="market-identity">
-                <strong>{market.symbol}</strong>
-                <small>{market.name}</small>
+                <span className="market-identity-title">
+                  <i style={{ backgroundColor: theme.accent }} />
+                  <strong>{market.symbol}</strong>
+                </span>
+                <small className={covered ? "covered" : ""}>
+                  {covered
+                    ? `SURPLUS ${percent(market.activitySurplusPct, 3)}`
+                    : `WAIT · ${percent(market.activitySurplusPct, 3)}`}
+                </small>
               </span>
-              <span className="activity-track">
+              <span className={`activity-track ${covered ? "covered" : ""}`}>
                 <i
                   style={{
-                    width: `${Math.max(8, Math.min(100, market.score / 2))}%`,
-                    backgroundColor: theme.accent
+                    width: `${Math.max(8, Math.min(100, market.score / 2))}%`
                   }}
                 />
               </span>

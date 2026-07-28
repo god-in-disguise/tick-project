@@ -11,8 +11,8 @@ import type {
   Withdrawal
 } from "./types";
 
-const TOKEN_KEY = "tick.session.token";
-const SESSION_KEY = "tick.session";
+const TOKEN_KEY = "tick.session.v2.token";
+const SESSION_KEY = "tick.session.v2";
 const API_BASE = String(import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 export class ApiError extends Error {
@@ -122,23 +122,13 @@ export function clearSession(): void {
 }
 
 export const api = {
-  devSession: (userId: string) =>
-    json<Session>("/api/auth/dev-session", {
+  inviteSession: (accessCode: string) =>
+    json<Session>("/api/auth/invite", {
       method: "POST",
-      body: JSON.stringify({ userId })
+      body: JSON.stringify({ accessCode })
     }).then(persistSession),
 
-  demoSession: (email: string, displayName: string, accessCode: string) =>
-    json<Session>("/api/auth/demo", {
-      method: "POST",
-      body: JSON.stringify({ email, displayName: displayName || null, accessCode })
-    }).then(persistSession),
-
-  googleSession: (idToken: string) =>
-    json<Session>("/api/auth/google", {
-      method: "POST",
-      body: JSON.stringify({ idToken })
-    }).then(persistSession),
+  me: () => json<{ user: Session["user"]; wallet: Session["wallet"] }>("/api/me"),
 
   state: () => json<AccountState>("/api/state", undefined, 6_000),
 

@@ -9,7 +9,7 @@ Production-shaped MVP for TICK.
 - Database: Postgres.
 - Runtime cache/pubsub: Redis.
 - Venue: gTrade/Gains first, venue-agnostic primitives.
-- Auth: Google ID token login, backend-issued TICK session JWT.
+- Auth: invitation-code login and backend-issued TICK session JWT.
 - Wallets: platform-created Arbitrum wallets with encrypted Postgres key material for MVP.
 
 ## Backend Processes
@@ -46,7 +46,7 @@ The PWA is a distribution choice for the first deployable MVP. The product refer
 - Real delegated gTrade open/close execution is extracted and live-tested.
   The user wallet owns collateral and the position; TICK's platform agent pays
   Arbitrum gas.
-- Google/session JWTs, per-user encrypted wallets, USDC deposits, automatic
+- invite/session JWTs, per-user encrypted wallets, USDC deposits, automatic
   withdrawals, idempotent trade intents, venue-native SL/TP, terminal events,
   and final wallet reconciliation are wired.
 - Platform gas is converted to USDC and included in the final per-position net

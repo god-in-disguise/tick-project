@@ -20,7 +20,8 @@ The first gTrade extraction is now started. The backend has live gTrade quote su
 
 ## Product Decisions
 
-- Auth is Google ID token login plus backend-issued TICK JWT.
+- Private MVP auth uses invitation codes plus a backend-issued TICK JWT.
+- Each invite receives an internal placeholder email until verified account linking is added.
 - V1 wallets are platform-created Arbitrum wallets.
 - Private keys are encrypted before storage in Postgres using `CUSTODY_PRIVATE_KEY_ENCRYPTION_KEY`.
 - Users deposit Arbitrum USDC to their platform wallet.
@@ -38,9 +39,7 @@ The first gTrade extraction is now started. The backend has live gTrade quote su
 
 This scaffold currently implements the contract layer, Postgres persistence, live gTrade quotes, and a guarded worker execution path:
 
-- `POST /api/auth/dev-session`
-- `POST /api/auth/demo`
-- `POST /api/auth/google`
+- `POST /api/auth/invite`
 - `GET /api/me`
 - `GET /api/state`
 - `GET /api/events`
@@ -52,7 +51,19 @@ This scaffold currently implements the contract layer, Postgres persistence, liv
 - `POST /api/trade/open`
 - `POST /api/trade/close`
 
-Auth is bearer-token based. For local development, `POST /api/auth/dev-session` returns a dependency-free HS256 JWT. Production login uses Google ID token verification and then returns the same backend-issued TICK session JWT. Private investor/team builds can use `POST /api/auth/demo` with a server-side access code when Google credentials are not configured. Dev auth must remain disabled on any public backend.
+Auth is bearer-token based. Every environment uses an invitation created in
+Postgres, and successful redemption returns the normal TICK session JWT. Raw
+invite codes are shown once and only their HMAC hashes are stored. An invite
+creates one user and one wallet on first use, then restores that same account.
+
+Create or rotate an invitation:
+
+```bash
+docker compose exec api python scripts/create_invite.py --name Chronos
+```
+
+The account uses an internal `@pending.tick.local` placeholder until verified
+email linking is implemented.
 
 Docker uses `TICK_STORE_BACKEND=postgres` and runs migrations from `migrations/001_core.sql` on startup. Local unit tests can still inject `MemoryStore` directly as a fast test double.
 
@@ -60,7 +71,7 @@ Verified local Docker smoke:
 
 - API, Postgres, Redis, worker, market-feed, and venue-events start from Compose.
 - `GET /health` and `GET /ready` return ok.
-- dev session creates/reuses a user and platform Arbitrum wallet.
+- invite redemption creates/reuses one user and platform Arbitrum wallet.
 - deposit address returns the platform wallet.
 - quote uses live gTrade pair metadata/pricing when `TICK_REAL_QUOTES_ENABLED=true`.
 - BTCDEGEN quotes normalize to venue execution leverage and include estimated open/close costs, liquidation estimate, and stop-loss estimate.

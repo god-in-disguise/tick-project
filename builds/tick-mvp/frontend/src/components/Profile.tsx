@@ -1,6 +1,7 @@
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  ChevronRight,
   Copy,
   History,
   LogOut,
@@ -31,6 +32,7 @@ export function Profile(props: Props) {
   const [withdrawAddress, setWithdrawAddress] = useState("");
   const [walletBusy, setWalletBusy] = useState(false);
   const [walletMessage, setWalletMessage] = useState<string | null>(null);
+  const [editingPreset, setEditingPreset] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<"all" | "wins" | "losses" | "liquidations">("all");
   const leverageOptions = [25, 50, 100, 500];
   const address = props.session?.walletAddress ?? props.balances?.address;
@@ -54,7 +56,8 @@ export function Profile(props: Props) {
     0
   );
   const wins = settled.filter((item) => (item.reconciliation?.walletDeltaUsd ?? 0) > 0).length;
-  const displayName = props.session?.user?.displayName || props.session?.user?.email || "TICK trader";
+  const winRate = settled.length ? Math.round(wins / settled.length * 100) : 0;
+  const displayName = props.session?.user?.displayName || "TICK trader";
   const filteredHistory = useMemo(
     () => history.filter(({ position, reconciliation }) => {
       const pnl = reconciliation?.walletDeltaUsd;
@@ -99,29 +102,23 @@ export function Profile(props: Props) {
       <section className="performance-strip">
         <div>
           <span>Net PnL</span>
-          <strong className={netPnl >= 0 ? "positive" : "negative"}>{signedMoney(netPnl)}</strong>
+          <strong className={netPnl > 0 ? "positive" : netPnl < 0 ? "negative" : ""}>
+            {signedMoney(netPnl)}
+          </strong>
         </div>
         <div>
           <span>Trades</span>
           <strong>{settled.length}</strong>
         </div>
         <div>
-          <span>Wins</span>
-          <strong>{wins}</strong>
+          <span>Win rate</span>
+          <strong>{winRate}%</strong>
         </div>
       </section>
 
       <section className="wallet-summary">
-        <span>Trading balance</span>
+        <span>Available to trade</span>
         <strong>{money(props.balances?.spendableUsdc ?? props.balances?.usdc)}</strong>
-        <button
-          className="address-button"
-          onClick={() => address && navigator.clipboard.writeText(address)}
-          title="Copy deposit address"
-        >
-          {shortAddress(address)}
-          <Copy size={13} />
-        </button>
         <div className="wallet-actions">
           <button type="button" onClick={() => setWalletAction("deposit")}>
             <ArrowDownToLine size={16} />
@@ -132,90 +129,39 @@ export function Profile(props: Props) {
             Withdraw
           </button>
         </div>
+        <button
+          className="wallet-detail-button"
+          onClick={() => address && navigator.clipboard.writeText(address)}
+          title="Copy deposit address"
+        >
+          <span>Wallet &amp; network</span>
+          <strong>Arbitrum · {shortAddress(address)}</strong>
+          <Copy size={13} />
+        </button>
       </section>
 
       <div className="section-heading">
         <div>
           <Settings2 size={15} />
-          <strong>TICK config</strong>
+          <strong>Active preset</strong>
         </div>
         <span>Applied to every gesture</span>
       </div>
-      <section className="settings-group">
-        <label>Collateral</label>
-        <div className="segmented">
-          {[10, 20, 50, 100].map((value) => (
-            <button
-              key={value}
-              className={props.settings.ticketUsd === value ? "active" : ""}
-              onClick={() => props.onSettings({ ...props.settings, ticketUsd: value })}
-            >
-              ${value}
-            </button>
-          ))}
-        </div>
-
-        <label>Leverage</label>
-        <div className="segmented">
-          {leverageOptions.map((value) => (
-            <button
-              key={value}
-              className={props.settings.leverage === value ? "active" : ""}
-              onClick={() => props.onSettings({ ...props.settings, leverage: value })}
-            >
-              {value}x
-            </button>
-          ))}
-        </div>
-
-        <SettingToggle
-          label="Venue stop loss"
-          enabled={props.settings.stopLossEnabled}
-          onToggle={() =>
-            props.onSettings({
-              ...props.settings,
-              stopLossEnabled: !props.settings.stopLossEnabled
-            })
-          }
-        />
-        {props.settings.stopLossEnabled ? (
-          <div className="segmented">
-            {[5, 10, 20, 50].map((value) => (
-              <button
-                key={value}
-                className={props.settings.maxLossUsd === value ? "active" : ""}
-                onClick={() => props.onSettings({ ...props.settings, maxLossUsd: value })}
-              >
-                ${value}
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        <SettingToggle
-          label="Venue take profit"
-          enabled={props.settings.takeProfitEnabled}
-          onToggle={() =>
-            props.onSettings({
-              ...props.settings,
-              takeProfitEnabled: !props.settings.takeProfitEnabled
-            })
-          }
-        />
-        {props.settings.takeProfitEnabled ? (
-          <div className="segmented">
-            {[5, 10, 20, 50].map((value) => (
-              <button
-                key={value}
-                className={props.settings.takeProfitUsd === value ? "active" : ""}
-                onClick={() => props.onSettings({ ...props.settings, takeProfitUsd: value })}
-              >
-                ${value}
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </section>
+      <button className="preset-summary" type="button" onClick={() => setEditingPreset(true)}>
+        <span className="preset-primary">
+          <small>AMOUNT</small>
+          <strong>{money(props.settings.ticketUsd)}</strong>
+        </span>
+        <span>
+          <small>LEVERAGE</small>
+          <strong>{props.settings.leverage}x</strong>
+        </span>
+        <span>
+          <small>LOSS LIMIT</small>
+          <strong>{props.settings.stopLossEnabled ? money(props.settings.maxLossUsd) : "Off"}</strong>
+        </span>
+        <ChevronRight size={18} />
+      </button>
 
       <div className="section-heading">
         <div>
@@ -232,7 +178,7 @@ export function Profile(props: Props) {
             type="button"
             onClick={() => setHistoryFilter(filter)}
           >
-            {filter === "liquidations" ? "Liq" : filter}
+            {filter === "liquidations" ? "Liquidated" : filter}
           </button>
         ))}
       </div>
@@ -242,7 +188,7 @@ export function Profile(props: Props) {
           return (
             <div className="history-row" key={position.id}>
               <span className={`history-side ${position.side}`}>
-                {position.side === "long" ? "UP" : "DOWN"}
+                {position.side === "long" ? "↑ LONG" : "↓ SHORT"}
               </span>
               <span className="history-market">
                 <strong>{position.market}</strong>
@@ -250,9 +196,9 @@ export function Profile(props: Props) {
               </span>
               <span className="history-result">
                 <strong className={pnl === null || pnl === undefined ? "" : pnl >= 0 ? "positive" : "negative"}>
-                  {pnl === null || pnl === undefined ? "Settling" : signedMoney(pnl)}
+                  {pnl === null || pnl === undefined ? "Finalizing" : signedMoney(pnl)}
                 </strong>
-                <small>{position.status}</small>
+                <small>{historyStatus(position.status, position.terminalReason)}</small>
               </span>
             </div>
           );
@@ -266,13 +212,113 @@ export function Profile(props: Props) {
       </div>
       <section className="account-facts">
         <div><span>Network</span><strong>Arbitrum One</strong></div>
-        <div><span>Execution</span><strong>gTrade</strong></div>
-        <div><span>Wallet</span><strong>Platform custody</strong></div>
+        <div><span>Execution</span><strong>Best available route</strong></div>
+        <div><span>Account</span><strong>Invite protected</strong></div>
+        <div><span>Email</span><strong>Not linked</strong></div>
       </section>
       <button className="sign-out-button" type="button" onClick={props.onSignOut}>
         <LogOut size={16} />
         Sign out
       </button>
+
+      {editingPreset ? (
+        <div className="wallet-sheet-backdrop" role="presentation">
+          <section className="wallet-sheet preset-sheet" role="dialog" aria-modal="true">
+            <button
+              className="wallet-sheet-close"
+              type="button"
+              aria-label="Close preset"
+              onClick={() => setEditingPreset(false)}
+            >
+              <X size={20} />
+            </button>
+            <span className="wallet-sheet-kicker">ACTIVE PRESET</span>
+            <h2>Trade settings</h2>
+            <p>These terms apply automatically to every opening gesture.</p>
+            <div className="settings-group">
+              <label>Amount</label>
+              <div className="segmented">
+                {[10, 20, 50, 100].map((value) => (
+                  <button
+                    key={value}
+                    className={props.settings.ticketUsd === value ? "active" : ""}
+                    onClick={() => props.onSettings({ ...props.settings, ticketUsd: value })}
+                  >
+                    ${value}
+                  </button>
+                ))}
+              </div>
+
+              <label>Leverage</label>
+              <div className="segmented">
+                {leverageOptions.map((value) => (
+                  <button
+                    key={value}
+                    className={props.settings.leverage === value ? "active" : ""}
+                    onClick={() => props.onSettings({ ...props.settings, leverage: value })}
+                  >
+                    {value}x
+                  </button>
+                ))}
+              </div>
+
+              <SettingToggle
+                label="Stop loss"
+                enabled={props.settings.stopLossEnabled}
+                onToggle={() =>
+                  props.onSettings({
+                    ...props.settings,
+                    stopLossEnabled: !props.settings.stopLossEnabled
+                  })
+                }
+              />
+              {props.settings.stopLossEnabled ? (
+                <>
+                  <small className="venue-protection-note">Loss budget · placed directly on venue</small>
+                  <div className="segmented">
+                    {[5, 10, 20, 50].map((value) => (
+                      <button
+                        key={value}
+                        className={props.settings.maxLossUsd === value ? "active" : ""}
+                        onClick={() => props.onSettings({ ...props.settings, maxLossUsd: value })}
+                      >
+                        ${value}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+
+              <SettingToggle
+                label="Take profit"
+                enabled={props.settings.takeProfitEnabled}
+                onToggle={() =>
+                  props.onSettings({
+                    ...props.settings,
+                    takeProfitEnabled: !props.settings.takeProfitEnabled
+                  })
+                }
+              />
+              {props.settings.takeProfitEnabled ? (
+                <>
+                  <small className="venue-protection-note">Profit target · placed directly on venue</small>
+                  <div className="segmented">
+                    {[5, 10, 20, 50].map((value) => (
+                      <button
+                        key={value}
+                        className={props.settings.takeProfitUsd === value ? "active" : ""}
+                        onClick={() => props.onSettings({ ...props.settings, takeProfitUsd: value })}
+                      >
+                        ${value}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {walletAction ? (
         <div className="wallet-sheet-backdrop" role="presentation">
@@ -405,4 +451,15 @@ function formatDate(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(timestamp);
+}
+
+function historyStatus(
+  status: string,
+  reason: "manual_close" | "external_close" | "take_profit" | "stop_loss" | "liquidation" | null
+): string {
+  if (reason === "liquidation" || status === "liquidated") return "Liquidated";
+  if (reason === "stop_loss") return "Stop hit";
+  if (reason === "take_profit") return "Take profit";
+  if (status === "closed") return "Closed";
+  return status;
 }
