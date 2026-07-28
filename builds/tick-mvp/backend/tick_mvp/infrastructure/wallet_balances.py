@@ -9,7 +9,12 @@ from tick_mvp.core.config import Settings
 from tick_mvp.domain.schemas import WalletAccountResponse, WalletBalancesResponse
 
 
-def read_wallet_balances(wallet: WalletAccountResponse, settings: Settings) -> WalletBalancesResponse:
+def read_wallet_balances(
+    wallet: WalletAccountResponse,
+    settings: Settings,
+    *,
+    gas_charges_usdc: Decimal = Decimal(0),
+) -> WalletBalancesResponse:
     fetched_at = datetime.now(UTC)
     if not settings.arb_rpc_url:
         return WalletBalancesResponse(
@@ -40,13 +45,19 @@ def read_wallet_balances(wallet: WalletAccountResponse, settings: Settings) -> W
             fetchedAt=fetched_at,
             unavailableReason=f"{type(exc).__name__}: {exc}",
         )
+    raw_usdc = _quantize(usdc, 6)
+    charges = _quantize(max(Decimal(0), gas_charges_usdc), 6)
+    spendable = _quantize(max(Decimal(0), raw_usdc - charges), 6)
     return WalletBalancesResponse(
         chainId=wallet.chainId,
         address=wallet.address,
         nativeEth=_quantize(native_eth, 18),
-        usdc=_quantize(usdc, 6),
+        usdc=spendable,
+        onchainUsdc=raw_usdc,
+        gasChargesUsdc=charges,
+        spendableUsdc=spendable,
         gtradeAllowanceUsdc=_quantize(allowance, 6),
-        source="arbitrum_rpc_batch",
+        source="arbitrum_rpc_batch+gas_ledger",
         fetchedAt=fetched_at,
     )
 

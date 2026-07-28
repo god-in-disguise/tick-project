@@ -4,6 +4,8 @@ import logging
 
 from tick_mvp.core.config import get_settings
 from tick_mvp.execution.service import ExecutionService
+from tick_mvp.wallets.accounting import GasAccountingService
+from tick_mvp.wallets.gas import GasFundingService
 from tick_mvp.wallets.service import WithdrawalService
 from tick_mvp.workers.tasks import (
     execute_trade_attempt,
@@ -18,10 +20,18 @@ logging.basicConfig(level=logging.INFO)
 
 
 async def startup(ctx: dict) -> None:
-    service = ExecutionService()
+    gas_funding = GasFundingService()
+    gas_accounting = GasAccountingService()
+    service = ExecutionService(
+        gas_funding=gas_funding,
+        gas_accounting=gas_accounting,
+    )
     service.start()
     ctx["execution_service"] = service
-    ctx["withdrawal_service"] = WithdrawalService()
+    ctx["withdrawal_service"] = WithdrawalService(
+        gas_funding=gas_funding,
+        gas_accounting=gas_accounting,
+    )
     logging.getLogger("tick.worker").info("ARQ worker started")
 
 

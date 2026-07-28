@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from decimal import Decimal
 
@@ -8,6 +9,13 @@ from tick_mvp.core.config import Settings, get_settings
 from tick_mvp.domain.states import TradeAction
 from tick_mvp.execution.repository import ExecutionContext, ExecutionRepository
 from tick_mvp.venues.registry import create_venue
+from tick_mvp.wallets.accounting import (
+    GasAccountingService,
+    gas_transaction,
+    gas_transactions_from_payload,
+    spendable_usdc,
+)
+from tick_mvp.wallets.gas import GasFundingService
 
 
 LOGGER = logging.getLogger("tick.execution")
@@ -17,10 +25,22 @@ BALANCE_SETTLEMENT_EPSILON_USD = Decimal("0.01")
 
 
 class ExecutionService:
-    def __init__(self, settings: Settings | None = None, repository: ExecutionRepository | None = None) -> None:
+    BALANCE_CACHE_SECONDS = 30.0
+
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        repository: ExecutionRepository | None = None,
+        gas_funding: GasFundingService | None = None,
+        gas_accounting: GasAccountingService | None = None,
+    ) -> None:
         self._settings = settings or get_settings()
         self._repository = repository or ExecutionRepository(self._settings)
         self._venue = create_venue(self._settings)
+        self._gas_funding = gas_funding or GasFundingService(self._settings)
+        self._gas_accounting = gas_accounting or GasAccountingService(self._settings)
+        self._balance_cache: dict[str, tuple[float, Decimal]] = {}
+        self._balance_lock = threading.Lock()
 
     def start(self) -> None:
         start = getattr(self._venue, "start", None)
@@ -31,9 +51,23 @@ class ExecutionService:
         stop = getattr(self._venue, "stop", None)
         if stop is not None:
             stop()
+        self._gas_funding.close()
 
     def prepare_user_wallet(self, user_id: str, required_collateral_usd: Decimal) -> dict[str, object]:
-        _, private_key_hex = self._repository.load_user_wallet_credentials(user_id)
+        gas = None
+        if self._settings.tick_real_execution_enabled:
+            wallet_id, wallet_address, private_key_hex = (
+                self._repository.load_user_wallet_context(user_id)
+            )
+            gas = self._gas_funding.ensure_funded(
+                user_id=user_id,
+                wallet_id=wallet_id,
+                wallet_address=wallet_address,
+            )
+        else:
+            wallet_address, private_key_hex = (
+                self._repository.load_user_wallet_credentials(user_id)
+            )
         prepare = getattr(self._venue, "prepare_wallet", None)
         if prepare is None:
             return {"userId": user_id, "status": "unsupported"}
@@ -41,7 +75,21 @@ class ExecutionService:
             private_key_hex=private_key_hex,
             required_collateral_usd=required_collateral_usd,
         )
-        return {"userId": user_id, "status": "ready", **result}
+        raw_balance = _decimal_or_none(result.get("collateralBalanceUsd"))
+        if raw_balance is not None:
+            self._remember_balance(user_id, raw_balance)
+            self._require_spendable(
+                user_id=user_id,
+                required_usdc=required_collateral_usd,
+                raw_balance=raw_balance,
+            )
+        self._charge_payload_transactions(
+            user_id=user_id,
+            execution_attempt_id=None,
+            payload=result.get("gasTransactions"),
+            wallet_address=wallet_address,
+        )
+        return {"userId": user_id, "status": "ready", "gas": gas, **result}
 
     def execute(self, execution_attempt_id: str) -> dict[str, object]:
         started = time.perf_counter()
@@ -55,6 +103,9 @@ class ExecutionService:
                 "reason": "TICK_REAL_EXECUTION_ENABLED=false",
             }
         try:
+            self._ensure_execution_gas(context)
+            if context.action == TradeAction.OPEN:
+                self._require_open_balance(context)
             result = self._execute_live(context)
             finished_at = time.perf_counter()
             LOGGER.info(
@@ -87,6 +138,12 @@ class ExecutionService:
                 ),
             )
             self._repository.mark_open_result(context, result)
+            self._charge_result(
+                context,
+                result.tx,
+                extra_transactions=result.payload.get("gasTransactions"),
+            )
+            self._adjust_cached_balance(context.user_id, -context.ticket_usd)
             return {
                 "executionAttemptId": context.execution_id,
                 "status": result.status,
@@ -105,6 +162,7 @@ class ExecutionService:
                 nonce=nonce,
             ),
         )
+        self._charge_result(context, result.tx)
         wallet_delta_usd = self._repository.mark_close_result(context, result)
         if result.status == "closed" and wallet_delta_usd is None:
             try:
@@ -113,6 +171,7 @@ class ExecutionService:
                     context,
                     account_balance_after_usd=account_balance_after,
                 )
+                self._remember_balance(context.user_id, account_balance_after)
             except Exception:
                 LOGGER.exception(
                     "close accounting reconciliation deferred",
@@ -124,6 +183,122 @@ class ExecutionService:
             "txHash": result.tx.tx_hash,
             "walletDeltaUsd": str(wallet_delta_usd) if wallet_delta_usd is not None else None,
         }
+
+    def _ensure_execution_gas(self, context: ExecutionContext) -> None:
+        self._gas_funding.ensure_funded(
+            user_id=context.user_id,
+            wallet_id=context.wallet_id,
+            wallet_address=context.wallet_address,
+        )
+
+    def _require_open_balance(self, context: ExecutionContext) -> None:
+        raw_balance = self._cached_balance(context.user_id)
+        if raw_balance is None:
+            raw_balance = self._venue.collateral_balance_usd(
+                private_key_hex=context.private_key_hex
+            )
+            self._remember_balance(context.user_id, raw_balance)
+        self._require_spendable(
+            user_id=context.user_id,
+            required_usdc=context.ticket_usd,
+            raw_balance=raw_balance,
+        )
+
+    def _require_spendable(
+        self,
+        *,
+        user_id: str,
+        required_usdc: Decimal,
+        raw_balance: Decimal,
+    ) -> None:
+        charges = self._gas_accounting.total_charges_usdc(user_id)
+        available = spendable_usdc(raw_balance, charges)
+        if available < required_usdc:
+            raise InsufficientSpendableUSDC(
+                f"insufficient spendable USDC: {available:.6f} available"
+            )
+
+    def _charge_result(
+        self,
+        context: ExecutionContext,
+        tx,
+        *,
+        extra_transactions: object = None,
+    ) -> None:
+        transactions = gas_transactions_from_payload(extra_transactions)
+        primary = gas_transaction(
+            tx_hash=tx.tx_hash,
+            gas_used=tx.gas_used,
+            effective_gas_price=tx.effective_gas_price,
+            operation=context.action.value,
+        )
+        if primary is not None:
+            transactions.append(primary)
+        self._charge_transactions(
+            user_id=context.user_id,
+            execution_attempt_id=context.execution_id,
+            transactions=transactions,
+            wallet_address=context.wallet_address,
+        )
+
+    def _charge_payload_transactions(
+        self,
+        *,
+        user_id: str,
+        execution_attempt_id: str | None,
+        payload: object,
+        wallet_address: str,
+    ) -> None:
+        self._charge_transactions(
+            user_id=user_id,
+            execution_attempt_id=execution_attempt_id,
+            transactions=gas_transactions_from_payload(payload),
+            wallet_address=wallet_address,
+        )
+
+    def _charge_transactions(
+        self,
+        *,
+        user_id: str,
+        execution_attempt_id: str | None,
+        transactions: list,
+        wallet_address: str,
+    ) -> None:
+        for transaction in transactions:
+            self._gas_funding.note_spent(wallet_address, transaction.native_cost)
+            try:
+                self._gas_accounting.charge(
+                    user_id=user_id,
+                    transaction=transaction,
+                    execution_attempt_id=execution_attempt_id,
+                )
+            except Exception:
+                LOGGER.exception(
+                    "gas accounting deferred userId=%s txHash=%s",
+                    user_id,
+                    transaction.tx_hash,
+                )
+
+    def _cached_balance(self, user_id: str) -> Decimal | None:
+        with self._balance_lock:
+            cached = self._balance_cache.get(user_id)
+        if cached is None or time.monotonic() - cached[0] > self.BALANCE_CACHE_SECONDS:
+            return None
+        return cached[1]
+
+    def _remember_balance(self, user_id: str, balance: Decimal) -> None:
+        with self._balance_lock:
+            self._balance_cache[user_id] = (time.monotonic(), balance)
+
+    def _adjust_cached_balance(self, user_id: str, delta: Decimal) -> None:
+        with self._balance_lock:
+            cached = self._balance_cache.get(user_id)
+            if cached is None:
+                return
+            self._balance_cache[user_id] = (
+                time.monotonic(),
+                max(Decimal(0), cached[1] + delta),
+            )
 
     def _wait_for_close_balance(
         self,
@@ -145,3 +320,13 @@ class ExecutionService:
             if time.monotonic() >= deadline:
                 return balance
             time.sleep(poll_seconds)
+
+
+class InsufficientSpendableUSDC(RuntimeError):
+    pass
+
+
+def _decimal_or_none(value: object) -> Decimal | None:
+    if value is None:
+        return None
+    return Decimal(str(value))

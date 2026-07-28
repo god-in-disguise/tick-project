@@ -70,6 +70,27 @@ class FakeExecutor:
         pass
 
 
+class FakeGasFunding:
+    def __init__(self) -> None:
+        self.funded = 0
+        self.spent: list[Decimal] = []
+
+    def ensure_funded(self, **kwargs):
+        self.funded += 1
+        return {"status": "ready"}
+
+    def note_spent(self, wallet_address: str, amount_native: Decimal) -> None:
+        self.spent.append(amount_native)
+
+
+class FakeGasAccounting:
+    def __init__(self) -> None:
+        self.transactions = []
+
+    def charge(self, **kwargs):
+        self.transactions.append(kwargs["transaction"])
+
+
 def test_confirmed_withdrawal_persists_before_broadcast() -> None:
     repository = FakeRepository(_context())
     executor = FakeExecutor(_confirmed_result())
@@ -77,6 +98,8 @@ def test_confirmed_withdrawal_persists_before_broadcast() -> None:
         settings=Settings(tick_real_execution_enabled=True),
         repository=repository,
         executor=executor,
+        gas_funding=FakeGasFunding(),
+        gas_accounting=FakeGasAccounting(),
     )
 
     result = service.execute("withdrawal_1")
@@ -98,6 +121,8 @@ def test_dry_run_does_not_claim_or_mutate_withdrawal() -> None:
         settings=Settings(tick_real_execution_enabled=False),
         repository=repository,
         executor=executor,
+        gas_funding=FakeGasFunding(),
+        gas_accounting=FakeGasAccounting(),
     )
 
     result = service.execute("withdrawal_1")
@@ -116,6 +141,8 @@ def test_terminal_withdrawal_is_not_submitted_twice() -> None:
         settings=Settings(tick_real_execution_enabled=True),
         repository=repository,
         executor=executor,
+        gas_funding=FakeGasFunding(),
+        gas_accounting=FakeGasAccounting(),
     )
 
     result = service.execute("withdrawal_1")
@@ -131,6 +158,8 @@ def test_permanent_rejection_marks_failed_without_retry() -> None:
         settings=Settings(tick_real_execution_enabled=True),
         repository=repository,
         executor=executor,
+        gas_funding=FakeGasFunding(),
+        gas_accounting=FakeGasAccounting(),
     )
 
     result = service.execute("withdrawal_1")
@@ -150,6 +179,8 @@ def test_transport_error_remains_retryable() -> None:
         settings=Settings(tick_real_execution_enabled=True),
         repository=repository,
         executor=executor,
+        gas_funding=FakeGasFunding(),
+        gas_accounting=FakeGasAccounting(),
     )
 
     with pytest.raises(WithdrawalRetryable, match="RPC timeout"):

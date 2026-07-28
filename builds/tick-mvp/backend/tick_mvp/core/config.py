@@ -36,6 +36,12 @@ class Settings:
     custody_private_key_encryption_key: str = ""
     gas_payer_mode: str = "platform_agent"
     gas_charge_asset: str = "USDC"
+    platform_gas_wallet_private_key: str = ""
+    user_gas_min_eth: Decimal = Decimal("0.0003")
+    user_gas_target_eth: Decimal = Decimal("0.001")
+    gas_topup_transfer_gas: int = 30_000
+    arb_eth_usd_feed_address: str = "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612"
+    arb_eth_usd_max_age_seconds: int = 7200
     tick_real_quotes_enabled: bool = False
     tick_real_execution_enabled: bool = False
     gtrade_backend_url: str = "https://backend-arbitrum.gains.trade"
@@ -108,6 +114,18 @@ def get_settings() -> Settings:
         custody_private_key_encryption_key=os.getenv("CUSTODY_PRIVATE_KEY_ENCRYPTION_KEY", ""),
         gas_payer_mode=os.getenv("GAS_PAYER_MODE", "platform_agent"),
         gas_charge_asset=os.getenv("GAS_CHARGE_ASSET", "USDC"),
+        platform_gas_wallet_private_key=os.getenv("PLATFORM_GAS_WALLET_PRIVATE_KEY", ""),
+        user_gas_min_eth=_decimal_env("USER_GAS_MIN_ETH", "0.0003"),
+        user_gas_target_eth=_decimal_env("USER_GAS_TARGET_ETH", "0.001"),
+        gas_topup_transfer_gas=_int_env("GAS_TOPUP_TRANSFER_GAS", 30_000),
+        arb_eth_usd_feed_address=os.getenv(
+            "ARB_ETH_USD_FEED_ADDRESS",
+            "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",
+        ),
+        arb_eth_usd_max_age_seconds=_int_env(
+            "ARB_ETH_USD_MAX_AGE_SECONDS",
+            7200,
+        ),
         tick_real_quotes_enabled=_bool_env("TICK_REAL_QUOTES_ENABLED", False),
         tick_real_execution_enabled=_bool_env("TICK_REAL_EXECUTION_ENABLED", False),
         gtrade_backend_url=os.getenv("GTRADE_BACKEND_URL", "https://backend-arbitrum.gains.trade"),

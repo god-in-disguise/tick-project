@@ -27,6 +27,7 @@ class WithdrawalContext:
     tx_hash: str | None
     nonce: int | None
     signed_raw_transaction: str | None
+    reserved_gas_charges_usdc: Decimal = Decimal(0)
 
 
 class WithdrawalRepository:
@@ -82,6 +83,10 @@ class WithdrawalRepository:
                 tx_hash=withdrawal.tx_hash,
                 nonce=withdrawal.nonce,
                 signed_raw_transaction=signed_raw,
+                reserved_gas_charges_usdc=_reserved_gas_charges(
+                    session,
+                    withdrawal.user_id,
+                ),
             )
 
     def mark_signed(
@@ -252,6 +257,21 @@ def _active_position_exists(session, user_id: str) -> bool:
         .first()
         is not None
     )
+
+
+def _reserved_gas_charges(session, user_id: str) -> Decimal:
+    from sqlalchemy import func
+
+    total = (
+        session.query(func.coalesce(func.sum(LedgerEvent.amount), 0))
+        .filter(
+            LedgerEvent.user_id == user_id,
+            LedgerEvent.event_type == "gas_charge",
+            LedgerEvent.asset == "USDC",
+        )
+        .scalar()
+    )
+    return max(Decimal(0), -Decimal(total or 0))
 
 
 def _now() -> datetime:

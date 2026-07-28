@@ -24,9 +24,12 @@ The first gTrade extraction is now started. The backend has live gTrade quote su
 - V1 wallets are platform-created Arbitrum wallets.
 - Private keys are encrypted before storage in Postgres using `CUSTODY_PRIVATE_KEY_ENCRYPTION_KEY`.
 - Users deposit Arbitrum USDC to their platform wallet.
+- Users never need to deposit, hold, or understand ETH.
+- A dedicated platform gas wallet tops up low user wallets to the configured ETH target.
+- Confirmed approval/open/close/withdrawal gas is converted through the Arbitrum Chainlink ETH/USD feed and reserved from the user's spendable USDC.
+- Platform top-up and future treasury-sweep overhead is a TICK cost, not a user gas charge.
 - Withdrawals are automatic worker jobs after request validation.
 - Withdrawal signing persists encrypted raw transaction bytes before broadcast, so retries reuse the same nonce and transaction hash.
-- Automatic ETH top-ups and USDC gas charging remain required before external multi-user testing.
 - gTrade is the first live venue, but tables and API contracts use venue-neutral primitives.
 
 ## Current Contract Pass
@@ -60,6 +63,9 @@ Verified local Docker smoke:
 - open/close creates persisted quote, intent, execution attempt, position, and reconciliation rows.
 - ARQ worker consumes queued open/close/withdrawal jobs and returns dry-run execution results when `TICK_REAL_EXECUTION_ENABLED=false`.
 - USDC withdrawals validate wallet state, exclude active positions, persist signed bytes before broadcast, recover by deterministic transaction hash, and append a confirmed ledger event.
+- Gas top-ups persist the exact encrypted signed transaction before broadcast and safely retry the same hash/nonce.
+- Wallet balance responses expose on-chain USDC, accrued gas charges, and spendable USDC; the compatibility `usdc` field is spendable USDC.
+- Realized trade results include position-linked platform gas charges instead of overstating wallet PnL.
 - idempotency returns the original attempt for duplicate payloads.
 - idempotent replays use deterministic ARQ job IDs, so the same execution is not queued twice.
 - idempotency key reuse with a different payload returns conflict.
@@ -80,9 +86,9 @@ shared event stream, and automatically submits the configured max USDC
 approval when the requested collateral is not already covered. Market metadata,
 live prices, and fee inputs are warmed at process level.
 
-The next hardening work is automatic per-user gas funding, USDC gas accounting,
-withdrawal controls in the PWA, and deployment canaries for restart and
-ambiguous-broadcast recovery.
+The next hardening work is withdrawal controls in the PWA, asynchronous
+treasury collection of reserved USDC gas charges, and deployment canaries for
+restart and ambiguous-broadcast recovery.
 
 ## Package Layout
 

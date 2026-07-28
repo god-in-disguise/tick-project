@@ -47,6 +47,7 @@ from tick_mvp.infrastructure.model_mappers import (
 from tick_mvp.infrastructure.models import (
     AuthIdentity,
     ExecutionAttempt,
+    LedgerEvent,
     Position,
     Quote,
     Reconciliation,
@@ -165,6 +166,21 @@ class SQLAlchemyStore:
     def deposit_address(self, user_id: str) -> DepositAddressResponse:
         wallet = self.wallet_for_user(user_id)
         return DepositAddressResponse(chainId=wallet.chainId, walletId=wallet.id, address=wallet.address)
+
+    def reserved_gas_charges_usdc(self, user_id: str) -> Decimal:
+        from sqlalchemy import func
+
+        with session_scope(self._session_factory) as session:
+            total = (
+                session.query(func.coalesce(func.sum(LedgerEvent.amount), 0))
+                .filter(
+                    LedgerEvent.user_id == user_id,
+                    LedgerEvent.event_type == "gas_charge",
+                    LedgerEvent.asset == "USDC",
+                )
+                .scalar()
+            )
+        return max(Decimal(0), -Decimal(total or 0))
 
     def request_withdrawal(self, user_id: str, request: WithdrawalRequest) -> WithdrawalResponse:
         request_hash = _hash_payload(request.model_dump(mode="json"))

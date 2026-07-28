@@ -176,13 +176,19 @@ def create_app(store: Any | None = None) -> FastAPI:
 
     @app.get("/api/wallet/balances", response_model=WalletBalancesResponse)
     def wallet_balances(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> WalletBalancesResponse:
+        user_id = _session(authorization, x_tick_user).user_id
         try:
-            wallet = _store(app).wallet_for_user(_session(authorization, x_tick_user).user_id)
+            store = _store(app)
+            wallet = store.wallet_for_user(user_id)
         except StoreNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         from tick_mvp.infrastructure.wallet_balances import read_wallet_balances
 
-        return read_wallet_balances(wallet, get_settings())
+        return read_wallet_balances(
+            wallet,
+            get_settings(),
+            gas_charges_usdc=store.reserved_gas_charges_usdc(user_id),
+        )
 
     @app.post("/api/wallet/withdrawals", response_model=WithdrawalResponse, status_code=status.HTTP_202_ACCEPTED)
     async def request_withdrawal(
@@ -190,8 +196,24 @@ def create_app(store: Any | None = None) -> FastAPI:
         authorization: str | None = Header(default=None),
         x_tick_user: str | None = Header(default=None),
     ) -> WithdrawalResponse:
+        user_id = _session(authorization, x_tick_user).user_id
         try:
-            withdrawal = _store(app).request_withdrawal(_session(authorization, x_tick_user).user_id, body)
+            store = _store(app)
+            wallet = store.wallet_for_user(user_id)
+            from tick_mvp.infrastructure.wallet_balances import read_wallet_balances
+
+            balances = read_wallet_balances(
+                wallet,
+                get_settings(),
+                gas_charges_usdc=store.reserved_gas_charges_usdc(user_id),
+            )
+            if balances.spendableUsdc is None:
+                raise StoreConflict("wallet balance is temporarily unavailable")
+            if body.amount > balances.spendableUsdc:
+                raise StoreConflict(
+                    f"insufficient spendable USDC: {balances.spendableUsdc:.6f} available"
+                )
+            withdrawal = store.request_withdrawal(user_id, body)
             if get_settings().tick_enqueue_jobs:
                 await enqueue_withdrawal_request(withdrawal)
             return withdrawal

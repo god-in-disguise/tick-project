@@ -72,11 +72,13 @@ class GTradeWalletExecutor:
         self._events.track_owner(address)
         self._events.start()
         with self._wallet_lock(address):
-            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="gtrade-wallet-warm") as executor:
+            with ThreadPoolExecutor(max_workers=3, thread_name_prefix="gtrade-wallet-warm") as executor:
                 nonce_future = executor.submit(web3.eth.get_transaction_count, address, "pending")
                 allowance_future = executor.submit(self._usdc_allowance, web3, address)
+                balance_future = executor.submit(self._usdc_balance, web3, address)
                 chain_nonce = int(nonce_future.result())
                 allowance = allowance_future.result()
+                collateral_balance = balance_future.result()
 
             with self._cache_lock:
                 current_nonce = self._nonce_cache.get(_checksum(address))
@@ -84,13 +86,13 @@ class GTradeWalletExecutor:
                     self._nonce_cache[_checksum(address)] = chain_nonce
                 self._allowance_cache[_checksum(address)] = allowance
 
-            approval: dict[str, Any] | None = None
+            approval: VenueTxResult | None = None
             if self._settings.gtrade_auto_approve_usdc and allowance < required_collateral_usd:
                 prepared = self._prepare_tx_params(web3, address)
                 result = self._approve_usdc(account, address, prepared=prepared)
                 if result.status != "confirmed":
                     raise GTradeError("USDC approval transaction did not confirm")
-                approval = result.payload
+                approval = result
                 allowance = Decimal(MAX_UINT256) / Decimal(10**6)
                 self._remember_allowance(address, allowance)
 
@@ -98,6 +100,8 @@ class GTradeWalletExecutor:
             "wallet": address,
             "allowanceReady": allowance >= required_collateral_usd,
             "approvalSubmitted": approval is not None,
+            "gasTransactions": [_gas_tx_payload(approval)] if approval else [],
+            "collateralBalanceUsd": str(collateral_balance),
             "elapsedMs": _elapsed_ms(started, time.perf_counter()),
         }
 
@@ -190,7 +194,10 @@ class GTradeWalletExecutor:
             opened_at=opened_at if position else None,
             account_balance_before_usd=account_balance_before,
             payload={
-                "approvals": approvals,
+                "approvals": [approval.payload for approval in approvals],
+                "gasTransactions": [
+                    _gas_tx_payload(approval) for approval in approvals
+                ],
                 "accountBalanceBeforeOpenUsd": str(account_balance_before),
                 "positionWait": position_wait,
                 "position": position,
@@ -334,7 +341,7 @@ class GTradeWalletExecutor:
         account: Any,
         address: str,
         ticket_usd: Decimal,
-    ) -> tuple[list[dict[str, Any]], tuple[int, dict[str, int]] | None]:
+    ) -> tuple[list[VenueTxResult], tuple[int, dict[str, int]] | None]:
         with self._wallet_lock(address):
             web3 = self._web3()
             cached_allowance = self._cached_allowance(address)
@@ -348,12 +355,12 @@ class GTradeWalletExecutor:
                 allowance = allowance_future.result() if allowance_future is not None else cached_allowance
                 prepared_tx = tx_params_future.result()
 
-            approvals: list[dict[str, Any]] = []
+            approvals: list[VenueTxResult] = []
             if self._settings.gtrade_auto_approve_usdc and allowance < ticket_usd:
                 approval = self._approve_usdc(account, address, prepared=prepared_tx)
                 if approval.status != "confirmed":
                     raise GTradeError("USDC approval transaction did not confirm")
-                approvals.append(approval.payload)
+                approvals.append(approval)
                 self._remember_allowance(address, Decimal(MAX_UINT256) / Decimal(10**6))
                 prepared_tx = None
             elif allowance > 0:
@@ -795,6 +802,15 @@ def _close_event_financials(position_wait: dict[str, Any]) -> tuple[Decimal | No
     close_cashflow = Decimal(str(amount_sent)) / Decimal(10**6)
     opened_collateral = Decimal(str(collateral_amount)) / Decimal(10**6)
     return close_cashflow - opened_collateral, close_cashflow
+
+
+def _gas_tx_payload(tx: VenueTxResult) -> dict[str, Any]:
+    return {
+        "txHash": tx.tx_hash,
+        "gasUsed": tx.gas_used,
+        "effectiveGasPrice": tx.effective_gas_price,
+        "operation": tx.payload.get("label") or "wallet",
+    }
 
 
 def _decimal_or_none(value: Any) -> Decimal | None:

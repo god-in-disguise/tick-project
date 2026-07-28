@@ -460,7 +460,9 @@ Current implementation status:
 - Arbitrum USDC withdrawal requests are persisted and serialized against active positions.
 - The worker encrypts and persists the exact signed transaction before broadcast, then reuses the same bytes and hash during recovery.
 - Confirmed withdrawals append a wallet-sourced ledger event.
-- Automatic ETH top-up and USDC gas charging are still required before external multi-user testing.
+- TICK automatically tops low user wallets up from a dedicated platform ETH wallet. Users only deposit and see USDC.
+- Actual confirmed approval/open/close/withdrawal gas is converted through the Arbitrum Chainlink ETH/USD feed and reserved from spendable USDC in an idempotent ledger event keyed by transaction hash.
+- Platform top-up overhead is absorbed by TICK. Reserved USDC treasury collection runs asynchronously and never blocks open or close.
 
 This is simpler for a private MVP and investor demo because users do not need to understand wallets, ETH gas, delegates, or allowances. It also creates custody/security obligations, so it should not be described as production-grade public custody until signing isolation, withdrawal controls, revocation, limits, monitoring, and incident handling are hardened.
 

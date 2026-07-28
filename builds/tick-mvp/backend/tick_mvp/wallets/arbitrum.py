@@ -168,8 +168,14 @@ class ArbitrumUSDCTransferExecutor:
             usdc_balance = int(usdc_future.result())
             native_balance = int(native_future.result())
 
-        if usdc_balance < amount_units:
-            raise WithdrawalRejected("insufficient USDC balance")
+        reserved_units = _amount_units_or_zero(context.reserved_gas_charges_usdc)
+        if usdc_balance < amount_units + reserved_units:
+            available = Decimal(max(0, usdc_balance - reserved_units)) / Decimal(
+                USDC_SCALE
+            )
+            raise WithdrawalRejected(
+                f"insufficient spendable USDC balance: {available:.6f} available"
+            )
         max_gas_cost = self._settings.arb_usdc_transfer_gas * int(
             fee_params["maxFeePerGas"]
         )
@@ -261,6 +267,12 @@ def _amount_units(amount: Decimal) -> int:
     if units <= 0:
         raise WithdrawalRejected("withdrawal amount must be positive")
     return units
+
+
+def _amount_units_or_zero(amount: Decimal) -> int:
+    if amount <= 0:
+        return 0
+    return _amount_units(amount)
 
 
 def _fee_params(web3: Any) -> dict[str, int]:

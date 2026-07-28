@@ -261,6 +261,7 @@ def test_wallet_preparation_caches_nonce_and_existing_allowance(monkeypatch) -> 
     monkeypatch.setattr(wallet._events, "track_owner", lambda _owner: None)
     monkeypatch.setattr(wallet._events, "start", lambda: None)
     monkeypatch.setattr(wallet, "_usdc_allowance", lambda _web3, _address: Decimal("100"))
+    monkeypatch.setattr(wallet, "_usdc_balance", lambda _web3, _address: Decimal("42.76"))
 
     result = wallet.prepare_wallet("0x" + "1" * 64, Decimal("10"))
 
@@ -281,6 +282,7 @@ def test_wallet_preparation_approves_once_before_the_trade(monkeypatch) -> None:
     monkeypatch.setattr(wallet._events, "track_owner", lambda _owner: None)
     monkeypatch.setattr(wallet._events, "start", lambda: None)
     monkeypatch.setattr(wallet, "_usdc_allowance", lambda _web3, _address: Decimal("0"))
+    monkeypatch.setattr(wallet, "_usdc_balance", lambda _web3, _address: Decimal("42.76"))
     monkeypatch.setattr(wallet, "_prepare_tx_params", lambda _web3, _address: (12, {}))
     monkeypatch.setattr(
         wallet,

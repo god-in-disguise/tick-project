@@ -5,13 +5,23 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy import func
+
 from tick_mvp.core.config import Settings, get_settings
 from tick_mvp.domain.accounting import whole_trade_wallet_delta
 from tick_mvp.domain.states import ExecutionAttemptStatus, PositionStatus, ReconciliationStatus, TradeAction, TradeIntentStatus, TradeSide
 from tick_mvp.infrastructure.custody import PrivateKeyCipher
 from tick_mvp.infrastructure.database import create_session_factory, session_scope
 from tick_mvp.infrastructure.memory_store import StoreNotFound
-from tick_mvp.infrastructure.models import ExecutionAttempt, Position, Quote, Reconciliation, TradeIntent, WalletAccount
+from tick_mvp.infrastructure.models import (
+    ExecutionAttempt,
+    LedgerEvent,
+    Position,
+    Quote,
+    Reconciliation,
+    TradeIntent,
+    WalletAccount,
+)
 from tick_mvp.venues.base import VenueCloseResult, VenueOpenResult
 
 
@@ -116,6 +126,10 @@ class ExecutionRepository:
             )
 
     def load_user_wallet_credentials(self, user_id: str) -> tuple[str, str]:
+        _, address, private_key = self.load_user_wallet_context(user_id)
+        return address, private_key
+
+    def load_user_wallet_context(self, user_id: str) -> tuple[str, str, str]:
         with session_scope(self._session_factory) as session:
             wallet = (
                 session.query(WalletAccount)
@@ -125,7 +139,7 @@ class ExecutionRepository:
             )
             if wallet is None:
                 raise StoreNotFound("wallet not found")
-            return wallet.address, self._decrypt_wallet_key(wallet)
+            return wallet.id, wallet.address, self._decrypt_wallet_key(wallet)
 
     def mark_broadcast_pending(
         self,
@@ -204,7 +218,11 @@ class ExecutionRepository:
                     .first()
                 )
                 if reconciliation is not None:
-                    wallet_delta_usd = whole_trade_wallet_delta(position.payload, result.account_balance_after_usd)
+                    wallet_delta_usd = _net_wallet_delta(
+                        session,
+                        position,
+                        result.account_balance_after_usd,
+                    )
                     reconciliation.status = (
                         ReconciliationStatus.WALLET_RECONCILED.value
                         if wallet_delta_usd is not None
@@ -242,7 +260,11 @@ class ExecutionRepository:
             )
             if reconciliation is None:
                 return None
-            wallet_delta_usd = whole_trade_wallet_delta(position.payload, account_balance_after_usd)
+            wallet_delta_usd = _net_wallet_delta(
+                session,
+                position,
+                account_balance_after_usd,
+            )
             reconciliation.status = (
                 ReconciliationStatus.WALLET_RECONCILED.value
                 if wallet_delta_usd is not None
@@ -291,6 +313,29 @@ def _gas_native(gas_used: int | None, effective_gas_price: int | None) -> Decima
     if gas_used is None or effective_gas_price is None:
         return None
     return Decimal(gas_used * effective_gas_price) / Decimal(10**18)
+
+
+def _net_wallet_delta(
+    session,
+    position: Position,
+    account_balance_after_usd: Decimal | None,
+) -> Decimal | None:
+    wallet_delta = whole_trade_wallet_delta(
+        position.payload,
+        account_balance_after_usd,
+    )
+    if wallet_delta is None:
+        return None
+    gas_ledger_total = (
+        session.query(func.coalesce(func.sum(LedgerEvent.amount), 0))
+        .filter(
+            LedgerEvent.position_id == position.id,
+            LedgerEvent.event_type == "gas_charge",
+            LedgerEvent.asset == "USDC",
+        )
+        .scalar()
+    )
+    return wallet_delta + Decimal(gas_ledger_total or 0)
 
 
 def _execution(session, execution_id: str) -> ExecutionAttempt:

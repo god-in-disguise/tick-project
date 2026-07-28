@@ -178,6 +178,97 @@ def test_postgres_withdrawal_persists_recoverable_signed_transaction() -> None:
         assert ledger.amount == Decimal("-2.5")
 
 
+def test_postgres_gas_topup_persists_exact_signed_transaction() -> None:
+    database_url = os.getenv("TICK_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("TICK_TEST_DATABASE_URL is not configured")
+
+    sqlalchemy = pytest.importorskip("sqlalchemy")
+    from tick_mvp.core.config import Settings
+    from tick_mvp.infrastructure.custody import SecretCipher
+    from tick_mvp.infrastructure.database import create_session_factory, run_sql_migrations
+    from tick_mvp.infrastructure.models import GasTopup, User, WalletAccount
+    from tick_mvp.wallets.gas_repository import GasTopupRepository
+
+    run_sql_migrations(database_url)
+    engine = sqlalchemy.create_engine(_sqlalchemy_url(database_url), pool_pre_ping=True)
+    session_factory = create_session_factory(engine)
+    suffix = uuid.uuid4().hex
+    user_id = f"user_gas_{suffix}"
+    wallet_id = f"wallet_gas_{suffix}"
+    wallet_address = f"0x{suffix[:40].ljust(40, '0')}"
+    key = SecretCipher.generate_key()
+
+    with session_factory() as session:
+        session.add(
+            User(
+                id=user_id,
+                email=f"{suffix}-gas@test.tick.local",
+                display_name="Gas Test",
+                avatar_url=None,
+                status="active",
+            )
+        )
+        session.add(
+            WalletAccount(
+                id=wallet_id,
+                user_id=user_id,
+                chain_id=42161,
+                address=wallet_address,
+                wallet_type="platform",
+                status="active",
+                custody_provider="encrypted_postgres",
+                custody_key_ref=f"test:{wallet_id}",
+                encrypted_private_key=None,
+                gas_wallet=False,
+                payload={},
+            )
+        )
+        session.commit()
+
+    repository = GasTopupRepository(
+        Settings(custody_private_key_encryption_key=key),
+        session_factory=session_factory,
+    )
+    context = repository.create_or_load(
+        user_id=user_id,
+        wallet_id=wallet_id,
+        wallet_address=wallet_address,
+        amount_native=Decimal("0.001"),
+    )
+    tx_hash = "0x" + "cd" * 32
+    repository.mark_signed(
+        context.topup_id,
+        tx_hash=tx_hash,
+        nonce=9,
+        signed_raw_transaction="0x02beef",
+    )
+    recovered = repository.create_or_load(
+        user_id=user_id,
+        wallet_id=wallet_id,
+        wallet_address=wallet_address,
+        amount_native=Decimal("0.001"),
+    )
+    assert recovered.tx_hash == tx_hash
+    assert recovered.signed_raw_transaction == "0x02beef"
+
+    repository.mark_broadcast(
+        context.topup_id,
+        tx_hash=tx_hash,
+        payload={"winner": "primary_rpc"},
+    )
+    repository.mark_confirmed(
+        context.topup_id,
+        tx_hash=tx_hash,
+        gas_cost_native=Decimal("0.00000042"),
+        payload={"blockNumber": 123},
+    )
+    with session_factory() as session:
+        topup = session.get(GasTopup, context.topup_id)
+        assert topup.status == "confirmed"
+        assert topup.gas_cost_native == Decimal("0.00000042")
+
+
 def _sqlalchemy_url(database_url: str) -> str:
     if database_url.startswith("postgresql://"):
         return database_url.replace("postgresql://", "postgresql+psycopg://", 1)

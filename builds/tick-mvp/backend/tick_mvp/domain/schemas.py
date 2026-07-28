@@ -125,6 +125,9 @@ class WalletBalancesResponse(BaseModel):
     address: str
     nativeEth: Decimal | None = None
     usdc: Decimal | None = None
+    onchainUsdc: Decimal | None = None
+    gasChargesUsdc: Decimal = Decimal(0)
+    spendableUsdc: Decimal | None = None
     gtradeAllowanceUsdc: Decimal | None = None
     source: str
     fetchedAt: datetime

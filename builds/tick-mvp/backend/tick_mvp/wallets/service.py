@@ -9,6 +9,8 @@ from tick_mvp.wallets.arbitrum import (
     WithdrawalRejected,
     WithdrawalRetryable,
 )
+from tick_mvp.wallets.accounting import GasAccountingService, gas_transaction
+from tick_mvp.wallets.gas import GasFundingService
 from tick_mvp.wallets.repository import (
     WithdrawalBlocked,
     WithdrawalRepository,
@@ -29,10 +31,14 @@ class WithdrawalService:
         settings: Settings | None = None,
         repository: WithdrawalRepository | None = None,
         executor: ArbitrumUSDCTransferExecutor | None = None,
+        gas_funding: GasFundingService | None = None,
+        gas_accounting: GasAccountingService | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self._repository = repository or WithdrawalRepository(self._settings)
         self._executor = executor or ArbitrumUSDCTransferExecutor(self._settings)
+        self._gas_funding = gas_funding or GasFundingService(self._settings)
+        self._gas_accounting = gas_accounting or GasAccountingService(self._settings)
 
     def stop(self) -> None:
         self._executor.close()
@@ -63,6 +69,11 @@ class WithdrawalService:
             }
 
         try:
+            self._gas_funding.ensure_funded(
+                user_id=context.user_id,
+                wallet_id=context.wallet_id,
+                wallet_address=context.wallet_address,
+            )
             result = self._executor.transfer(
                 context,
                 on_prepared=lambda tx_hash, nonce, signed_raw: self._repository.mark_signed(
@@ -117,6 +128,29 @@ class WithdrawalService:
                     "effectiveGasPrice": result.effective_gas_price,
                 },
             )
+        transaction = gas_transaction(
+            tx_hash=result.tx_hash,
+            gas_used=result.gas_used,
+            effective_gas_price=result.effective_gas_price,
+            operation="withdrawal",
+        )
+        if transaction is not None:
+            self._gas_funding.note_spent(
+                context.wallet_address,
+                transaction.native_cost,
+            )
+            try:
+                self._gas_accounting.charge(
+                    user_id=context.user_id,
+                    transaction=transaction,
+                    withdrawal_id=withdrawal_id,
+                )
+            except Exception:
+                LOGGER.exception(
+                    "withdrawal gas accounting deferred withdrawalId=%s txHash=%s",
+                    withdrawal_id,
+                    result.tx_hash,
+                )
         return {
             "withdrawalId": withdrawal_id,
             "status": result.status,

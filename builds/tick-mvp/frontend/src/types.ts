@@ -55,6 +55,9 @@ export type WalletBalances = {
   address: string;
   nativeEth: number | null;
   usdc: number | null;
+  onchainUsdc: number | null;
+  gasChargesUsdc: number;
+  spendableUsdc: number | null;
   gtradeAllowanceUsdc: number | null;
   source: string;
   unavailableReason: string | null;

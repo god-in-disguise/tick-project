@@ -140,6 +140,9 @@ class MemoryStore:
         wallet = self.wallet_for_user(user_id)
         return DepositAddressResponse(chainId=wallet.chainId, walletId=wallet.id, address=wallet.address)
 
+    def reserved_gas_charges_usdc(self, user_id: str) -> Decimal:
+        return Decimal(0)
+
     def request_withdrawal(self, user_id: str, request: WithdrawalRequest) -> WithdrawalResponse:
         payload_hash = _hash_payload(request.model_dump(mode="json"))
         with self._lock:
