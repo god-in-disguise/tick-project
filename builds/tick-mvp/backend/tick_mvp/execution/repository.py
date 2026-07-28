@@ -197,6 +197,26 @@ class ExecutionRepository:
             position.updated_at = now
             intent.updated_at = now
 
+    def update_liquidation_price(
+        self,
+        position_id: str | None,
+        liquidation_price: Decimal,
+        *,
+        source: str,
+    ) -> None:
+        if position_id is None:
+            return
+        now = _now()
+        with session_scope(self._session_factory) as session:
+            position = _position(session, position_id)
+            position.liquidation_price = liquidation_price
+            position.payload = {
+                **(position.payload or {}),
+                "liquidationPriceSource": source,
+                "liquidationPriceUpdatedAt": now.isoformat(),
+            }
+            position.updated_at = now
+
     def mark_close_result(self, context: ExecutionContext, result: VenueCloseResult) -> Decimal | None:
         now = _now()
         wallet_delta_usd: Decimal | None = None

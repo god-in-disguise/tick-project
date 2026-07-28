@@ -56,7 +56,7 @@ resource "digitalocean_firewall" "tick" {
 }
 
 resource "digitalocean_project" "tick" {
-  name        = "TICK"
+  name        = "tick"
   description = "TICK private demo"
   purpose     = "Web Application"
   environment = "Development"

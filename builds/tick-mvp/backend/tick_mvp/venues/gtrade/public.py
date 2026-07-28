@@ -42,6 +42,7 @@ class GTradePair:
     min_position_usd: Decimal
     min_collateral_usd: Decimal
     spread_pct: Decimal
+    liquidation_fee_pct: Decimal = Decimal(0)
 
 
 class GTradePublicClient:
@@ -320,6 +321,9 @@ def _build_pairs(payload: dict[str, Any]) -> list[GTradePair]:
                 min_position_usd=min_position,
                 min_collateral_usd=min_position / max_leverage if max_leverage else Decimal(0),
                 spread_pct=_pct_from_p(pair["spreadP"]),
+                liquidation_fee_pct=_pct_from_p(
+                    fee.get("totalLiqCollateralFeeP", 0)
+                ),
             )
         )
     return rows

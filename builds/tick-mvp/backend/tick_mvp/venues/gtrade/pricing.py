@@ -31,13 +31,22 @@ def estimate_open(
     notional = ticket_usd * leverage
     open_fee = notional * (pair.open_fee_pct / Decimal(100))
     close_fee = notional * (pair.open_fee_pct / Decimal(100))
+    liquidation_fee = ticket_usd * (pair.liquidation_fee_pct / Decimal(100))
     spread_cost = notional * (pair.spread_pct / Decimal(100))
     round_trip = open_fee + close_fee + spread_cost
     active_collateral = ticket_usd - open_fee
     if active_collateral <= 0:
         raise GTradeError("ticket is too small for gTrade fee at selected leverage")
 
-    liquidation = _liquidation_estimate(execution_price, side, leverage)
+    liquidation = _liquidation_estimate(
+        execution_price,
+        side,
+        ticket_usd,
+        leverage,
+        open_fee,
+        close_fee,
+        liquidation_fee,
+    )
     stop_loss = _stop_loss_estimate(execution_price, side, notional, max_loss_usd)
     take_profit = _take_profit_estimate(execution_price, side, notional, take_profit_usd)
     return VenueQuote(
@@ -68,6 +77,8 @@ def estimate_open(
             "activeCollateralUsd": str(active_collateral),
             "effectiveNotionalUsd": str(notional),
             "estimatedSpreadCostUsd": str(spread_cost),
+            "estimatedLiquidationFeeUsd": str(liquidation_fee),
+            "liquidationEstimateSource": "fee_aware_quote",
             "feeHurdlePct": str((round_trip / notional) * Decimal(100) if notional else Decimal(999)),
             "maxVenueLeverage": str(pair.max_leverage),
             "slippageBps": 100,
@@ -76,8 +87,22 @@ def estimate_open(
     )
 
 
-def _liquidation_estimate(entry: Decimal, side: TradeSide, leverage: Decimal) -> Decimal:
-    distance = Decimal("0.80") / leverage
+def _liquidation_estimate(
+    entry: Decimal,
+    side: TradeSide,
+    collateral: Decimal,
+    leverage: Decimal,
+    open_fee: Decimal,
+    close_fee: Decimal,
+    liquidation_fee: Decimal,
+) -> Decimal:
+    # gTrade's live value also includes holding costs and closing spread. Those
+    # become available from the protocol getter once the position exists.
+    loss_budget = max(
+        Decimal(0),
+        collateral * Decimal("0.80") - open_fee - close_fee - liquidation_fee,
+    )
+    distance = (loss_budget / collateral) / leverage
     return entry * (Decimal(1) - distance if side == TradeSide.LONG else Decimal(1) + distance)
 
 

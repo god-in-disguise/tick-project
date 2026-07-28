@@ -43,6 +43,14 @@ TRADE_FIELDS = [
     ("__placeholder", "uint24"),
 ]
 
+LIQUIDATION_PARAMS_FIELDS = [
+    ("maxLiqSpreadP", "uint40"),
+    ("startLiqThresholdP", "uint40"),
+    ("endLiqThresholdP", "uint40"),
+    ("startLeverage", "uint24"),
+    ("endLeverage", "uint24"),
+]
+
 TRADING_ABI = [
     {
         "inputs": [
@@ -91,6 +99,41 @@ TRADING_ABI = [
         "name": "delegatedTradingAction",
         "outputs": [{"name": "", "type": "bytes"}],
         "stateMutability": "nonpayable",
+        "type": "function",
+    },
+    {
+        "inputs": [
+            {
+                "components": [
+                    {"name": "collateralIndex", "type": "uint8"},
+                    {"name": "trader", "type": "address"},
+                    {"name": "pairIndex", "type": "uint16"},
+                    {"name": "index", "type": "uint32"},
+                    {"name": "openPrice", "type": "uint64"},
+                    {"name": "long", "type": "bool"},
+                    {"name": "collateral", "type": "uint256"},
+                    {"name": "leverage", "type": "uint256"},
+                    {"name": "additionalFeeCollateral", "type": "int256"},
+                    {
+                        "components": [
+                            {"name": name, "type": typ}
+                            for name, typ in LIQUIDATION_PARAMS_FIELDS
+                        ],
+                        "name": "liquidationParams",
+                        "type": "tuple",
+                    },
+                    {"name": "currentPairPrice", "type": "uint64"},
+                    {"name": "isCounterTrade", "type": "bool"},
+                    {"name": "partialCloseMultiplier", "type": "uint256"},
+                    {"name": "beforeOpened", "type": "bool"},
+                ],
+                "name": "_input",
+                "type": "tuple",
+            }
+        ],
+        "name": "getTradeLiquidationPrice",
+        "outputs": [{"name": "", "type": "uint256"}],
+        "stateMutability": "view",
         "type": "function",
     },
 ]

@@ -19,6 +19,7 @@ def test_gtrade_quote_uses_venue_costs_and_stop_loss() -> None:
         min_position_usd=Decimal("10"),
         min_collateral_usd=Decimal("0.02"),
         spread_pct=Decimal("0"),
+        liquidation_fee_pct=Decimal("10"),
     )
 
     quote = estimate_open(
@@ -36,6 +37,7 @@ def test_gtrade_quote_uses_venue_costs_and_stop_loss() -> None:
     assert quote.estimated_open_cost_usd == Decimal("1.0000")
     assert quote.estimated_close_cost_usd == Decimal("1.0000")
     assert quote.estimated_round_trip_cost_usd == Decimal("2.0000")
+    assert quote.liquidation_price == Decimal("99.9000")
     assert quote.stop_loss_price == Decimal("99.800")
     assert quote.take_profit_price == Decimal("100.400")
     assert quote.payload["leverageNormalized"] is False

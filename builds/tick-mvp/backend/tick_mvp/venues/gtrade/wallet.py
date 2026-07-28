@@ -362,6 +362,31 @@ class GTradeWalletExecutor:
             },
         )
 
+    def current_liquidation_price(
+        self,
+        *,
+        market: str,
+        position: dict[str, Any] | None,
+    ) -> Decimal | None:
+        if not position:
+            return None
+        pair = self._public.pair(market)
+        live = self._public.price(market)
+        current_pair_price = _price_units(Decimal(str(live["mid"])))
+        collateral_units = int((position.get("trade") or {})["collateralAmount"])
+        liquidation_fee_units = int(
+            Decimal(collateral_units) * pair.liquidation_fee_pct / Decimal(100)
+        )
+        input_value = _liquidation_price_input(
+            position,
+            current_pair_price,
+            additional_fee_collateral=liquidation_fee_units,
+        )
+        units = self._trading(self._web3()).functions.getTradeLiquidationPrice(
+            input_value
+        ).call()
+        return Decimal(units) / Decimal(10**10)
+
     def collateral_balance_usd(self, private_key_hex: str) -> Decimal:
         _, address, web3 = self._account(private_key_hex)
         return self._usdc_balance(web3, address)
@@ -1033,6 +1058,38 @@ def _event_detail_price(position_wait: dict[str, Any], field: str) -> Decimal | 
     if value is None:
         return None
     return Decimal(str(value)) / Decimal(10**10)
+
+
+def _liquidation_price_input(
+    position: dict[str, Any],
+    current_pair_price: int,
+    *,
+    additional_fee_collateral: int = 0,
+) -> tuple[Any, ...]:
+    trade = position.get("trade") or {}
+    params = position.get("liquidationParams") or {}
+    return (
+        int(trade["collateralIndex"]),
+        _checksum(str(trade["user"])),
+        int(trade["pairIndex"]),
+        int(trade["index"]),
+        int(trade["openPrice"]),
+        bool(trade["long"]),
+        int(trade["collateralAmount"]),
+        int(trade["leverage"]),
+        additional_fee_collateral,
+        (
+            int(params["maxLiqSpreadP"]),
+            int(params["startLiqThresholdP"]),
+            int(params["endLiqThresholdP"]),
+            int(params["startLeverage"]),
+            int(params["endLeverage"]),
+        ),
+        current_pair_price,
+        bool(trade.get("isCounterTrade", False)),
+        10**10,
+        False,
+    )
 
 
 def _position_opened_at(position: dict[str, Any] | None) -> datetime | None:

@@ -1,25 +1,26 @@
 import type { Theme } from "./types";
 
-const themes: Theme[] = [
-  { accent: "#d7ad4f", glow: "#e7c979", top: "#090805", bottom: "#070706" },
-  { accent: "#5b9dff", glow: "#86b8ff", top: "#05070a", bottom: "#060709" },
-  { accent: "#47d7cf", glow: "#81e7e1", top: "#050a09", bottom: "#060807" },
-  { accent: "#9d7cff", glow: "#beaaff", top: "#08060a", bottom: "#070608" },
-  { accent: "#b9a7d6", glow: "#d2c5e5", top: "#08070a", bottom: "#070608" },
-  { accent: "#d8b84c", glow: "#e8cf7b", top: "#090805", bottom: "#070706" },
-  { accent: "#8fcfc5", glow: "#b4e0d9", top: "#050908", bottom: "#060807" }
-];
+const assetThemes: Record<string, Theme> = {
+  BTC: { accent: "#f7931a", glow: "#ffb45c", top: "#0b0804", bottom: "#080706" },
+  ZEC: { accent: "#ecb244", glow: "#ffd56f", top: "#0b0904", bottom: "#080706" },
+  ETH: { accent: "#aeb7c6", glow: "#d6dce5", top: "#08090b", bottom: "#070809" },
+  SOL: { accent: "#9945ff", glow: "#c08aff", top: "#09060b", bottom: "#070608" },
+  HYPE: { accent: "#50e3c2", glow: "#8aefd8", top: "#050a09", bottom: "#060807" },
+  BNB: { accent: "#f3ba2f", glow: "#f8d56f", top: "#0b0904", bottom: "#080706" },
+  XAU: { accent: "#d8ac4c", glow: "#e8cd78", top: "#0a0805", bottom: "#080706" },
+  XAG: { accent: "#aeb9c2", glow: "#d7dfe5", top: "#080a0b", bottom: "#070809" },
+  FX: { accent: "#8fcfc5", glow: "#b4e0d9", top: "#050908", bottom: "#060807" }
+};
+
+const fallbackThemes = Object.values(assetThemes);
 
 export function themeFor(market: string): Theme {
   const normalized = market.toUpperCase();
-  if (normalized.includes("BTC")) return themes[0];
-  if (normalized.includes("ETH")) return themes[1];
-  if (normalized.includes("SOL")) return themes[2];
-  if (normalized.includes("HYPE")) return themes[3];
-  if (normalized.includes("ZEC")) return themes[4];
-  if (normalized.includes("BNB")) return themes[5];
-  if (normalized.includes("USD") || normalized.includes("EUR")) return themes[6];
+  for (const symbol of ["BTC", "ZEC", "ETH", "SOL", "HYPE", "BNB", "XAU", "XAG"]) {
+    if (normalized.includes(symbol)) return assetThemes[symbol];
+  }
+  if (normalized.includes("USD") || normalized.includes("EUR")) return assetThemes.FX;
   let hash = 0;
   for (const character of market) hash = (hash * 31 + character.charCodeAt(0)) | 0;
-  return themes[Math.abs(hash) % themes.length];
+  return fallbackThemes[Math.abs(hash) % fallbackThemes.length];
 }

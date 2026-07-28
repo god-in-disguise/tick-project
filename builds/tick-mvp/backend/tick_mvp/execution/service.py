@@ -157,6 +157,7 @@ class ExecutionService:
                 extra_transactions=result.payload.get("gasTransactions"),
             )
             self._adjust_cached_balance(context.user_id, -context.ticket_usd)
+            self._refresh_open_liquidation_price(context, result)
             return {
                 "executionAttemptId": context.execution_id,
                 "status": result.status,
@@ -196,6 +197,29 @@ class ExecutionService:
             "txHash": result.tx.tx_hash,
             "walletDeltaUsd": str(wallet_delta_usd) if wallet_delta_usd is not None else None,
         }
+
+    def _refresh_open_liquidation_price(self, context: ExecutionContext, result) -> None:
+        if result.status != "open":
+            return
+        refresh = getattr(self._venue, "current_liquidation_price", None)
+        if refresh is None:
+            return
+        try:
+            liquidation_price = refresh(
+                market=context.market,
+                position=result.payload.get("position"),
+            )
+            if liquidation_price is not None:
+                self._repository.update_liquidation_price(
+                    context.position_id,
+                    liquidation_price,
+                    source="venue_onchain",
+                )
+        except Exception:
+            LOGGER.exception(
+                "liquidation price refresh deferred",
+                extra={"executionAttemptId": context.execution_id},
+            )
 
     def _ensure_execution_gas(self, context: ExecutionContext) -> None:
         self._gas_funding.ensure_funded(
