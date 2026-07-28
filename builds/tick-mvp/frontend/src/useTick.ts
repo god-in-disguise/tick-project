@@ -50,7 +50,7 @@ export function useTick(initialSession: Session) {
   const [closedResult, setClosedResult] = useState<ClosedResult | null>(null);
   const sequences = useRef<Record<string, number>>({});
   const chartRequests = useRef(new Map<string, Promise<void>>());
-  const tapeBusy = useRef(false);
+  const tapeBusy = useRef(new Set<string>());
   const stateBusy = useRef(false);
   const actionBusy = useRef(false);
   const quoteCache = useRef<Record<string, Quote>>(readQuotes());
@@ -112,10 +112,11 @@ export function useTick(initialSession: Session) {
     if (current) return current;
     const request = api.chart(marketId)
       .then((chart) => {
-        sequences.current[marketId] = chart.sequence;
+        sequences.current[marketId] = Math.max(sequences.current[marketId] ?? 0, chart.sequence);
         setMarkets((markets) =>
           markets.map((market) =>
             market.market === marketId
+              && chart.sequence >= market.sequence
               ? {
                   ...market,
                   price: chart.observations.at(-1)?.price ?? market.price,
@@ -271,11 +272,34 @@ export function useTick(initialSession: Session) {
   }, [activeMarket?.market, activeMarket?.observations.length, loadMarketChart, showError]);
 
   useEffect(() => {
+    if (!activeMarket || routedMarkets.length < 2) return;
+    const index = routedMarkets.findIndex((market) => market.market === activeMarket.market);
+    if (index < 0) return;
+    const neighborIds = new Set<string>();
+    const previous = routedMarkets[(index - 1 + routedMarkets.length) % routedMarkets.length];
+    const next = routedMarkets[(index + 1) % routedMarkets.length];
+    if (previous) neighborIds.add(previous.market);
+    if (next) neighborIds.add(next.market);
+
+    const warmNeighbors = () => {
+      const cutoff = Date.now() / 1_000 - 2.5;
+      for (const marketId of neighborIds) {
+        const market = routedMarkets.find((candidate) => candidate.market === marketId);
+        if (!market || (market.observations.at(-1)?.receivedTs ?? 0) >= cutoff) continue;
+        void loadMarketChart(market.market).catch(showError);
+      }
+    };
+    warmNeighbors();
+    const timer = window.setInterval(warmNeighbors, 2_500);
+    return () => window.clearInterval(timer);
+  }, [activeMarket?.market, loadMarketChart, showError]);
+
+  useEffect(() => {
     if (!activeMarket) return;
     const marketId = activeMarket.market;
     const poll = async () => {
-      if (tapeBusy.current) return;
-      tapeBusy.current = true;
+      if (tapeBusy.current.has(marketId)) return;
+      tapeBusy.current.add(marketId);
       try {
         const result = await api.tape(marketId, sequences.current[marketId] ?? 0);
         if (result.resyncRequired) {
@@ -293,7 +317,7 @@ export function useTick(initialSession: Session) {
       } catch (cause) {
         showError(cause);
       } finally {
-        tapeBusy.current = false;
+        tapeBusy.current.delete(marketId);
       }
     };
     void poll();
@@ -416,30 +440,26 @@ export function useTick(initialSession: Session) {
     }
   }, [activePosition, refreshState, showError]);
 
-  const selectMarket = useCallback(async (marketId: string) => {
+  const selectMarket = useCallback((marketId: string) => {
     if (activePosition || busy) return;
     const target = routedMarkets.find((market) => market.market === marketId);
     if (!target) return;
-    const latest = target.observations.at(-1);
-    if (!latest || latest.receivedTs < Date.now() / 1_000 - 1.5) {
-      try {
-        await loadMarketChart(target.market);
-      } catch (cause) {
-        showError(cause);
-        return;
-      }
-    }
     setClosedResult(null);
     setActiveMarketId(target.market);
+
+    const latest = target.observations.at(-1);
+    if (!latest || latest.receivedTs < Date.now() / 1_000 - 1.5) {
+      void loadMarketChart(target.market).catch(showError);
+    }
   }, [activePosition, busy, loadMarketChart, routedMarkets, showError]);
 
-  const shiftMarket = useCallback(async (offset: number) => {
+  const shiftMarket = useCallback((offset: number) => {
     if (!activeMarket || activePosition || busy) return;
     const index = routedMarkets.findIndex((market) => market.market === activeMarket.market);
     const next = routedMarkets[
       (index + offset + routedMarkets.length) % routedMarkets.length
     ];
-    if (next) await selectMarket(next.market);
+    if (next) selectMarket(next.market);
   }, [activeMarket, activePosition, busy, routedMarkets, selectMarket]);
 
   return {

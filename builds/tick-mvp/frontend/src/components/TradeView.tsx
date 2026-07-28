@@ -136,6 +136,7 @@ export function TradeView(props: Props) {
 
       <section className="chart-stage">
         <MarketContext
+          key={`context-${props.market.market}`}
           market={props.market}
           position={props.position}
           quote={props.quote}
@@ -143,6 +144,7 @@ export function TradeView(props: Props) {
           theme={theme}
         />
         <MarketCanvas
+          key={`chart-${props.market.market}`}
           market={props.market}
           theme={theme}
           entry={props.position?.entryPrice ?? null}

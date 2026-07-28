@@ -38,6 +38,16 @@ await page.screenshot({ path: "/tmp/tick-trade.png", fullPage: true });
 
 await page.getByRole("button", { name: "Pulse" }).click();
 await page.locator(".hot-market-list").waitFor();
+const switchTarget = page.locator(".market-row").nth(1);
+const switchSymbol = await switchTarget.locator(".market-identity strong").innerText();
+const switchStartedAt = Date.now();
+await switchTarget.click();
+await page.locator(".market-name-row strong", { hasText: switchSymbol }).waitFor();
+assert.ok(Date.now() - switchStartedAt < 1_000, "Market switch waited for a chart request");
+await page.locator(`canvas[aria-label="${switchSymbol} live price chart"]`).waitFor();
+
+await page.getByRole("button", { name: "Pulse" }).click();
+await page.locator(".hot-market-list").waitFor();
 assert.ok(await page.locator(".hot-market-list .move-cost-meter").count() > 0);
 assert.equal(
   await page.locator(".page").evaluate((element) => element.scrollWidth - element.clientWidth),
