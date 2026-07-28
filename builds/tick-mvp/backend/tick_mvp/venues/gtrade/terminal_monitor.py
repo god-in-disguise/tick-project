@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import queue
 import time
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Iterable
 
 from tick_mvp.core.config import Settings
 from tick_mvp.domain.states import PositionStatus
+from tick_mvp.venues.base import TerminalPositionEvent
 from tick_mvp.venues.gtrade.constants import ERC20_ABI
 from tick_mvp.venues.gtrade.events import GTradeEventStream
 from tick_mvp.venues.gtrade.onchain_events import (
@@ -22,21 +22,6 @@ TAKE_PROFIT_ORDER_TYPE = 4
 STOP_LOSS_ORDER_TYPE = 5
 LIQUIDATION_ORDER_TYPE = 6
 RECOVERY_BLOCK_CHUNK = 2_000
-
-
-@dataclass(frozen=True, slots=True)
-class TerminalPositionEvent:
-    owner: str
-    venue_position_id: str
-    status: PositionStatus
-    reason: str
-    source: str
-    observed_at: datetime
-    transaction_hash: str | None
-    block_number: int | None
-    log_index: int | None
-    returned_collateral_usd: Decimal | None
-    payload: dict[str, Any]
 
 
 class GTradeTerminalMonitor:
@@ -155,6 +140,7 @@ def _terminal_event(raw: dict[str, Any]) -> TerminalPositionEvent | None:
     returned = _usdc_from_units(details.get("amountSentToTrader"))
     received_at = float(raw.get("receivedAt") or time.time())
     return TerminalPositionEvent(
+        venue="gtrade",
         owner=owner,
         venue_position_id=f"{pair_index}:{position_index}",
         status=PositionStatus.LIQUIDATED if reason == "liquidation" else PositionStatus.CLOSED,

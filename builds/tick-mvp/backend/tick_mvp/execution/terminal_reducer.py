@@ -12,7 +12,7 @@ from tick_mvp.domain.accounting import whole_trade_wallet_delta
 from tick_mvp.domain.states import PositionStatus, ReconciliationStatus, VenueEventType
 from tick_mvp.infrastructure.database import create_session_factory, session_scope
 from tick_mvp.infrastructure.models import Position, Reconciliation, VenueEvent, WalletAccount
-from tick_mvp.venues.gtrade.terminal_monitor import TerminalPositionEvent
+from tick_mvp.venues.base import TerminalPositionEvent
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,7 +72,7 @@ class TerminalEventReducer:
                 session.query(Position)
                 .filter(
                     Position.wallet_id == wallet.id,
-                    Position.venue == "gtrade",
+                    Position.venue == event.venue,
                     Position.venue_position_id == event.venue_position_id,
                 )
                 .order_by(Position.created_at.desc())

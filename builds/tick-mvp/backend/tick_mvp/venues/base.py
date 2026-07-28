@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
-from tick_mvp.domain.states import TradeSide
+from tick_mvp.domain.states import PositionStatus, TradeSide
 
 
 TransactionPreparedHandler = Callable[[str, int], None]
@@ -13,6 +13,21 @@ TransactionPreparedHandler = Callable[[str, int], None]
 
 class VenueError(Exception):
     pass
+
+
+class VenueConnector(Protocol):
+    name: str
+
+    def quote_open(
+        self,
+        *,
+        market: str,
+        side: TradeSide,
+        ticket_usd: Decimal,
+        leverage: Decimal,
+        max_loss_usd: Decimal | None,
+        take_profit_usd: Decimal | None,
+    ) -> "VenueQuote": ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,4 +81,20 @@ class VenueCloseResult:
     venue_realized_pnl_usd: Decimal | None
     account_balance_after_usd: Decimal | None
     close_cashflow_usd: Decimal | None
+    payload: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class TerminalPositionEvent:
+    venue: str
+    owner: str
+    venue_position_id: str
+    status: PositionStatus
+    reason: str
+    source: str
+    observed_at: datetime
+    transaction_hash: str | None
+    block_number: int | None
+    log_index: int | None
+    returned_collateral_usd: Decimal | None
     payload: dict[str, Any]

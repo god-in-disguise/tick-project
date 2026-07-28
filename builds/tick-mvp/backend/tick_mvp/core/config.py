@@ -1,5 +1,6 @@
 import os
 from dataclasses import dataclass
+from decimal import Decimal
 from functools import lru_cache
 
 
@@ -24,6 +25,7 @@ class Settings:
     arq_keep_result_seconds: int = 86400
 
     default_venue: str = "gtrade"
+    enabled_venues: str = "gtrade"
     quote_ttl_seconds: int = 5
     arb_chain_id: int = 42161
     arb_rpc_url: str = ""
@@ -51,6 +53,25 @@ class Settings:
     gtrade_fixed_close_gas: int = 2_000_000
     gtrade_fixed_approve_gas: int = 100_000
 
+    aark_api_url: str = "https://api.aark.digital"
+    aark_ws_url: str = "wss://ws-api.aark.digital"
+    aark_mode: str = "AARK"
+    aark_frontend_version: str = "v3.4.26"
+    aark_real_execution_enabled: bool = False
+    aark_auto_deposit_usdc: bool = False
+    aark_partner_private_key: str = ""
+    aark_recaptcha_site_key: str = "6LdHPmYsAAAAABliA8ARgLuSI8rlBWkZeqxXSKNP"
+    aark_usdc_address: str = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
+    aark_vault_address: str = "0x858F0a7454462De49a135d9b63Da941eeA6f5899"
+    aark_oct_router_address: str = "0xfda50Eb6C4E34E2b097F61279D346B081da4C4AD"
+    aark_market_poll_seconds: float = 0.25
+    aark_metadata_ttl_seconds: float = 5.0
+    aark_execution_fee_ttl_seconds: float = 30.0
+    aark_open_wait_seconds: float = 8.0
+    aark_close_wait_seconds: float = 8.0
+    aark_rest_poll_seconds: float = 0.20
+    aark_small_ticket_max_usd: Decimal = Decimal("25")
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -72,6 +93,7 @@ def get_settings() -> Settings:
         arq_job_timeout=_int_env("ARQ_JOB_TIMEOUT", 300),
         arq_keep_result_seconds=_int_env("ARQ_KEEP_RESULT_SECONDS", 86400),
         default_venue=os.getenv("DEFAULT_VENUE", "gtrade"),
+        enabled_venues=os.getenv("ENABLED_VENUES", "gtrade"),
         quote_ttl_seconds=_int_env("QUOTE_TTL_SECONDS", 5),
         arb_chain_id=_int_env("ARB_CHAIN_ID", 42161),
         arb_rpc_url=os.getenv("ARB_RPC_URL", ""),
@@ -98,6 +120,30 @@ def get_settings() -> Settings:
         gtrade_fixed_open_gas=_int_env("GTRADE_OPEN_GAS", 2_300_000),
         gtrade_fixed_close_gas=_int_env("GTRADE_CLOSE_GAS", 2_000_000),
         gtrade_fixed_approve_gas=_int_env("GTRADE_APPROVE_GAS", 100_000),
+        aark_api_url=os.getenv("AARK_API_URL", "https://api.aark.digital"),
+        aark_ws_url=os.getenv("AARK_WS_URL", "wss://ws-api.aark.digital"),
+        aark_mode=os.getenv("AARK_MODE", "AARK"),
+        aark_frontend_version=os.getenv("AARK_FRONTEND_VERSION", "v3.4.26"),
+        aark_real_execution_enabled=_bool_env("AARK_REAL_EXECUTION_ENABLED", False),
+        aark_auto_deposit_usdc=_bool_env("AARK_AUTO_DEPOSIT_USDC", False),
+        aark_partner_private_key=os.getenv("AARK_PARTNER_PRIVATE_KEY", ""),
+        aark_recaptcha_site_key=os.getenv(
+            "AARK_RECAPTCHA_SITE_KEY",
+            "6LdHPmYsAAAAABliA8ARgLuSI8rlBWkZeqxXSKNP",
+        ),
+        aark_usdc_address=os.getenv("AARK_USDC_ADDRESS")
+        or "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        aark_vault_address=os.getenv("AARK_VAULT_ADDRESS")
+        or "0x858F0a7454462De49a135d9b63Da941eeA6f5899",
+        aark_oct_router_address=os.getenv("AARK_OCT_ROUTER_ADDRESS")
+        or "0xfda50Eb6C4E34E2b097F61279D346B081da4C4AD",
+        aark_market_poll_seconds=_float_env("AARK_MARKET_POLL_SECONDS", 0.25),
+        aark_metadata_ttl_seconds=_float_env("AARK_METADATA_TTL_SECONDS", 5.0),
+        aark_execution_fee_ttl_seconds=_float_env("AARK_EXECUTION_FEE_TTL_SECONDS", 30.0),
+        aark_open_wait_seconds=_float_env("AARK_OPEN_WAIT_SECONDS", 8.0),
+        aark_close_wait_seconds=_float_env("AARK_CLOSE_WAIT_SECONDS", 8.0),
+        aark_rest_poll_seconds=_float_env("AARK_REST_POLL_SECONDS", 0.20),
+        aark_small_ticket_max_usd=_decimal_env("AARK_SMALL_TICKET_MAX_USD", "25"),
     )
 
 
@@ -116,6 +162,10 @@ def _bool_env(name: str, default: bool) -> bool:
 def _float_env(name: str, default: float) -> float:
     value = os.getenv(name)
     return float(value) if value else default
+
+
+def _decimal_env(name: str, default: str) -> Decimal:
+    return Decimal(os.getenv(name, default))
 
 
 def _arb_wss_url() -> str:
