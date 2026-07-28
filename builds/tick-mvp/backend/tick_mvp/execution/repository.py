@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import func
 
 from tick_mvp.core.config import Settings, get_settings
-from tick_mvp.domain.accounting import whole_trade_wallet_delta
+from tick_mvp.domain.accounting import net_wallet_delta
 from tick_mvp.domain.states import ExecutionAttemptStatus, PositionStatus, ReconciliationStatus, TradeAction, TradeIntentStatus, TradeSide
 from tick_mvp.infrastructure.custody import PrivateKeyCipher
 from tick_mvp.infrastructure.database import create_session_factory, session_scope
@@ -320,12 +320,6 @@ def _net_wallet_delta(
     position: Position,
     account_balance_after_usd: Decimal | None,
 ) -> Decimal | None:
-    wallet_delta = whole_trade_wallet_delta(
-        position.payload,
-        account_balance_after_usd,
-    )
-    if wallet_delta is None:
-        return None
     gas_ledger_total = (
         session.query(func.coalesce(func.sum(LedgerEvent.amount), 0))
         .filter(
@@ -335,7 +329,11 @@ def _net_wallet_delta(
         )
         .scalar()
     )
-    return wallet_delta + Decimal(gas_ledger_total or 0)
+    return net_wallet_delta(
+        position.payload,
+        account_balance_after_usd,
+        Decimal(gas_ledger_total or 0),
+    )
 
 
 def _execution(session, execution_id: str) -> ExecutionAttempt:

@@ -41,7 +41,23 @@ The PWA is a distribution choice for the first deployable MVP. The product refer
 
 ## Current Implementation Status
 
-- Backend scaffold runs with Docker Compose, Postgres, Redis, ARQ worker, market-feed process, and venue-events process.
-- Auth/session, platform wallet creation, deposit address, quote, open intent, close intent, idempotency, and withdrawal contracts are wired.
-- Open/close jobs are queued and consumed, but live gTrade execution has not yet been extracted into this backend.
-- `builds/local-mvp/tick-mvp-local` and `builds/local-mvp/tick-mvp-local-expo` remain the live canary reference.
+- Backend runs with Docker Compose, Postgres, Redis, ARQ worker, market-feed
+  process, and venue-events process.
+- Real delegated gTrade open/close execution is extracted and live-tested.
+  The user wallet owns collateral and the position; TICK's platform agent pays
+  Arbitrum gas.
+- Google/session JWTs, per-user encrypted wallets, USDC deposits, automatic
+  withdrawals, idempotent trade intents, venue-native SL/TP, terminal events,
+  and final wallet reconciliation are wired.
+- Platform gas is converted to USDC and included in the final per-position net
+  result. The app holds a terminal result in `finalizing` until that charge is
+  in the ledger.
+- The PWA preserves the local Expo loop: real 60 FPS canvas tape, vertical
+  open gestures, horizontal market switching, live net PnL, wallet actions,
+  scanner, and filtered history.
+- A normal browser shows an install landing. The trading product opens only in
+  standalone PWA mode, with `?app=1` available for development preview.
+- DigitalOcean backend and Vercel frontend deployment definitions are present.
+  The July 28 deployment attempt was not executed because the configured
+  DigitalOcean token returned HTTP 401 and the machine has no active Vercel
+  login.

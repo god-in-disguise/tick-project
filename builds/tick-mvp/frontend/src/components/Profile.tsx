@@ -1,5 +1,17 @@
-import { Copy, History, Settings2, WalletCards } from "lucide-react";
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Copy,
+  History,
+  LogOut,
+  Settings2,
+  WalletCards,
+  X
+} from "lucide-react";
+import { FormEvent, useMemo, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 
+import { api, idempotencyKey } from "../api";
 import { money, shortAddress, signedMoney } from "../format";
 import type { AccountState, Session, TradeSettings, WalletBalances } from "../types";
 
@@ -9,9 +21,17 @@ type Props = {
   balances: WalletBalances | null;
   settings: TradeSettings;
   onSettings: (settings: TradeSettings) => void;
+  onSignOut: () => void;
+  onBalances: () => Promise<void>;
 };
 
 export function Profile(props: Props) {
+  const [walletAction, setWalletAction] = useState<"deposit" | "withdraw" | null>(null);
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [withdrawAddress, setWithdrawAddress] = useState("");
+  const [walletBusy, setWalletBusy] = useState(false);
+  const [walletMessage, setWalletMessage] = useState<string | null>(null);
+  const [historyFilter, setHistoryFilter] = useState<"all" | "wins" | "losses" | "liquidations">("all");
   const leverageOptions = [25, 50, 100, 500];
   const address = props.session?.walletAddress ?? props.balances?.address;
   const completed = props.state?.positions.filter(
@@ -35,6 +55,35 @@ export function Profile(props: Props) {
   );
   const wins = settled.filter((item) => (item.reconciliation?.walletDeltaUsd ?? 0) > 0).length;
   const displayName = props.session?.user?.displayName || props.session?.user?.email || "TICK trader";
+  const filteredHistory = useMemo(
+    () => history.filter(({ position, reconciliation }) => {
+      const pnl = reconciliation?.walletDeltaUsd;
+      if (historyFilter === "wins") return typeof pnl === "number" && pnl > 0;
+      if (historyFilter === "losses") return typeof pnl === "number" && pnl <= 0;
+      if (historyFilter === "liquidations") return position.terminalReason === "liquidation";
+      return true;
+    }),
+    [history, historyFilter]
+  );
+
+  const withdraw = async (event: FormEvent) => {
+    event.preventDefault();
+    const amount = Number(withdrawAmount);
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    setWalletBusy(true);
+    setWalletMessage(null);
+    try {
+      const request = await api.withdraw(amount, withdrawAddress.trim(), idempotencyKey("withdraw"));
+      setWalletMessage(`Withdrawal ${request.status}`);
+      setWithdrawAmount("");
+      setWithdrawAddress("");
+      await props.onBalances();
+    } catch (cause) {
+      setWalletMessage(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setWalletBusy(false);
+    }
+  };
 
   return (
     <main className="page profile-page">
@@ -64,7 +113,7 @@ export function Profile(props: Props) {
 
       <section className="wallet-summary">
         <span>Trading balance</span>
-        <strong>{money(props.balances?.usdc)}</strong>
+        <strong>{money(props.balances?.spendableUsdc ?? props.balances?.usdc)}</strong>
         <button
           className="address-button"
           onClick={() => address && navigator.clipboard.writeText(address)}
@@ -73,6 +122,16 @@ export function Profile(props: Props) {
           {shortAddress(address)}
           <Copy size={13} />
         </button>
+        <div className="wallet-actions">
+          <button type="button" onClick={() => setWalletAction("deposit")}>
+            <ArrowDownToLine size={16} />
+            Deposit
+          </button>
+          <button type="button" onClick={() => setWalletAction("withdraw")}>
+            <ArrowUpFromLine size={16} />
+            Withdraw
+          </button>
+        </div>
       </section>
 
       <div className="section-heading">
@@ -165,8 +224,20 @@ export function Profile(props: Props) {
         </div>
         <span>Net wallet result</span>
       </div>
+      <div className="history-filters" role="tablist" aria-label="Trade history filters">
+        {(["all", "wins", "losses", "liquidations"] as const).map((filter) => (
+          <button
+            key={filter}
+            className={historyFilter === filter ? "active" : ""}
+            type="button"
+            onClick={() => setHistoryFilter(filter)}
+          >
+            {filter === "liquidations" ? "Liq" : filter}
+          </button>
+        ))}
+      </div>
       <section className="trade-history">
-        {history.length ? history.slice(0, 12).map(({ position, reconciliation }) => {
+        {filteredHistory.length ? filteredHistory.slice(0, 20).map(({ position, reconciliation }) => {
           const pnl = reconciliation?.walletDeltaUsd;
           return (
             <div className="history-row" key={position.id}>
@@ -198,6 +269,103 @@ export function Profile(props: Props) {
         <div><span>Execution</span><strong>gTrade</strong></div>
         <div><span>Wallet</span><strong>Platform custody</strong></div>
       </section>
+      <button className="sign-out-button" type="button" onClick={props.onSignOut}>
+        <LogOut size={16} />
+        Sign out
+      </button>
+
+      {walletAction ? (
+        <div className="wallet-sheet-backdrop" role="presentation">
+          <section className="wallet-sheet" role="dialog" aria-modal="true">
+            <button
+              className="wallet-sheet-close"
+              type="button"
+              aria-label="Close wallet"
+              onClick={() => {
+                setWalletAction(null);
+                setWalletMessage(null);
+              }}
+            >
+              <X size={20} />
+            </button>
+            {walletAction === "deposit" ? (
+              <>
+                <span className="wallet-sheet-kicker">ARBITRUM ONE</span>
+                <h2>Deposit USDC</h2>
+                <p>Send native USDC on Arbitrum to your TICK wallet.</p>
+                {address ? (
+                  <div className="deposit-qr">
+                    <QRCodeSVG
+                      value={address}
+                      size={174}
+                      bgColor="#f2f8f6"
+                      fgColor="#071011"
+                      level="M"
+                    />
+                  </div>
+                ) : null}
+                <button
+                  className="wallet-address-full"
+                  type="button"
+                  onClick={() => address && navigator.clipboard.writeText(address)}
+                >
+                  <span>{address ?? "Address unavailable"}</span>
+                  <Copy size={16} />
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="wallet-sheet-kicker">ARBITRUM ONE</span>
+                <h2>Withdraw USDC</h2>
+                <p>USDC is sent directly from your TICK wallet.</p>
+                <form className="withdraw-form" onSubmit={withdraw}>
+                  <label>
+                    Amount
+                    <div className="amount-input">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="0.00"
+                        value={withdrawAmount}
+                        onChange={(event) => setWithdrawAmount(event.target.value)}
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setWithdrawAmount(
+                            String(Math.max(0, props.balances?.spendableUsdc ?? 0))
+                          )
+                        }
+                      >
+                        MAX
+                      </button>
+                    </div>
+                  </label>
+                  <label>
+                    Destination
+                    <input
+                      type="text"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      placeholder="0x..."
+                      value={withdrawAddress}
+                      onChange={(event) => setWithdrawAddress(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <button type="submit" disabled={walletBusy}>
+                    {walletBusy ? "Submitting" : "Withdraw"}
+                  </button>
+                </form>
+              </>
+            )}
+            {walletMessage ? <span className="wallet-message">{walletMessage}</span> : null}
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

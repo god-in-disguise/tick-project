@@ -11,9 +11,13 @@ from sqlalchemy import func
 
 from tick_mvp.core.config import Settings, get_settings
 from tick_mvp.infrastructure.database import create_session_factory, session_scope
+from tick_mvp.domain.accounting import net_wallet_delta
+from tick_mvp.domain.states import ReconciliationStatus, TradeAction
 from tick_mvp.infrastructure.models import (
     ExecutionAttempt,
     LedgerEvent,
+    Position,
+    Reconciliation,
     TradeIntent,
     Withdrawal,
 )
@@ -139,6 +143,12 @@ class GasAccountingRepository:
         with session_scope(self._session_factory) as session:
             existing = session.get(LedgerEvent, event_id)
             if existing is not None:
+                if existing.position_id:
+                    _refresh_position_reconciliation(
+                        session,
+                        existing.position_id,
+                        now=now,
+                    )
                 return -Decimal(existing.amount)
             position_id = None
             execution = None
@@ -188,6 +198,9 @@ class GasAccountingRepository:
                         withdrawal.gas_charge_amount or 0
                     ) + charge.charge_usdc
                     withdrawal.updated_at = now
+            session.flush()
+            if position_id:
+                _refresh_position_reconciliation(session, position_id, now=now)
         return charge.charge_usdc
 
     def total_charges_usdc(self, user_id: str) -> Decimal:
@@ -303,6 +316,79 @@ def _event_id(tx_hash: str) -> str:
 def _normalize_hash(value: str) -> str:
     normalized = value.lower()
     return normalized if normalized.startswith("0x") else f"0x{normalized}"
+
+
+def _refresh_position_reconciliation(
+    session,
+    position_id: str,
+    *,
+    now: datetime,
+) -> None:
+    position = session.get(Position, position_id)
+    if position is None:
+        return
+    reconciliation = (
+        session.query(Reconciliation)
+        .filter(Reconciliation.position_id == position_id)
+        .order_by(Reconciliation.created_at.desc())
+        .first()
+    )
+    if reconciliation is None:
+        return
+    payload = reconciliation.payload or {}
+    raw_balance_after = (
+        payload.get("accountBalanceAfterTerminalUsd")
+        or payload.get("accountBalanceAfterCloseUsd")
+    )
+    if raw_balance_after is None:
+        return
+    gas_ledger_total = (
+        session.query(func.coalesce(func.sum(LedgerEvent.amount), 0))
+        .filter(
+            LedgerEvent.position_id == position_id,
+            LedgerEvent.event_type == "gas_charge",
+            LedgerEvent.asset == "USDC",
+        )
+        .scalar()
+    )
+    wallet_delta = net_wallet_delta(
+        position.payload,
+        Decimal(str(raw_balance_after)),
+        Decimal(gas_ledger_total or 0),
+    )
+    if wallet_delta is None:
+        return
+    reconciliation.wallet_delta_usd = wallet_delta
+    reconciliation.status = (
+        ReconciliationStatus.WALLET_RECONCILED.value
+        if platform_gas_complete(session, position)
+        else ReconciliationStatus.VENUE_ACCOUNTED.value
+    )
+    reconciliation.updated_at = now
+
+
+def platform_gas_complete(session, position: Position) -> bool:
+    terminal_reason = str((position.payload or {}).get("terminalReason") or "")
+    expected_action = (
+        TradeAction.CLOSE.value
+        if terminal_reason == "manual_close"
+        else TradeAction.OPEN.value
+    )
+    return (
+        session.query(LedgerEvent.id)
+        .join(
+            ExecutionAttempt,
+            ExecutionAttempt.id == LedgerEvent.execution_attempt_id,
+        )
+        .filter(
+            LedgerEvent.position_id == position.id,
+            LedgerEvent.event_type == "gas_charge",
+            LedgerEvent.asset == "USDC",
+            ExecutionAttempt.action == expected_action,
+        )
+        .first()
+        is not None
+    )
 
 
 def _int_or_none(value: object) -> int | None:

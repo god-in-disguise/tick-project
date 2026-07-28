@@ -37,8 +37,8 @@ function terminalLabel(position: Position, pnl: number | null = null): string {
   return pnl >= 0 ? "Net profit" : "Net loss";
 }
 
-export function useTick() {
-  const [session, setSession] = useState<Session | null>(null);
+export function useTick(initialSession: Session) {
+  const [session] = useState<Session>(initialSession);
   const [state, setState] = useState<AccountState | null>(null);
   const [balances, setBalances] = useState<WalletBalances | null>(null);
   const [markets, setMarkets] = useState<Market[]>([]);
@@ -155,7 +155,7 @@ export function useTick() {
         const reconciliation = next.reconciliations.find((item) => item.positionId === terminal.id);
         if (reconciliation && !shownReconciliations.current.has(reconciliation.id)) {
           const pnl = reconciliation.walletDeltaUsd;
-          if (pnl === null) {
+          if (pnl === null || reconciliation.status !== "wallet_reconciled") {
             if (!pendingReconciliations.current.has(reconciliation.id)) {
               pendingReconciliations.current.add(reconciliation.id);
               setClosedResult({
@@ -204,9 +204,8 @@ export function useTick() {
     let alive = true;
     const bootstrap = async () => {
       try {
-        const [nextSession, nextMarkets] = await Promise.all([api.session(), api.markets()]);
+        const nextMarkets = await api.markets();
         if (!alive) return;
-        setSession(nextSession);
         setMarkets(nextMarkets);
         const firstMarket = routeMarkets(nextMarkets, settings.leverage)[0]?.market;
         if (firstMarket) {
@@ -249,12 +248,23 @@ export function useTick() {
   }, [refreshBalances, refreshState, showError]);
 
   useEffect(() => {
-    const stateTimer = window.setInterval(
-      refreshState,
-      activePosition?.status === "opening" || activePosition?.status === "closing" ? 100 : 350
-    );
-    return () => window.clearInterval(stateTimer);
-  }, [activePosition?.status, refreshState]);
+    const controller = new AbortController();
+    let reconnectTimer: number | null = null;
+    const connect = () => {
+      api.stateEvents(refreshState, controller.signal).catch((cause) => {
+        if (controller.signal.aborted) return;
+        showError(cause);
+        reconnectTimer = window.setTimeout(connect, 1_000);
+      });
+    };
+    connect();
+    const recoveryTimer = window.setInterval(refreshState, 3_000);
+    return () => {
+      controller.abort();
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      window.clearInterval(recoveryTimer);
+    };
+  }, [refreshState, showError]);
 
   useEffect(() => {
     if (!activeMarket || activeMarket.observations.length) return;
@@ -449,6 +459,7 @@ export function useTick() {
     busyAction,
     error,
     closedResult,
+    refreshBalances,
     open,
     close,
     shiftMarket,

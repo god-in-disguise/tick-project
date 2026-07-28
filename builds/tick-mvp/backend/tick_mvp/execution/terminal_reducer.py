@@ -8,7 +8,7 @@ from decimal import Decimal
 from sqlalchemy import func
 
 from tick_mvp.core.config import Settings, get_settings
-from tick_mvp.domain.accounting import whole_trade_wallet_delta
+from tick_mvp.domain.accounting import net_wallet_delta
 from tick_mvp.domain.states import PositionStatus, ReconciliationStatus, VenueEventType
 from tick_mvp.infrastructure.database import create_session_factory, session_scope
 from tick_mvp.infrastructure.models import (
@@ -18,6 +18,7 @@ from tick_mvp.infrastructure.models import (
     VenueEvent,
     WalletAccount,
 )
+from tick_mvp.wallets.accounting import platform_gas_complete
 from tick_mvp.venues.base import TerminalPositionEvent
 
 
@@ -170,22 +171,28 @@ class TerminalEventReducer:
             reconciliation = _reconciliation(session, position.id)
             if reconciliation is None:
                 return None
-            wallet_delta = whole_trade_wallet_delta(position.payload, account_balance_after_usd)
-            if wallet_delta is not None:
-                gas_ledger_total = (
-                    session.query(func.coalesce(func.sum(LedgerEvent.amount), 0))
-                    .filter(
-                        LedgerEvent.position_id == position.id,
-                        LedgerEvent.event_type == "gas_charge",
-                        LedgerEvent.asset == "USDC",
-                    )
-                    .scalar()
+            gas_ledger_total = (
+                session.query(func.coalesce(func.sum(LedgerEvent.amount), 0))
+                .filter(
+                    LedgerEvent.position_id == position.id,
+                    LedgerEvent.event_type == "gas_charge",
+                    LedgerEvent.asset == "USDC",
                 )
-                wallet_delta += Decimal(gas_ledger_total or 0)
+                .scalar()
+            )
+            wallet_delta = net_wallet_delta(
+                position.payload,
+                account_balance_after_usd,
+                Decimal(gas_ledger_total or 0),
+            )
             reconciliation.wallet_delta_usd = wallet_delta
             reconciliation.status = (
                 ReconciliationStatus.WALLET_RECONCILED.value
                 if wallet_delta is not None
+                and (
+                    self._settings.gas_payer_mode != "platform_agent"
+                    or platform_gas_complete(session, position)
+                )
                 else ReconciliationStatus.VENUE_ACCOUNTED.value
             )
             reconciliation.payload = {

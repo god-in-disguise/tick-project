@@ -1,7 +1,12 @@
+import hmac
+import asyncio
+import hashlib
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, status
+from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 from tick_mvp.api.auth import AuthError, UserSession, create_session_token, verify_session_token
 from tick_mvp.api.google_auth import GoogleAuthError, verify_google_identity
@@ -10,6 +15,7 @@ from tick_mvp.domain.schemas import (
     AcceptedTradeResponse,
     CloseRequest,
     DepositAddressResponse,
+    DemoSessionRequest,
     DevSessionRequest,
     GoogleSessionRequest,
     MeResponse,
@@ -53,6 +59,15 @@ async def _lifespan(app: FastAPI):
 def create_app(store: Any | None = None) -> FastAPI:
     settings = get_settings()
     app = FastAPI(title="TICK MVP API", lifespan=_lifespan)
+    origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
+    if origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type"],
+        )
     app.state.store = store or _default_store()
 
     @app.get("/health")
@@ -127,6 +142,36 @@ def create_app(store: Any | None = None) -> FastAPI:
             wallet=wallet,
         )
 
+    @app.post("/api/auth/demo", response_model=SessionResponse)
+    def demo_session(body: DemoSessionRequest) -> SessionResponse:
+        current_settings = get_settings()
+        expected = current_settings.tick_demo_access_code
+        if not expected or not hmac.compare_digest(body.accessCode, expected):
+            raise HTTPException(status_code=401, detail="invalid demo access code")
+        email = body.email.strip().lower()
+        user, wallet = _store(app).upsert_google_user(
+            provider_subject=f"demo:{email}",
+            email=email,
+            display_name=body.displayName or email.split("@", 1)[0],
+            avatar_url=None,
+            chain_id=current_settings.arb_chain_id,
+            custody_provider=current_settings.custody_provider,
+        )
+        token = create_session_token(
+            user_id=user.id,
+            wallet_address=wallet.address,
+            secret=current_settings.jwt_secret,
+            ttl_seconds=current_settings.jwt_ttl_seconds,
+        )
+        return SessionResponse(
+            token=token,
+            userId=user.id,
+            walletAddress=wallet.address,
+            expiresIn=current_settings.jwt_ttl_seconds,
+            user=user,
+            wallet=wallet,
+        )
+
     @app.get("/api/me", response_model=MeResponse)
     def me(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> MeResponse:
         session = _session(authorization, x_tick_user)
@@ -138,6 +183,44 @@ def create_app(store: Any | None = None) -> FastAPI:
     @app.get("/api/state", response_model=StateResponse)
     def state(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> StateResponse:
         return _store(app).state(_session(authorization, x_tick_user).user_id)
+
+    @app.get("/api/events")
+    async def events(
+        request: Request,
+        authorization: str | None = Header(default=None),
+        x_tick_user: str | None = Header(default=None),
+    ) -> StreamingResponse:
+        user_id = _session(authorization, x_tick_user).user_id
+
+        async def stream():
+            last_version = ""
+            idle_cycles = 0
+            while not await request.is_disconnected():
+                current = await asyncio.to_thread(_store(app).state, user_id)
+                version = _state_version(current)
+                if version != last_version:
+                    last_version = version
+                    idle_cycles = 0
+                    yield f"event: state\ndata: {version}\n\n"
+                else:
+                    idle_cycles += 1
+                    if idle_cycles >= 60:
+                        idle_cycles = 0
+                        yield ": keepalive\n\n"
+                active = any(
+                    position.status.value in {"opening", "open", "closing", "unknown"}
+                    for position in current.positions
+                )
+                await asyncio.sleep(0.20 if active else 1.0)
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @app.get("/api/positions")
     def positions(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> dict[str, object]:
@@ -300,6 +383,18 @@ async def _with_dispatch(accepted: AcceptedTradeResponse) -> AcceptedTradeRespon
         return accepted
     dispatch = await enqueue_execution_attempt(accepted.executionAttempt)
     return accepted.model_copy(update={"job": dispatch})
+
+
+def _state_version(current: StateResponse) -> str:
+    records = [
+        *(f"p:{item.id}:{item.status}:{item.updatedAt.isoformat()}" for item in current.positions),
+        *(f"e:{item.id}:{item.status}:{item.updatedAt.isoformat()}" for item in current.executionAttempts),
+        *(f"r:{item.id}:{item.status}:{item.updatedAt.isoformat()}" for item in current.reconciliations),
+        *(f"w:{item.id}:{item.status}:{item.updatedAt.isoformat()}" for item in current.withdrawals),
+    ]
+    if not records:
+        return "empty"
+    return hashlib.sha256("|".join(records).encode()).hexdigest()
 
 
 def _session(authorization: str | None, dev_user_id: str | None) -> UserSession:

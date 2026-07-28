@@ -63,6 +63,26 @@ export type WalletBalances = {
   unavailableReason: string | null;
 };
 
+export type DepositAddress = {
+  chainId: number;
+  asset: "USDC";
+  address: string;
+  walletId: string;
+};
+
+export type Withdrawal = {
+  id: string;
+  userId: string;
+  walletId: string;
+  asset: string;
+  amount: number;
+  destinationAddress: string;
+  status: string;
+  txHash: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Quote = {
   quoteId: string;
   venue: string;
@@ -142,6 +162,7 @@ export type AccountState = {
   intents: Intent[];
   executionAttempts: ExecutionAttempt[];
   reconciliations: Reconciliation[];
+  withdrawals: Withdrawal[];
 };
 
 export type AcceptedTrade = {

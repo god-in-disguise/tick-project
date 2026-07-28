@@ -208,6 +208,7 @@ def test_api_routes_are_present() -> None:
     app = create_app(MemoryStore(default_venue="gtrade"))
     paths = {route.path for route in app.routes}
     assert "/api/auth/dev-session" in paths
+    assert "/api/auth/demo" in paths
     assert "/api/auth/google" in paths
     assert "/api/me" in paths
     assert "/api/wallet/deposit-address" in paths
@@ -217,3 +218,4 @@ def test_api_routes_are_present() -> None:
     assert "/api/trade/open" in paths
     assert "/api/trade/close" in paths
     assert "/api/state" in paths
+    assert "/api/events" in paths

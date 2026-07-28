@@ -40,6 +40,31 @@ Supporting docs:
 
 If this document conflicts with older docs, use this document.
 
+## Implementation Snapshot - July 28, 2026
+
+The production-oriented MVP has moved beyond scaffolding:
+
+- FastAPI, Postgres, Redis, ARQ worker, market-feed worker, and venue-event
+  worker run as separate Docker Compose services.
+- The gTrade route performs real delegated opens and closes. Each user has a
+  platform-created encrypted Arbitrum wallet that owns collateral and the
+  position; a platform agent pays ETH gas.
+- Google and private-demo authentication issue backend JWT sessions.
+- Deposits, spendable USDC, automatic withdrawals, venue-native SL/TP,
+  idempotent intents, callback-event processing, and wallet reconciliation are
+  wired.
+- Final trade results include the actual platform-paid gas converted to USDC.
+  Terminal results remain in `finalizing` until that charge is recorded.
+- The iPhone-first PWA preserves the validated Expo loop and adds an install
+  landing, standalone-app gate, wallet screen, settings, and filtered history.
+- DigitalOcean backend and Vercel frontend release definitions are ready. The
+  first production deployment is credential-blocked: the configured
+  DigitalOcean token returned HTTP 401 and the development machine has no
+  authenticated Vercel session.
+
+The local live MVP remains useful as a research archive. New product work
+belongs in `builds/tick-mvp`.
+
 ## Current Execution Decisions
 
 These decisions override the older two-venue-start and Ostium-first language in earlier docs.

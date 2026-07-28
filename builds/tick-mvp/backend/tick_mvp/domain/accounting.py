@@ -14,3 +14,17 @@ def whole_trade_wallet_delta(
     if raw_baseline is None:
         return None
     return account_balance_after_usd - Decimal(str(raw_baseline))
+
+
+def net_wallet_delta(
+    position_payload: dict[str, Any] | None,
+    account_balance_after_usd: Decimal | None,
+    gas_ledger_total_usd: Decimal = Decimal(0),
+) -> Decimal | None:
+    wallet_delta = whole_trade_wallet_delta(
+        position_payload,
+        account_balance_after_usd,
+    )
+    if wallet_delta is None:
+        return None
+    return wallet_delta + gas_ledger_total_usd

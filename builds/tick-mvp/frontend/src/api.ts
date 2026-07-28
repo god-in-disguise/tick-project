@@ -1,18 +1,19 @@
 import type {
   AcceptedTrade,
   AccountState,
+  DepositAddress,
   Market,
   MarketObservation,
   Quote,
   Session,
   Side,
-  WalletBalances
+  WalletBalances,
+  Withdrawal
 } from "./types";
 
 const TOKEN_KEY = "tick.session.token";
-const DEV_USER = "funded-dev";
-
-let sessionPromise: Promise<Session> | null = null;
+const SESSION_KEY = "tick.session";
+const API_BASE = String(import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
@@ -25,8 +26,8 @@ async function json<T>(path: string, init?: RequestInit, timeoutMs = 10_000): Pr
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const token = path.startsWith("/api/auth/") ? null : await sessionToken();
-    const response = await fetch(path, {
+    const token = path.startsWith("/api/auth/") ? null : localStorage.getItem(TOKEN_KEY);
+    const response = await fetch(`${API_BASE}${path}`, {
       ...init,
       headers: {
         "Content-Type": "application/json",
@@ -66,25 +67,6 @@ async function json<T>(path: string, init?: RequestInit, timeoutMs = 10_000): Pr
   }
 }
 
-async function sessionToken(): Promise<string> {
-  const current = localStorage.getItem(TOKEN_KEY);
-  if (current) return current;
-  return (await ensureSession()).token;
-}
-
-async function ensureSession(): Promise<Session> {
-  if (!sessionPromise) {
-    sessionPromise = json<Session>(
-      "/api/auth/dev-session",
-      { method: "POST", body: JSON.stringify({ userId: DEV_USER }) }
-    ).then((session) => {
-      localStorage.setItem(TOKEN_KEY, session.token);
-      return session;
-    });
-  }
-  return sessionPromise;
-}
-
 function normalizeNumbers(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalizeNumbers);
   if (!value || typeof value !== "object") return value;
@@ -116,12 +98,97 @@ function observation(raw: MarketObservation): MarketObservation {
   };
 }
 
+function persistSession(session: Session): Session {
+  localStorage.setItem(TOKEN_KEY, session.token);
+  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  return session;
+}
+
+export function storedSession(): Session | null {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!raw || !token) return null;
+    return { ...JSON.parse(raw), token } as Session;
+  } catch {
+    clearSession();
+    return null;
+  }
+}
+
+export function clearSession(): void {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(SESSION_KEY);
+}
+
 export const api = {
-  session: ensureSession,
+  devSession: (userId: string) =>
+    json<Session>("/api/auth/dev-session", {
+      method: "POST",
+      body: JSON.stringify({ userId })
+    }).then(persistSession),
+
+  demoSession: (email: string, displayName: string, accessCode: string) =>
+    json<Session>("/api/auth/demo", {
+      method: "POST",
+      body: JSON.stringify({ email, displayName: displayName || null, accessCode })
+    }).then(persistSession),
+
+  googleSession: (idToken: string) =>
+    json<Session>("/api/auth/google", {
+      method: "POST",
+      body: JSON.stringify({ idToken })
+    }).then(persistSession),
 
   state: () => json<AccountState>("/api/state", undefined, 6_000),
 
+  stateEvents: async (
+    onStateChange: () => void,
+    signal: AbortSignal
+  ): Promise<void> => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) throw new ApiError("missing session", 401);
+    const response = await fetch(`${API_BASE}/api/events`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal
+    });
+    if (!response.ok || !response.body) {
+      throw new ApiError(`Live state unavailable (${response.status})`, response.status);
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (!signal.aborted) {
+      const { value, done } = await reader.read();
+      if (done) return;
+      buffer += decoder.decode(value, { stream: true });
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() ?? "";
+      for (const frame of frames) {
+        if (frame.includes("event: state")) onStateChange();
+      }
+    }
+  },
+
   balances: () => json<WalletBalances>("/api/wallet/balances", undefined, 12_000),
+
+  depositAddress: () => json<DepositAddress>("/api/wallet/deposit-address"),
+
+  withdrawals: async () => {
+    const response = await json<{ withdrawals: Withdrawal[] }>("/api/wallet/withdrawals");
+    return response.withdrawals;
+  },
+
+  withdraw: (amount: number, destinationAddress: string, requestKey: string) =>
+    json<Withdrawal>("/api/wallet/withdrawals", {
+      method: "POST",
+      body: JSON.stringify({
+        asset: "USDC",
+        amount,
+        destinationAddress,
+        idempotencyKey: requestKey
+      })
+    }),
 
   markets: async (): Promise<Market[]> => {
     const response = await json<{ markets: Omit<Market, "observations" | "sequence">[] }>("/api/markets");
@@ -178,16 +245,16 @@ export const api = {
       body: JSON.stringify({ market, side, ticketUsd, leverage, maxLossUsd, takeProfitUsd })
     }),
 
-  open: (quoteId: string, idempotencyKey: string) =>
+  open: (quoteId: string, requestKey: string) =>
     json<AcceptedTrade>("/api/trade/open", {
       method: "POST",
-      body: JSON.stringify({ quoteId, idempotencyKey })
+      body: JSON.stringify({ quoteId, idempotencyKey: requestKey })
     }),
 
-  close: (positionId: string, idempotencyKey: string) =>
+  close: (positionId: string, requestKey: string) =>
     json<AcceptedTrade>("/api/trade/close", {
       method: "POST",
-      body: JSON.stringify({ positionId, idempotencyKey })
+      body: JSON.stringify({ positionId, idempotencyKey: requestKey })
     })
 };
 

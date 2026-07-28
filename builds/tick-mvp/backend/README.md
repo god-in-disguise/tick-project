@@ -39,9 +39,11 @@ The first gTrade extraction is now started. The backend has live gTrade quote su
 This scaffold currently implements the contract layer, Postgres persistence, live gTrade quotes, and a guarded worker execution path:
 
 - `POST /api/auth/dev-session`
+- `POST /api/auth/demo`
 - `POST /api/auth/google`
 - `GET /api/me`
 - `GET /api/state`
+- `GET /api/events`
 - `GET /api/positions`
 - `GET /api/wallet/deposit-address`
 - `GET /api/wallet/withdrawals`
@@ -50,7 +52,7 @@ This scaffold currently implements the contract layer, Postgres persistence, liv
 - `POST /api/trade/open`
 - `POST /api/trade/close`
 
-Auth is bearer-token based. For local development, `POST /api/auth/dev-session` returns a dependency-free HS256 JWT. Production login uses Google ID token verification and then returns the same backend-issued TICK session JWT.
+Auth is bearer-token based. For local development, `POST /api/auth/dev-session` returns a dependency-free HS256 JWT. Production login uses Google ID token verification and then returns the same backend-issued TICK session JWT. Private investor/team builds can use `POST /api/auth/demo` with a server-side access code when Google credentials are not configured. Dev auth must remain disabled on any public backend.
 
 Docker uses `TICK_STORE_BACKEND=postgres` and runs migrations from `migrations/001_core.sql` on startup. Local unit tests can still inject `MemoryStore` directly as a fast test double.
 
@@ -117,9 +119,14 @@ startup and refreshes it every ten seconds. A cross-thread Docker check measured
 This removes the first-open-after-idle transport penalty; it does not change
 gTrade's oracle callback latency.
 
-The next hardening work is withdrawal controls in the PWA, asynchronous
-treasury collection of reserved USDC gas charges, and deployment canaries for
-restart and ambiguous-broadcast recovery.
+The PWA now includes USDC deposit QR/address, automatic withdrawals, spendable
+balance, trade settings, and filtered history. It consumes an authenticated
+server event stream for fast position-state changes with a slow HTTP recovery
+poll.
+
+The next hardening work is asynchronous treasury collection of reserved USDC
+gas charges, deployment canaries for restart and ambiguous-broadcast recovery,
+and external private-beta limits before this becomes a broad-public product.
 
 ## Package Layout
 

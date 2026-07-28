@@ -1,0 +1,10 @@
+.local/
+digitalocean/
+stages/
+docker-compose.*.yml
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/terraform.tfvars
+tick/.runtime/

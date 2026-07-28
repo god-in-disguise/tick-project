@@ -33,6 +33,12 @@ class DevSessionRequest(BaseModel):
     walletAddress: str | None = Field(default=None, max_length=120)
 
 
+class DemoSessionRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    displayName: str | None = Field(default=None, max_length=160)
+    accessCode: str = Field(min_length=1, max_length=160)
+
+
 class GoogleSessionRequest(BaseModel):
     idToken: str = Field(min_length=1)
     nonce: str | None = Field(default=None, max_length=160)
