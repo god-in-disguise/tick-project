@@ -183,7 +183,7 @@ def create_app(store: Any | None = None) -> FastAPI:
     @app.get("/api/chart")
     def chart(
         market: str,
-        window_seconds: int = Query(default=90, alias="windowSeconds", ge=30, le=300),
+        window_seconds: int = Query(default=90, alias="windowSeconds", ge=30, le=3600),
     ) -> dict[str, Any]:
         try:
             return _store(app).chart(market, window_seconds=window_seconds)

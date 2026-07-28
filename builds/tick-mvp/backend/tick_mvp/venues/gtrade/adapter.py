@@ -14,9 +14,9 @@ from tick_mvp.venues.gtrade.wallet import GTradeWalletExecutor
 class GTradeVenue:
     name = "gtrade"
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, market_history: Any | None = None) -> None:
         self._settings = settings
-        self._public = GTradePublicClient(settings)
+        self._public = GTradePublicClient(settings, market_history=market_history)
         self._wallet = GTradeWalletExecutor(settings, self._public)
 
     def start(self) -> None:

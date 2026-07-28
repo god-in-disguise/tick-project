@@ -222,6 +222,41 @@ def test_price_stream_records_real_watchlist_observations_with_sequence() -> Non
     assert str(eth["latest"]["price"]) == "3500.4"
 
 
+def test_price_stream_publishes_watchlist_observations() -> None:
+    batches = []
+    stream = GTradePriceStream(
+        "wss://example.invalid",
+        on_observations=batches.append,
+    )
+    stream._handle_raw(json.dumps([300, 64000.1, 9999, 1.25]))
+
+    assert len(batches) == 1
+    assert len(batches[0]) == 1
+    assert batches[0][0]["pairIndex"] == 300
+    assert str(batches[0][0]["price"]) == "64000.1"
+
+
+def test_price_stream_retains_a_time_based_context_window(monkeypatch) -> None:
+    now = [1_000.0]
+    monkeypatch.setattr(
+        "tick_mvp.venues.gtrade.price_stream.time.time",
+        lambda: now[0],
+    )
+    stream = GTradePriceStream("wss://example.invalid")
+    stream._handle_raw(json.dumps([300, 64000.1]))
+    now[0] += 3_899
+    stream._handle_raw(json.dumps([300, 64001.2]))
+
+    retained = stream.snapshot(300)["ticks"]
+    assert [str(item["price"]) for item in retained] == ["64000.1", "64001.2"]
+
+    now[0] += 2
+    stream._handle_raw(json.dumps([300, 64002.3]))
+
+    retained = stream.snapshot(300)["ticks"]
+    assert [str(item["price"]) for item in retained] == ["64001.2", "64002.3"]
+
+
 def test_direct_close_cashflow_produces_immediate_net_result() -> None:
     pnl, cashflow = _close_event_financials(
         {

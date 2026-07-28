@@ -39,6 +39,20 @@ for (let index = 1; index < await landingTabs.count(); index += 1) {
 }
 await page.screenshot({ path: "/tmp/tick-landing.png", fullPage: true });
 
+const desktopContext = await browser.newContext({
+  viewport: { width: 1440, height: 1000 },
+  deviceScaleFactor: 1,
+  isMobile: false,
+  hasTouch: false
+});
+const desktopPage = await desktopContext.newPage();
+await desktopPage.goto("http://127.0.0.1:5173/", { waitUntil: "domcontentloaded" });
+await desktopPage.locator(".desktop-handoff").waitFor();
+assert.match(await desktopPage.locator(".desktop-handoff").innerText(), /CONTINUE ON IPHONE/);
+assert.equal(await desktopPage.getByRole("button", { name: "Add TICK to iPhone" }).count(), 0);
+await desktopPage.screenshot({ path: "/tmp/tick-desktop.png", fullPage: true });
+await desktopContext.close();
+
 await page.goto("http://127.0.0.1:5173/?app=1", { waitUntil: "domcontentloaded" });
 await authenticate(page);
 await page.locator(".trade-view").waitFor({ timeout: 20_000 });

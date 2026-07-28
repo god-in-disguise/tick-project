@@ -59,6 +59,8 @@ export function useTick(initialSession: Session) {
   const stateInitialized = useRef(false);
   const errorTimer = useRef<number | null>(null);
   const resultTimer = useRef<number | null>(null);
+  const backgroundFailures = useRef(0);
+  const resumeGraceUntil = useRef(0);
 
   const rememberQuote = useCallback((quote: Quote) => {
     quoteCache.current[quote.quoteId] = quote;
@@ -107,11 +109,29 @@ export function useTick(initialSession: Session) {
     errorTimer.current = window.setTimeout(() => setError(null), 4_000);
   }, []);
 
+  const markBackgroundSuccess = useCallback(() => {
+    backgroundFailures.current = 0;
+  }, []);
+
+  const showBackgroundError = useCallback((cause: unknown) => {
+    if (
+      document.visibilityState !== "visible"
+      || Date.now() < resumeGraceUntil.current
+    ) {
+      return;
+    }
+    backgroundFailures.current += 1;
+    if (backgroundFailures.current < 3) return;
+    backgroundFailures.current = 0;
+    showError(cause);
+  }, [showError]);
+
   const loadMarketChart = useCallback((marketId: string) => {
     const current = chartRequests.current.get(marketId);
     if (current) return current;
     const request = api.chart(marketId)
       .then((chart) => {
+        markBackgroundSuccess();
         sequences.current[marketId] = Math.max(sequences.current[marketId] ?? 0, chart.sequence);
         setMarkets((markets) =>
           markets.map((market) =>
@@ -133,13 +153,14 @@ export function useTick(initialSession: Session) {
       });
     chartRequests.current.set(marketId, request);
     return request;
-  }, []);
+  }, [markBackgroundSuccess]);
 
   const refreshState = useCallback(async () => {
     if (stateBusy.current) return;
     stateBusy.current = true;
     try {
       const next = await api.state();
+      markBackgroundSuccess();
       setState(next);
       setBusyAction(null);
       if (!stateInitialized.current) {
@@ -187,19 +208,20 @@ export function useTick(initialSession: Session) {
         }
       }
     } catch (cause) {
-      showError(cause);
+      showBackgroundError(cause);
     } finally {
       stateBusy.current = false;
     }
-  }, [showError]);
+  }, [markBackgroundSuccess, showBackgroundError]);
 
   const refreshBalances = useCallback(async () => {
     try {
       setBalances(await api.balances());
+      markBackgroundSuccess();
     } catch (cause) {
-      showError(cause);
+      showBackgroundError(cause);
     }
-  }, [showError]);
+  }, [markBackgroundSuccess, showBackgroundError]);
 
   useEffect(() => {
     let alive = true;
@@ -236,9 +258,10 @@ export function useTick(initialSession: Session) {
     const marketTimer = window.setInterval(async () => {
       try {
         const incoming = await api.markets();
+        markBackgroundSuccess();
         setMarkets((current) => mergeMarketSummaries(current, incoming));
       } catch (cause) {
-        showError(cause);
+        showBackgroundError(cause);
       }
     }, 5_000);
     const balanceTimer = window.setInterval(refreshBalances, 5_000);
@@ -246,7 +269,7 @@ export function useTick(initialSession: Session) {
       window.clearInterval(marketTimer);
       window.clearInterval(balanceTimer);
     };
-  }, [refreshBalances, refreshState, showError]);
+  }, [markBackgroundSuccess, refreshBalances, showBackgroundError]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -254,7 +277,7 @@ export function useTick(initialSession: Session) {
     const connect = () => {
       api.stateEvents(refreshState, controller.signal).catch((cause) => {
         if (controller.signal.aborted) return;
-        showError(cause);
+        showBackgroundError(cause);
         reconnectTimer = window.setTimeout(connect, 1_000);
       });
     };
@@ -265,12 +288,12 @@ export function useTick(initialSession: Session) {
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       window.clearInterval(recoveryTimer);
     };
-  }, [refreshState, showError]);
+  }, [refreshState, showBackgroundError]);
 
   useEffect(() => {
     if (!activeMarket || activeMarket.observations.length) return;
-    void loadMarketChart(activeMarket.market).catch(showError);
-  }, [activeMarket?.market, activeMarket?.observations.length, loadMarketChart, showError]);
+    void loadMarketChart(activeMarket.market).catch(showBackgroundError);
+  }, [activeMarket?.market, activeMarket?.observations.length, loadMarketChart, showBackgroundError]);
 
   useEffect(() => {
     if (!activeMarket || routedMarkets.length < 2) return;
@@ -287,13 +310,13 @@ export function useTick(initialSession: Session) {
       for (const marketId of neighborIds) {
         const market = routedMarkets.find((candidate) => candidate.market === marketId);
         if (!market || (market.observations.at(-1)?.receivedTs ?? 0) >= cutoff) continue;
-        void loadMarketChart(market.market).catch(showError);
+        void loadMarketChart(market.market).catch(showBackgroundError);
       }
     };
     warmNeighbors();
     const timer = window.setInterval(warmNeighbors, 2_500);
     return () => window.clearInterval(timer);
-  }, [activeMarket?.market, loadMarketChart, showError]);
+  }, [activeMarket?.market, loadMarketChart, showBackgroundError]);
 
   useEffect(() => {
     if (!activeMarket) return;
@@ -303,6 +326,7 @@ export function useTick(initialSession: Session) {
       tapeBusy.current.add(marketId);
       try {
         const result = await api.tape(marketId, sequences.current[marketId] ?? 0);
+        markBackgroundSuccess();
         if (result.resyncRequired) {
           const chart = await api.chart(marketId);
           sequences.current[marketId] = chart.sequence;
@@ -316,7 +340,7 @@ export function useTick(initialSession: Session) {
           );
         }
       } catch (cause) {
-        showError(cause);
+        showBackgroundError(cause);
       } finally {
         tapeBusy.current.delete(marketId);
       }
@@ -324,7 +348,7 @@ export function useTick(initialSession: Session) {
     void poll();
     const timer = window.setInterval(poll, 200);
     return () => window.clearInterval(timer);
-  }, [activeMarket?.market, showError]);
+  }, [activeMarket?.market, markBackgroundSuccess, showBackgroundError]);
 
   useEffect(() => {
     if (!activeMarket || activePosition) {
@@ -344,6 +368,7 @@ export function useTick(initialSession: Session) {
           api.quote(activeMarket.market, "short", settings.ticketUsd, leverage, maxLossUsd, takeProfitUsd)
         ]);
         if (!canceled) {
+          markBackgroundSuccess();
           rememberQuote(long);
           rememberQuote(short);
           setQuotes({ long, short });
@@ -354,7 +379,7 @@ export function useTick(initialSession: Session) {
             quoteBlocked = true;
             setQuotes({ long: null, short: null });
           }
-          showError(cause);
+          showBackgroundError(cause);
         }
       }
     };
@@ -367,6 +392,7 @@ export function useTick(initialSession: Session) {
   }, [
     activeMarket?.market,
     activePosition?.id,
+    markBackgroundSuccess,
     rememberQuote,
     settings.leverage,
     settings.maxLossUsd,
@@ -374,8 +400,36 @@ export function useTick(initialSession: Session) {
     settings.takeProfitEnabled,
     settings.takeProfitUsd,
     settings.ticketUsd,
-    showError
+    showBackgroundError
   ]);
+
+  useEffect(() => {
+    let hidden = document.visibilityState === "hidden";
+    const resume = () => {
+      if (document.visibilityState === "hidden") {
+        hidden = true;
+        return;
+      }
+      if (!hidden) return;
+      hidden = false;
+      resumeGraceUntil.current = Date.now() + 4_000;
+      backgroundFailures.current = 0;
+      setError(null);
+      void api.markets({ includeTape: true })
+        .then((nextMarkets) => {
+          for (const market of nextMarkets) {
+            sequences.current[market.market] = market.sequence;
+          }
+          setMarkets(nextMarkets);
+          markBackgroundSuccess();
+        })
+        .catch(showBackgroundError);
+      void refreshState();
+      void refreshBalances();
+    };
+    document.addEventListener("visibilitychange", resume);
+    return () => document.removeEventListener("visibilitychange", resume);
+  }, [markBackgroundSuccess, refreshBalances, refreshState, showBackgroundError]);
 
   const setSettings = useCallback((next: TradeSettings) => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
@@ -450,9 +504,9 @@ export function useTick(initialSession: Session) {
 
     const latest = target.observations.at(-1);
     if (!latest || latest.receivedTs < Date.now() / 1_000 - 1.5) {
-      void loadMarketChart(target.market).catch(showError);
+      void loadMarketChart(target.market).catch(showBackgroundError);
     }
-  }, [activePosition, busy, loadMarketChart, routedMarkets, showError]);
+  }, [activePosition, busy, loadMarketChart, routedMarkets, showBackgroundError]);
 
   const shiftMarket = useCallback((offset: number) => {
     if (!activeMarket || activePosition || busy) return;

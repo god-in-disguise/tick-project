@@ -46,26 +46,38 @@ class GTradePair:
 
 
 class GTradePublicClient:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, market_history: Any | None = None) -> None:
         self._settings = settings
+        self._market_history = market_history
         self._session = requests.Session()
         self._metadata_session = requests.Session()
         self._pairs_lock = RLock()
         self._pairs_refresh_lock = RLock()
         self._pairs_by_name: dict[str, GTradePair] = {}
+        self._pairs_by_index: dict[int, GTradePair] = {}
         self._pairs_expires_at = 0.0
         self._metadata_stop = threading.Event()
         self._metadata_thread: threading.Thread | None = None
         self._charts_payload: dict[str, Any] | None = None
         self._charts_expires_at = 0.0
-        self._prices = GTradePriceStream(settings.gtrade_pricing_ws_url)
+        self._prices = GTradePriceStream(
+            settings.gtrade_pricing_ws_url,
+            on_observations=(
+                self._record_market_history
+                if self._market_history is not None
+                else None
+            ),
+        )
 
     def start(self) -> None:
-        self._prices.start()
+        history_start = getattr(self._market_history, "start", None)
+        if history_start is not None:
+            history_start()
         try:
             self._refresh_pairs()
         except Exception as exc:
             LOGGER.warning("Could not warm gTrade market metadata: %s", exc)
+        self._prices.start()
         if not self._metadata_thread or not self._metadata_thread.is_alive():
             self._metadata_stop.clear()
             self._metadata_thread = threading.Thread(
@@ -80,6 +92,9 @@ class GTradePublicClient:
         if self._metadata_thread:
             self._metadata_thread.join(timeout=2)
         self._prices.stop()
+        history_stop = getattr(self._market_history, "stop", None)
+        if history_stop is not None:
+            history_stop()
         self._metadata_session.close()
         self._session.close()
 
@@ -172,6 +187,15 @@ class GTradePublicClient:
         ticks = self._prices.recent(row.pair_index, seconds=window_seconds)
         latest = ticks[-1] if ticks else self._prices.snapshot(row.pair_index).get("latest")
         now = time.time()
+        bars = (
+            self._market_history.bars(
+                venue="gtrade",
+                market=row.pair,
+                window_seconds=window_seconds,
+            )
+            if self._market_history is not None and window_seconds > 300
+            else []
+        )
         return {
             "venue": "gtrade",
             "market": row.pair,
@@ -188,6 +212,7 @@ class GTradePublicClient:
                 (now - float(latest["receivedAt"])) * 1000 if latest else None
             ),
             "observations": [_observation(item) for item in ticks],
+            "bars": bars,
         }
 
     def tape(self, pair_name: str, *, since: int) -> dict[str, Any]:
@@ -230,7 +255,24 @@ class GTradePublicClient:
                     by_name.setdefault(by_index[index].pair, by_index[index])
             with self._pairs_lock:
                 self._pairs_by_name = by_name
+                self._pairs_by_index = by_index
                 self._pairs_expires_at = time.time() + self._settings.gtrade_pairs_ttl_seconds
+
+    def _record_market_history(self, observations: list[dict[str, Any]]) -> None:
+        with self._pairs_lock:
+            by_index = dict(self._pairs_by_index)
+        rows = [
+            {
+                **observation,
+                "venue": "gtrade",
+                "market": by_index[int(observation["pairIndex"])].pair,
+                "source": "gtrade_pricing_ws",
+            }
+            for observation in observations
+            if int(observation["pairIndex"]) in by_index
+        ]
+        if rows:
+            self._market_history.record(rows)
 
     def _run_metadata_warmer(self) -> None:
         while not self._metadata_stop.is_set():

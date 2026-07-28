@@ -20,12 +20,29 @@ not a collection of permanent indicators:
 
 ```text
 LIVE     60-90 second execution tape
-CONTEXT  5-15 minute price view
+CONTEXT  15 minute price view backed by one hour of retained tape
 ```
 
 The wider view should load before the transition, use the same gTrade price
 source, and return to the exact live state without a blank frame or historical
 redraw.
+
+The context surface should include one plain vertical one-hour range rail at
+the chart edge:
+
+```text
+1H HIGH
+   |
+   o  current
+   |
+1H LOW
+```
+
+The dot is the current price percentile inside the real retained one-hour
+range. `NEAR 1H LOW` and `NEAR 1H HIGH` describe range location only; they are
+not directional advice. The 15-minute chart remains the default context because
+it preserves useful structure for a seconds-long entry, while the one-hour
+retention supplies broader high, low, and range position.
 
 ## What Active Traders Actually Need
 
@@ -238,7 +255,7 @@ Sources:
 
 ### Build next
 
-1. Add the preloaded `LIVE <-> CONTEXT` chart switch.
+1. Add the preloaded `LIVE <-> CONTEXT` chart switch with a one-hour range rail.
 2. Keep one changing market-story label, with event age when useful.
 3. Keep the real five-bucket tempo texture, but test clearer `SWING TEMPO`
    language.

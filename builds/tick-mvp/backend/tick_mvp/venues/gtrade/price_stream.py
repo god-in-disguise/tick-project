@@ -6,7 +6,7 @@ import threading
 import time
 from collections import defaultdict, deque
 from decimal import Decimal
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from websockets.sync.client import connect
 
@@ -15,15 +15,22 @@ from tick_mvp.venues.gtrade.constants import WATCHLIST_INDEXES
 
 LOGGER = logging.getLogger("tick.gtrade.prices")
 MAX_PRICE_FRAME_BYTES = 8 * 1024 * 1024
-MAX_TICKS_PER_MARKET = 1800
+PRICE_HISTORY_SECONDS = 65 * 60
+MAX_TICKS_PER_MARKET = 30_000
 
 
 class GTradePriceStream:
     """One live gTrade price connection shared by every user in this process."""
 
-    def __init__(self, url: str, watched_indexes: Iterable[int] = WATCHLIST_INDEXES) -> None:
+    def __init__(
+        self,
+        url: str,
+        watched_indexes: Iterable[int] = WATCHLIST_INDEXES,
+        on_observations: Callable[[list[dict[str, Any]]], None] | None = None,
+    ) -> None:
         self._url = url
         self._watched_indexes = frozenset(watched_indexes)
+        self._on_observations = on_observations
         self._latest: dict[int, tuple[Decimal, float]] = {}
         self._ticks: dict[int, deque[dict[str, Any]]] = defaultdict(
             lambda: deque(maxlen=MAX_TICKS_PER_MARKET)
@@ -136,19 +143,30 @@ class GTradePriceStream:
                 continue
         if not updates:
             return
+        observations: list[dict[str, Any]] = []
         with self._lock:
             self._latest.update(updates)
             for pair_index, (mid, observed_at) in updates.items():
                 if pair_index not in self._watched_indexes:
                     continue
-                previous = self._ticks[pair_index][-1] if self._ticks[pair_index] else None
+                ticks = self._ticks[pair_index]
+                previous = ticks[-1] if ticks else None
                 self._sequence += 1
-                self._ticks[pair_index].append(
-                    {
-                        "sequence": self._sequence,
-                        "receivedAt": observed_at,
-                        "price": mid,
-                        "unchanged": bool(previous and previous["price"] == mid),
-                    }
-                )
+                observation = {
+                    "pairIndex": pair_index,
+                    "sequence": self._sequence,
+                    "receivedAt": observed_at,
+                    "price": mid,
+                    "unchanged": bool(previous and previous["price"] == mid),
+                }
+                ticks.append(observation)
+                observations.append(dict(observation))
+                cutoff = observed_at - PRICE_HISTORY_SECONDS
+                while ticks and float(ticks[0]["receivedAt"]) < cutoff:
+                    ticks.popleft()
             self._last_message_at = received_at
+        if observations and self._on_observations is not None:
+            try:
+                self._on_observations(observations)
+            except Exception:
+                LOGGER.exception("gTrade market-history observer failed")

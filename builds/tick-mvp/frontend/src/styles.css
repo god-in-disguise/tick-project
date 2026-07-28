@@ -2036,6 +2036,49 @@ button:disabled {
   font-weight: 700;
 }
 
+.desktop-handoff {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+  width: min(100%, 470px);
+  padding: 12px;
+  border: 0.5px solid rgba(231, 237, 234, 0.2);
+  border-radius: 7px;
+  background: rgba(16, 20, 20, 0.82);
+}
+
+.desktop-handoff-qr {
+  display: grid;
+  width: 108px;
+  height: 108px;
+  place-items: center;
+  border-radius: 5px;
+  background: var(--text);
+}
+
+.desktop-handoff > div:last-child {
+  display: grid;
+  gap: 5px;
+}
+
+.desktop-handoff span {
+  color: var(--orange);
+  font-size: 9px;
+  font-weight: 950;
+}
+
+.desktop-handoff strong {
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.desktop-handoff small {
+  max-width: 270px;
+  line-height: 1.45;
+}
+
 .install-sheet {
   position: fixed;
   z-index: 30;
@@ -2177,6 +2220,31 @@ button:disabled {
     height: 100dvh;
     border: 0;
     box-shadow: none;
+  }
+}
+
+@media (min-width: 900px) {
+  .install-landing {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 430px);
+    grid-template-rows: auto auto minmax(260px, 1fr);
+    column-gap: clamp(44px, 7vw, 120px);
+  }
+
+  .landing-header,
+  .landing-live-stage {
+    grid-column: 1 / -1;
+  }
+
+  .landing-copy {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .landing-footer {
+    grid-column: 2;
+    grid-row: 2;
+    align-self: end;
+    padding-bottom: 6px;
   }
 }
 

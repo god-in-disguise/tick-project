@@ -204,16 +204,35 @@ export const api = {
     }));
   },
 
-  chart: async (market: string): Promise<{ observations: MarketObservation[]; sequence: number; feedStatus: string }> => {
+  chart: async (
+    market: string,
+    windowSeconds = 90
+  ): Promise<{
+    observations: MarketObservation[];
+    sequence: number;
+    feedStatus: string;
+    requestedWindowSeconds: number;
+    actualWindowSeconds: number;
+    partial: boolean;
+    serverNow: number;
+  }> => {
     const response = await json<{
       observations: MarketObservation[];
       lastSeq: number;
       feedStatus: string;
-    }>(`/api/chart?market=${encodeURIComponent(market)}&windowSeconds=90`);
+      requestedWindowSeconds: number;
+      actualWindowSeconds: number;
+      partial: boolean;
+      serverNow: number;
+    }>(`/api/chart?market=${encodeURIComponent(market)}&windowSeconds=${windowSeconds}`);
     return {
       observations: response.observations.map(observation),
       sequence: Number(response.lastSeq),
-      feedStatus: response.feedStatus
+      feedStatus: response.feedStatus,
+      requestedWindowSeconds: Number(response.requestedWindowSeconds),
+      actualWindowSeconds: Number(response.actualWindowSeconds),
+      partial: Boolean(response.partial),
+      serverNow: Number(response.serverNow)
     };
   },
 

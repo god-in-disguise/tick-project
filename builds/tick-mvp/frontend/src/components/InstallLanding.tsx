@@ -1,5 +1,6 @@
 import { ArrowUp, Plus, Share, Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 
 import { LandingTape } from "./LandingTape";
 import { TickWordmark } from "./TickWordmark";
@@ -12,6 +13,7 @@ type InstallPrompt = Event & {
 export function InstallLanding() {
   const [prompt, setPrompt] = useState<InstallPrompt | null>(null);
   const [instructions, setInstructions] = useState(false);
+  const desktop = useDesktopBrowser();
 
   useEffect(() => {
     const capture = (event: Event) => {
@@ -45,14 +47,35 @@ export function InstallLanding() {
       </section>
       <LandingTape />
       <footer className="landing-footer">
-        <button type="button" onClick={install}>
-          <Smartphone size={19} />
-          Add TICK to iPhone
-        </button>
-        <small>The trading app opens from your Home Screen.</small>
+        {desktop ? (
+          <div className="desktop-handoff">
+            <div className="desktop-handoff-qr">
+              <QRCodeSVG
+                value={installUrl()}
+                size={92}
+                bgColor="#f3f3ef"
+                fgColor="#080b0c"
+                level="M"
+              />
+            </div>
+            <div>
+              <span>CONTINUE ON IPHONE</span>
+              <strong>Scan to open TICK</strong>
+              <small>Use your Camera, then add TICK from Safari to your Home Screen.</small>
+            </div>
+          </div>
+        ) : (
+          <>
+            <button type="button" onClick={install}>
+              <Smartphone size={19} />
+              Add TICK to iPhone
+            </button>
+            <small>The trading app opens from your Home Screen.</small>
+          </>
+        )}
       </footer>
 
-      {instructions ? (
+      {instructions && !desktop ? (
         <div className="install-sheet" role="dialog" aria-modal="true" aria-label="Install TICK">
           <button className="sheet-dismiss" type="button" onClick={() => setInstructions(false)}>
             Done
@@ -68,4 +91,25 @@ export function InstallLanding() {
       ) : null}
     </main>
   );
+}
+
+function useDesktopBrowser(): boolean {
+  const query = "(min-width: 700px) and (hover: hover) and (pointer: fine)";
+  const [desktop, setDesktop] = useState(() => window.matchMedia(query).matches);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const update = () => setDesktop(media.matches);
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
+
+  return desktop;
+}
+
+function installUrl(): string {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  return url.toString();
 }
