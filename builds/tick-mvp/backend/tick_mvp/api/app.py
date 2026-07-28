@@ -165,9 +165,18 @@ def create_app(store: Any | None = None) -> FastAPI:
         return {"positions": _store(app).state(_session(authorization, x_tick_user).user_id).positions}
 
     @app.get("/api/markets")
-    def markets(limit: int = Query(default=10, ge=1, le=20)) -> dict[str, Any]:
+    def markets(
+        limit: int = Query(default=10, ge=1, le=20),
+        include_tape: bool = Query(default=False, alias="includeTape"),
+        window_seconds: int = Query(default=90, alias="windowSeconds", ge=30, le=300),
+    ) -> dict[str, Any]:
         try:
-            return _store(app).markets(limit=limit)
+            return _market_snapshot(
+                _store(app),
+                limit=limit,
+                include_tape=include_tape,
+                window_seconds=window_seconds,
+            )
         except StoreNotFound as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -333,6 +342,30 @@ def _state_version(current: StateResponse) -> str:
     if not records:
         return "empty"
     return hashlib.sha256("|".join(records).encode()).hexdigest()
+
+
+def _market_snapshot(
+    store: Any,
+    *,
+    limit: int,
+    include_tape: bool,
+    window_seconds: int,
+) -> dict[str, Any]:
+    payload = store.markets(limit=limit)
+    if not include_tape:
+        return payload
+
+    enriched: list[dict[str, Any]] = []
+    for market in payload.get("markets") or []:
+        chart = store.chart(market["market"], window_seconds=window_seconds)
+        enriched.append(
+            {
+                **market,
+                "observations": chart.get("observations") or [],
+                "sequence": int(chart.get("lastSeq") or 0),
+            }
+        )
+    return {**payload, "markets": enriched}
 
 
 def _session(authorization: str | None, dev_user_id: str | None) -> UserSession:

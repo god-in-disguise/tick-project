@@ -180,13 +180,27 @@ export const api = {
       })
     }),
 
-  markets: async (): Promise<Market[]> => {
-    const response = await json<{ markets: Omit<Market, "observations" | "sequence">[] }>("/api/markets");
+  markets: async (
+    options: { includeTape?: boolean; limit?: number } = {}
+  ): Promise<Market[]> => {
+    const query = new URLSearchParams();
+    if (options.includeTape) {
+      query.set("includeTape", "true");
+      query.set("windowSeconds", "90");
+    }
+    if (options.limit) query.set("limit", String(options.limit));
+    const suffix = query.size ? `?${query.toString()}` : "";
+    const response = await json<{
+      markets: Array<
+        Omit<Market, "observations" | "sequence">
+        & { observations?: MarketObservation[]; sequence?: number }
+      >;
+    }>(`/api/markets${suffix}`);
     return response.markets.map((market) => ({
       ...market,
       minLeverage: Number(market.minLeverage ?? 1),
-      observations: [],
-      sequence: 0
+      observations: (market.observations ?? []).map(observation),
+      sequence: Number(market.sequence ?? 0)
     }));
   },
 

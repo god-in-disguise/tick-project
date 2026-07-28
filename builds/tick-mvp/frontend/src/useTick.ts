@@ -205,18 +205,19 @@ export function useTick(initialSession: Session) {
     let alive = true;
     const bootstrap = async () => {
       try {
-        const nextMarkets = await api.markets();
+        const nextMarkets = await api.markets({ includeTape: true });
         if (!alive) return;
+        for (const market of nextMarkets) {
+          sequences.current[market.market] = market.sequence;
+        }
         setMarkets(nextMarkets);
         const firstMarket = routeMarkets(nextMarkets, settings.leverage)[0]?.market;
         if (firstMarket) {
           setActiveMarketId(firstMarket);
-          void loadMarketChart(firstMarket).catch(showError);
-          void Promise.allSettled(
-            nextMarkets
-              .filter((market) => market.market !== firstMarket)
-              .map((market) => loadMarketChart(market.market))
-          );
+          const selected = nextMarkets.find((market) => market.market === firstMarket);
+          if (!selected?.observations.length) {
+            void loadMarketChart(firstMarket).catch(showError);
+          }
         }
         await Promise.all([refreshState(), refreshBalances()]);
       } catch (cause) {

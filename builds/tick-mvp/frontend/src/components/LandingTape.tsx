@@ -15,7 +15,7 @@ export function LandingTape() {
 
   useEffect(() => {
     let active = true;
-    api.markets()
+    api.markets({ includeTape: true, limit: 10 })
       .then((next) => {
         if (!active || next.length === 0) return;
         const distinct = next.filter(
@@ -33,6 +33,7 @@ export function LandingTape() {
   useEffect(() => {
     if (!selected) return;
     let active = true;
+    const retained = markets.find((market) => market.market === selected);
 
     const bootstrap = async () => {
       try {
@@ -61,15 +62,15 @@ export function LandingTape() {
       }
     };
 
-    setObservations([]);
-    sequenceRef.current = 0;
-    void bootstrap();
+    setObservations(retained?.observations ?? []);
+    sequenceRef.current = retained?.sequence ?? 0;
+    if (!retained?.observations.length) void bootstrap();
     const interval = window.setInterval(() => void update(), 700);
     return () => {
       active = false;
       window.clearInterval(interval);
     };
-  }, [selected]);
+  }, [selected, markets]);
 
   const activeMarket = markets.find((market) => market.market === selected) ?? markets[0] ?? null;
   const previewMarket = activeMarket

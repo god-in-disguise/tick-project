@@ -26,6 +26,17 @@ assert.match(await page.locator("h1").innerText(), /Catch what is moving now/);
 await page.locator(".tick-wordmark").waitFor();
 await page.locator(".landing-live-stage").waitFor();
 await page.waitForTimeout(1_000);
+const landingTabs = page.locator(".landing-market-tabs button");
+for (let index = 1; index < await landingTabs.count(); index += 1) {
+  const tab = landingTabs.nth(index);
+  const symbol = (await tab.locator("strong").innerText()).trim();
+  const startedAt = Date.now();
+  await tab.click();
+  const canvas = page.locator(`canvas[aria-label="${symbol} live price chart"]`);
+  await canvas.waitFor();
+  assert.ok(Date.now() - startedAt < 500, `${symbol} landing chart waited for another request`);
+  assert.ok(await canvas.evaluate(hasVisibleCanvasPixels), `${symbol} landing chart is blank`);
+}
 await page.screenshot({ path: "/tmp/tick-landing.png", fullPage: true });
 
 await page.goto("http://127.0.0.1:5173/?app=1", { waitUntil: "domcontentloaded" });
@@ -168,4 +179,22 @@ async function authenticate(page) {
     await page.getByPlaceholder("Invite code").fill(inviteCode);
     await page.getByRole("button", { name: "Enter TICK" }).click();
   }
+}
+
+function hasVisibleCanvasPixels(canvas) {
+  const context = canvas.getContext("2d");
+  if (!context || canvas.width < 2 || canvas.height < 2) return false;
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+  const first = [pixels[0], pixels[1], pixels[2], pixels[3]];
+  for (let index = 4; index < pixels.length; index += 32) {
+    if (
+      pixels[index] !== first[0]
+      || pixels[index + 1] !== first[1]
+      || pixels[index + 2] !== first[2]
+      || pixels[index + 3] !== first[3]
+    ) {
+      return true;
+    }
+  }
+  return false;
 }

@@ -1,4 +1,5 @@
 from tick_mvp.app import create_app
+from tick_mvp.api.app import _market_snapshot
 from tick_mvp.auth import create_session_token, verify_session_token
 from tick_mvp.core.config import get_settings
 from tick_mvp.domain.invitations import InviteAuthError, hash_invite_code
@@ -246,6 +247,41 @@ def test_api_routes_are_present() -> None:
     assert "/api/trade/close" in paths
     assert "/api/state" in paths
     assert "/api/events" in paths
+
+
+def test_markets_can_include_retained_tape() -> None:
+    class MarketStore:
+        def markets(self, *, limit: int = 10):
+            return {
+                "venue": "test",
+                "markets": [
+                    {
+                        "market": "TEST-USD",
+                        "symbol": "TEST",
+                        "price": 10,
+                    }
+                ][:limit],
+            }
+
+        def chart(self, market: str, *, window_seconds: int = 90):
+            assert market == "TEST-USD"
+            assert window_seconds == 90
+            return {
+                "lastSeq": 7,
+                "observations": [
+                    {"seq": 7, "receivedTs": 1000, "price": 10, "unchanged": False}
+                ],
+            }
+
+    payload = _market_snapshot(
+        MarketStore(),
+        limit=10,
+        include_tape=True,
+        window_seconds=90,
+    )
+    market = payload["markets"][0]
+    assert market["sequence"] == 7
+    assert market["observations"][0]["price"] == 10
 
 
 def _test_user(store: MemoryStore, subject: str, name: str):
