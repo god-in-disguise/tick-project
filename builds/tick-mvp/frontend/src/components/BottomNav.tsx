@@ -11,7 +11,7 @@ export function BottomNav({ tab, onTab }: Props) {
   return (
     <nav className="bottom-nav" aria-label="Primary">
       <button className={tab === "dashboard" ? "active" : ""} onClick={() => onTab("dashboard")}>
-        <ChartNoAxesCombined size={18} />
+        <ChartNoAxesCombined size={20} />
         <span>Pulse</span>
       </button>
       <button className={`tick-nav ${tab === "trade" ? "active" : ""}`} onClick={() => onTab("trade")}>
@@ -19,7 +19,7 @@ export function BottomNav({ tab, onTab }: Props) {
         <span>TICK</span>
       </button>
       <button className={tab === "profile" ? "active" : ""} onClick={() => onTab("profile")}>
-        <UserRound size={18} />
+        <UserRound size={20} />
         <span>Me</span>
       </button>
     </nav>

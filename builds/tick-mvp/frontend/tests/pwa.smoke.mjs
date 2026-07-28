@@ -80,7 +80,7 @@ for (const device of iphonePortraitViewports) {
     };
   });
   const bottomGap = geometry.viewportHeight - geometry.navBottom;
-  assert.ok(bottomGap >= 20 && bottomGap <= 24, `${device.name}: bottom gap ${bottomGap}`);
+  assert.ok(bottomGap >= 32 && bottomGap <= 36, `${device.name}: bottom gap ${bottomGap}`);
   assert.ok(geometry.navTop >= geometry.dockBottom, `${device.name}: navigation overlaps execution dock`);
   assert.equal(geometry.overflowX, 0, `${device.name}: horizontal overflow`);
   assert.equal(geometry.overflowY, 0, `${device.name}: vertical overflow`);

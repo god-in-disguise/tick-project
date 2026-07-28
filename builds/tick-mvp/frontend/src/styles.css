@@ -128,7 +128,7 @@ button:disabled {
 
 .trade-view {
   display: grid;
-  grid-template-rows: 86px minmax(0, 1fr);
+  grid-template-rows: 94px minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -143,7 +143,7 @@ button:disabled {
   align-items: flex-start;
   justify-content: space-between;
   min-width: 0;
-  padding: 8px 14px 7px;
+  padding: 11px clamp(18px, 5vw, 24px) 9px;
   border-bottom: 0.5px solid var(--line);
   background: rgba(7, 16, 17, 0.74);
   backdrop-filter: blur(18px) saturate(125%);
@@ -172,15 +172,15 @@ button:disabled {
 }
 
 .market-name-row strong {
-  font-size: 24px;
-  line-height: 28px;
+  font-size: 27px;
+  line-height: 31px;
   font-weight: 900;
 }
 
 .market-name-row b {
   margin-left: 6px;
-  font-size: 19px;
-  line-height: 28px;
+  font-size: 21px;
+  line-height: 31px;
   font-weight: 900;
 }
 
@@ -189,7 +189,7 @@ button:disabled {
   overflow: hidden;
   margin-left: 7px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -200,13 +200,13 @@ button:disabled {
 }
 
 .market-price-row b {
-  font-size: 15px;
+  font-size: 17px;
   font-variant-numeric: tabular-nums;
 }
 
 .market-price-row span {
   margin-left: 7px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
@@ -215,9 +215,9 @@ button:disabled {
   display: flex;
   flex: none;
   flex-direction: column;
-  min-width: 96px;
+  min-width: 106px;
   margin-left: 8px;
-  padding: 7px 12px;
+  padding: 8px 13px;
   border: 1px solid rgba(56, 211, 159, 0.42);
   border-radius: 18px;
   background: rgba(31, 110, 82, 0.18);
@@ -225,14 +225,14 @@ button:disabled {
 
 .balance-chip span {
   color: #79a995;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
 }
 
 .balance-chip strong {
   color: var(--green);
-  font-size: 19px;
-  line-height: 21px;
+  font-size: 22px;
+  line-height: 23px;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
 }
@@ -422,7 +422,7 @@ button:disabled {
   right: 0;
   bottom: 0;
   left: 0;
-  padding: 8px 14px 7px;
+  padding: 9px clamp(16px, 4.5vw, 22px) 8px;
   border-top: 0.5px solid rgba(220, 235, 231, 0.12);
   border-radius: 0;
   background: rgba(10, 21, 22, 0.82);
@@ -455,27 +455,27 @@ button:disabled {
 
 .term span {
   color: var(--muted);
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 800;
 }
 
 .term strong {
   margin-top: 1px;
-  font-size: 10.5px;
-  line-height: 14px;
+  font-size: 12px;
+  line-height: 15px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
 
 .close-button {
   width: 100%;
-  height: 48px;
+  height: 50px;
   margin-top: 7px;
   border-radius: 7px;
   border: 1px solid rgba(242, 248, 246, 0.92);
   color: #071011;
   background: #f2f8f6;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 900;
 }
 
@@ -494,17 +494,13 @@ button:disabled {
   align-items: center;
   align-self: start;
   height: 52px;
-  margin: 6px 12px 0;
+  margin: 6px clamp(16px, 4.5vw, 22px) 0;
   padding: 4px;
   border: 0.5px solid var(--line);
   border-radius: 26px;
   background: rgba(17, 29, 31, 0.98);
   min-width: 0;
   overflow: hidden;
-}
-
-.app-shell-standalone .bottom-nav {
-  transform: translateY(min(12px, var(--safe-area-bottom)));
 }
 
 .bottom-nav button {
@@ -516,7 +512,7 @@ button:disabled {
   border-radius: 21px;
   color: #667875;
   background: transparent;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 900;
   min-width: 0;
   overflow: hidden;
