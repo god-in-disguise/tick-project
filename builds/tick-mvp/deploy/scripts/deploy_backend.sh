@@ -10,7 +10,15 @@ BACKEND_DIR="$TICK_DIR/backend"
 RUNTIME_ENV="$DEPLOY_DIR/.runtime/backend.env"
 SSH_KEY="${TICK_SSH_KEY:-$DEPLOY_DIR/.runtime/tick_ed25519}"
 SSH=(ssh -i "$SSH_KEY" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new)
-RSYNC_SSH="ssh -i $SSH_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+RSYNC_KEY="$SSH_KEY"
+RSYNC_KEY_DIR=""
+if [[ "$RSYNC_KEY" == *" "* ]]; then
+  RSYNC_KEY_DIR="$(mktemp -d)"
+  ln -s "$SSH_KEY" "$RSYNC_KEY_DIR/tick_ed25519"
+  RSYNC_KEY="$RSYNC_KEY_DIR/tick_ed25519"
+fi
+trap '[[ -z "$RSYNC_KEY_DIR" ]] || rm -rf "$RSYNC_KEY_DIR"' EXIT
+RSYNC_SSH="ssh -i $RSYNC_KEY -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
 
 if [[ ! -f "$RUNTIME_ENV" ]]; then
   echo "Missing $RUNTIME_ENV" >&2
