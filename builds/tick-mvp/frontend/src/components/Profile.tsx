@@ -58,6 +58,7 @@ export function Profile(props: Props) {
   const wins = settled.filter((item) => (item.reconciliation?.walletDeltaUsd ?? 0) > 0).length;
   const winRate = settled.length ? Math.round(wins / settled.length * 100) : 0;
   const displayName = props.session?.user?.displayName || "TICK trader";
+  const available = props.balances?.spendableUsdc ?? props.balances?.usdc ?? 0;
   const filteredHistory = useMemo(
     () => history.filter(({ position, reconciliation }) => {
       const pnl = reconciliation?.walletDeltaUsd;
@@ -118,13 +119,21 @@ export function Profile(props: Props) {
 
       <section className="wallet-summary">
         <span>Available to trade</span>
-        <strong>{money(props.balances?.spendableUsdc ?? props.balances?.usdc)}</strong>
+        <strong>{money(available)}</strong>
         <div className="wallet-actions">
-          <button type="button" onClick={() => setWalletAction("deposit")}>
+          <button
+            className={available <= 0 ? "primary" : ""}
+            type="button"
+            onClick={() => setWalletAction("deposit")}
+          >
             <ArrowDownToLine size={16} />
             Deposit
           </button>
-          <button type="button" onClick={() => setWalletAction("withdraw")}>
+          <button
+            type="button"
+            disabled={available <= 0}
+            onClick={() => setWalletAction("withdraw")}
+          >
             <ArrowUpFromLine size={16} />
             Withdraw
           </button>
@@ -155,6 +164,7 @@ export function Profile(props: Props) {
         <span>
           <small>LEVERAGE</small>
           <strong>{props.settings.leverage}x</strong>
+          {props.settings.leverage >= 500 ? <em>Experimental</em> : null}
         </span>
         <span>
           <small>LOSS LIMIT</small>

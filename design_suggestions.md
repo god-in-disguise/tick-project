@@ -1,949 +1,906 @@
-# Overall: yes, I like what you are building
+# I agree: the structure is getting better, but the styling drifted too far toward “exchange app”
 
-The current product screens are **more compelling than the older black-and-white mockups** because they feel like an actual product rather than a generic crypto concept.
+The current version feels more Binance-like because **orange is being used as decoration everywhere**, not because the information architecture is wrong.
 
-The current version already has a recognizable core:
+Keep the present product structure:
 
-* one market dominating the screen;
-* a large, alive chart;
-* a simple Pulse → TICK → Me structure;
-* presets applied to each gesture;
-* net results and execution state;
-* a volatility feed rather than an exchange pair list.
+```text
+Pulse → discover
+TICK  → trade
+Me    → manage
+```
 
-That is aligned with the real product thesis: the scanner finds the market moment, the trade screen compresses the decision, and the user watches net PnL rather than a terminal full of controls.
+That is much stronger and more original than the old leaderboard/social mockups. The source-of-truth spec also treats mobile as the differentiated product and defines Trade, the volatility dashboard, and Me as the three core surfaces.
 
-My preferred combination is:
+The right move is:
 
-> **Keep your current information architecture, borrow the designers’ visual restraint, make orange the brand accent, let charts have asset personality, and reserve green/red almost exclusively for financial outcomes.**
+> **Keep the current UX. Move the visual language back toward the designers’ monochrome mockups.**
 
-The older designer mock has cleaner spacing and restraint, but it also feels more generic: leaderboards, avatars, five navigation items, social profiles, and a standard dark crypto-dashboard aesthetic. Your current three-screen structure—Pulse, TICK, Me—is much closer to the differentiated product described in the build spec.
-
-## The desired feeling
-
-The design should consistently communicate:
-
-> **Fast, not frantic.**
-> **Intense, not noisy.**
-> **Retail-clear, not childish.**
-> **Premium, not institutional.**
-> **Market energy, not casino energy.**
-
-You are around **75% toward a compelling product direction** and around **55–60% toward a finished retail interface**. The foundation is good. The polishing work is mostly about hierarchy, semantic color, spacing, terminology, and designing every execution state intentionally.
+I would reduce the orange by about **60–70%**, reduce card chrome by about **30%**, neutralize the green/brown tint, and keep the chart as the expressive part of the product.
 
 ---
 
-# The color direction
+# Why it currently feels like Binance
 
-Your black/white/orange idea is stronger than making mint the main brand color.
+The exchange-app feeling comes from the combination of:
 
-Use a restrained base:
+* orange labels on nearly every active Pulse row;
+* orange progress bars repeated five times;
+* orange leverage;
+* orange selected navigation;
+* warm brown/orange balance panels;
+* dark green-tinted backgrounds;
+* many rounded rectangular cards;
+* dense financial values arranged like a terminal;
+* a heavily tinted red chart background.
 
-| Role                     | Suggested treatment                  |
-| ------------------------ | ------------------------------------ |
-| App background           | Near-black, slightly warm or neutral |
-| Raised surfaces          | Two subtle graphite levels           |
-| Primary text             | Warm white, not pure white           |
-| Secondary text           | Muted gray-green                     |
-| Brand/selection          | Orange                               |
-| Profit                   | Green                                |
-| Loss                     | Red                                  |
-| Warning/near-liquidation | Red or amber, with text/icon         |
-| Disabled/watch state     | Neutral gray                         |
-| Chart identity           | Fixed color by asset or asset class  |
+Orange itself is not the problem. The problem is that it appears at every level of hierarchy.
 
-An example palette—not a rigid requirement:
+The eye currently sees:
 
 ```text
-Background        #070A0A
-Surface 1         #0E1313
-Surface 2         #141A19
-Border            #27302E
-Primary text      #F5F2EA
-Secondary text    #929B97
-Brand orange      #FF9C32
-Profit green      #32D5A1
-Loss red          #FF6175
+Orange = brand
+Orange = scanner state
+Orange = progress
+Orange = leverage
+Orange = navigation
+Orange = card emphasis
+Orange = account balance framing
 ```
 
-## Color semantics must be disciplined
+Orange should mean one thing:
 
-At the moment, green is being used for the trading balance, long direction, positive results, toggles, and general emphasis. Red is being used for negative movement, short direction, leverage, chart identity, and losses.
-
-That creates semantic collisions.
-
-Use these rules:
-
-```text
-Orange:
-brand, selected controls, hot opportunity, primary emphasis
-
-Green/red:
-PnL and financial outcome
-
-Asset colors:
-chart identity only
-
-Gray:
-inactive, waiting, secondary information
-```
-
-A profitable short should not contain a red `DOWN` chip next to a green profit if red already means loss. Prefer neutral direction chips:
-
-```text
-↓ SHORT       +$4.19
-↑ LONG        -$1.84
-```
-
-Use icons and words for direction. Let green/red describe the result.
-
-Likewise, a balance is not inherently positive PnL. The `$13.91` balance should probably be warm white, with orange or neutral framing—not bright green.
+> **This is TICK’s active or selected moment.**
 
 ---
 
-# Trade screen
+# Target visual language
 
-This is the strongest screen. The giant chart and minimal chrome give the product identity.
-
-It already feels substantially more differentiated than a standard perp terminal. Keep the chart dominant.
-
-## 1. Do not make `500x` the visual identity
-
-In the current header:
+Use approximately this distribution:
 
 ```text
-ZEC 500x Zcash
+70%  black / near-black
+25%  white / silver / graphite
+ 5%  orange and semantic colors
 ```
 
-the red `500x` is almost as prominent as the asset itself.
-
-For an internal demo that gets attention. For retail, it makes the product appear to be principally about extreme leverage rather than volatility discovery.
-
-The build spec already says 500x is internal/demo mode, while external defaults should be materially lower and gated.
-
-Use:
+## Suggested palette
 
 ```text
-ZEC    Zcash
-       [500x · Experimental]
+Canvas                #050606
+Primary surface       #0C0E0F
+Raised surface        #111314
+Subtle surface        #17191A
+Border                rgba(255,255,255,0.07)
+
+Primary white         #F3F3EF
+Silver                #A7ACA8
+Secondary silver      #7C827F
+Disabled              #555B58
+
+TICK orange           #FF922B
+Profit                #2FCF9A
+Loss                  #FF5E73
 ```
 
-or:
+Avoid:
 
-```text
-ZEC  [500x]
-Zcash
-```
+* green-black page backgrounds;
+* brown or amber card backgrounds;
+* visible gradients on ordinary cards;
+* orange borders around large sections;
+* pure white on every text level.
 
-The leverage chip should be orange or neutral, not red. Red should indicate a loss or immediate risk condition.
+Use warm white for primary content and silver for everything secondary.
 
-At ordinary leverage:
+## Color responsibilities
 
-```text
-ZEC    [50x]
-Zcash
-```
+| Color       | Responsibility                                                        |
+| ----------- | --------------------------------------------------------------------- |
+| Orange      | TICK brand, active control, selected state, one important opportunity |
+| Green/red   | Financial outcome and price direction                                 |
+| Asset color | Chart identity                                                        |
+| Silver      | Navigation, labels, scanner meters, secondary information             |
+| Graphite    | Surfaces and separators                                               |
 
-should feel calm and normal.
-
-## 2. Show why this market is on screen
-
-The trade screen currently shows price movement, but not the scanner decision.
-
-A user should immediately understand:
-
-```text
-Why ZEC?
-Is it actually tradeable?
-Is movement large enough after costs?
-```
-
-Add a compact market-state line:
-
-```text
-HOT
-MOVE 0.16% · COST 0.12%
-```
-
-or:
-
-```text
-COST COVERED · +0.04%
-```
-
-Do not call it edge. The product is identifying active movement after estimated costs, not predicting direction. That distinction is already correctly specified.
-
-Possible hierarchy:
-
-```text
-HOT                         Balance $13.91
-ZEC  [50x]  Zcash
-$474.237  -0.05%
-MOVE .16% · COST .12%
-```
-
-The market percentage change and the scanner window are different measurements. Label the time window when useful:
-
-```text
-MOVE 0.16% / 90s
-```
-
-## 3. Reorder the bottom trade terms
-
-The current row says:
-
-```text
-Collateral  $10
-Stop loss   $10
-Take profit Off
-Est. cost   $2.50
-```
-
-The most important pre-trade terms are actually:
-
-```text
-Amount
-Leverage
-Exposure
-Estimated cost
-Liquidation distance
-```
-
-A stronger compact row:
-
-```text
-AMOUNT       EXPOSURE      EST. COST      LIQ. AWAY
-$10          $5,000        $2.50 · 25%    0.16%
-```
-
-Then place stop and take-profit in an expandable details sheet or a second compact line:
-
-```text
-STOP   $5 est. loss · placed on venue
-TP     Off
-```
-
-`Stop loss $10` is ambiguous. It could mean:
-
-* a stop price of `$10`;
-* a maximum loss of `$10`;
-* collateral at risk of `$10`;
-* or a stop-loss budget of `$10`.
-
-Use plain language:
-
-```text
-Loss limit
-Stop budget
-Stop price
-Estimated loss at stop
-```
-
-Only say `Max loss` if the venue genuinely guarantees that limit. The build spec explicitly calls for visible ticket, leverage, exposure, costs, collateral at risk, and liquidation terms before the gesture.
-
-The `$2.50` estimated cost on `$10` collateral is especially material. Do not make the user mentally calculate it:
-
-```text
-Est. cost $2.50 · 25% of amount
-```
-
-## 4. The chart should have asset identity, not outcome semantics
-
-Different chart colors are a good idea. They make swiping across markets feel like entering a different room.
+The chart can remain different for each asset, but avoid pure PnL red and green for chart identity.
 
 For example:
 
 ```text
-BTC       orange
-ETH       blue
+BTC       muted gold
+ETH       electric blue
 SOL       cyan
-ZEC       coral
 HYPE      violet
-Gold      yellow
-FX        lime or cool white
+ZEC       silver-lilac
+BNB       muted yellow
+FX        pale teal
 ```
 
-But keep the chart color stable for that asset. Do not make the entire chart green when price rises and red when it falls. That can subtly push users toward a direction and creates confusion with PnL.
-
-Use:
-
-```text
-Chart color        asset identity
-Header move        green/red
-Position PnL       green/red
-Stop/liquidation   risk styling
-```
-
-The chart may remain coral for ZEC regardless of whether the latest movement is up or down.
-
-## 5. Design four distinct trade-screen modes
-
-Do not treat the interface as one screen with different labels pasted on top.
-
-### Flat
-
-```text
-Market state
-Chart
-Visible terms
-Subtle swipe affordance
-```
-
-### Opening
-
-```text
-LONG 50x
-Opening…
-Quote accepted
-Waiting for venue
-```
-
-Freeze conflicting gestures and keep the chart alive.
-
-### Live
-
-The visual priority should change:
-
-```text
-EST. NET IF CLOSED NOW
-+$1.42
-
-Entry          $474.10
-Stop away       0.09%
-Liq away        0.15%
-
-[Close]
-```
-
-Net PnL becomes the focal number. The chart remains large but is no longer the only hero.
-
-### Closing
-
-```text
-Closing…
-Position remains exposed
-```
-
-After authoritative close:
-
-```text
-Closed
-Finalizing result…
-```
-
-Then:
-
-```text
-Net result -$1.17
-```
-
-This honest state progression is part of the product, not merely backend plumbing.
-
-## 6. Teach gestures without clutter
-
-The older designer’s “How it works” screen is one of the more useful parts of that concept. Keep the idea, but rewrite the tone.
-
-Avoid:
-
-```text
-Just swipe to trade. Catch the tick!
-```
-
-Prefer:
-
-```text
-Swipe up to go long
-Swipe down to go short
-Swipe the same direction again to close
-Your active preset applies automatically
-```
-
-On the first several sessions, show very subtle in-context cues:
-
-```text
-↑ LONG                         SHORT ↓
-```
-
-They can disappear after the user demonstrates understanding.
-
-The normal flow can remain one deliberate gesture because the exact terms are already visible, which is consistent with the current spec.
+HYPE should probably not use a red/coral chart. That makes its chart look like an ongoing loss even before a position exists.
 
 ---
 
 # Pulse
 
-The screen is visually clean, but currently it reads more like a standard ranked market list than TICK’s moat.
+The information is much better now. “Cost-covered” and surplus are closer to the real product than a generic market mover list. The spec specifically says Pulse should rank by tradeability after costs and explain whether TICK found a real opportunity or the market is merely being watched.
 
-## What works
+Visually, however, there is too much orange.
 
-* `Pulse` is a strong name.
-* “Markets moving now” is clear.
-* Seven rows fit comfortably.
-* The screen is calm and scan-friendly.
-* The three-tab navigation is much better than the five-tab designer concept.
+## Change this
 
-## What needs to change
-
-### The bars need a defined meaning
-
-Currently each market uses a different bar color and length, but the user cannot know whether the bar means:
-
-* percent move;
-* volatility;
-* scanner score;
-* cost coverage;
-* or volume.
-
-Use one consistent scanner scale:
+Current:
 
 ```text
-Gray      Watching
-White     Active
-Orange    Hot after costs
+VOLATILITY SCANNER          5 cost-covered
+
+HYPE
+SURPLUS +0.062%             orange bar
+
+SOL
+SURPLUS +0.027%             orange bar
+
+ZEC
+SURPLUS +0.018%             orange bar
 ```
 
-Asset color can appear as a tiny dot, symbol accent, or sparkline. The actual score bar should use a consistent semantic scale.
-
-### Show the after-cost reason
-
-A row could look like:
+Recommended:
 
 ```text
-01  ZEC  Zcash                      $475.27
-    HOT · MOVE .16 · COST .12       -0.01%
+VOLATILITY SCANNER          5 cost-covered
+
+HYPE
+AFTER COST +0.062%          silver meter with orange endpoint
+
+SOL
+AFTER COST +0.027%          silver meter
+
+ZEC
+AFTER COST +0.018%          silver meter
+```
+
+Or:
+
+```text
+HYPE
+COST COVERED · +0.062%
+```
+
+`SURPLUS` is accurate internally but slightly technical for retail. `AFTER COST` or `COST COVERED` communicates the meaning faster. The spec defines this value as movement remaining above estimated cost and explicitly says it is not directional edge.
+
+## Orange restraint on Pulse
+
+Use orange in only one or two places:
+
+* the small `VOLATILITY SCANNER` eyebrow; and
+* the first-ranked opportunity’s meter or state.
+
+Everything else can use white and silver.
+
+For example:
+
+```text
+01  HYPE                       55.58
+    AFTER COST +0.062%        -0.06%
     ━━━━━━━━━━━━━━━
 ```
 
-Or a more minimal version:
+The meter fill could be silver for all rows, with the top-ranked row using orange.
+
+Keep the small asset-colored dots. They provide market identity without overwhelming the interface.
+
+## Reduce the “stack of exchange cards” feeling
+
+A more premium treatment would be one large list surface with dividers:
 
 ```text
-ZEC                    $475.27
-+0.04% after cost      -0.01%
+┌─────────────────────────────────┐
+│ 01  HYPE                       │
+├─────────────────────────────────┤
+│ 02  SOL                        │
+├─────────────────────────────────┤
+│ 03  ZEC                        │
+└─────────────────────────────────┘
 ```
 
-Use `activity surplus`, `after costs`, or `cost covered`—not `edge`.
+Rather than eight individually floating cards.
 
-The dashboard is supposed to rank tradeability rather than raw movement, and the user should be able to distinguish a real active-after-cost opportunity from an ordinary moving market.
+You can still retain a slightly highlighted top row.
 
-### Change `7 live`
+---
 
-`Live` can mean the feed connection is healthy.
+# TICK trade screen
+
+The chart-dominant layout is right. This is the most distinctive screen in the app, and the build spec correctly requires one market, a live chart, current price, balance, PnL, market state, and compact execution terms without turning it into an order form.
+
+The problems are primarily the header, balance, chart tint, and orange hierarchy.
+
+## 1. Fix the asset header
+
+Current:
+
+```text
+HYPE 500x Hyperliquid
+55.581 -0.16%
+```
+
+There are three different concepts competing on one baseline:
+
+* symbol;
+* leverage;
+* full asset name.
+
+Use a two-level layout:
+
+```text
+HYPE   [500×]                       AVAILABLE
+Hyperliquid                             $0.00
+
+55.581   -0.16%
+```
+
+Or:
+
+```text
+HYPE   [500×]                       AVAILABLE
+Hyperliquid                             $0.00
+55.581   -0.16%
+```
+
+Suggested sizing:
+
+```text
+Symbol             34–36px / bold
+Leverage chip      13–14px / semibold
+Asset name         14px / silver
+Price              22–24px / tabular
+Move               15px / tabular
+```
+
+The asset name should be a subtitle, not part of the main title line.
 
 Use:
 
 ```text
-7 active
-7 moving
-4 cost-covered
-2 hot now
+numberOfLines={1}
+ellipsizeMode="tail"
 ```
 
-This communicates scanner state rather than network state.
+for long market names.
 
-### Give the top opportunity more character
+## 2. Make leverage neutral
 
-The screen could have one slightly larger top card:
+The large orange `500x` dominates the asset.
+
+Use a silver or graphite leverage chip:
 
 ```text
-HOT NOW
-
-ZEC
-MOVE .16% · COST .12%
-+0.04% activity surplus
-
-[small sparkline]
+[500×]
 ```
 
-Then show the remaining markets as compact ranked rows. That makes Pulse feel like a discovery product rather than a watchlist.
+with white text and a subtle border.
+
+Because 500x is intended as internal/demo mode rather than the ordinary external default, an internal build can show:
+
+```text
+500× · EXPERIMENTAL
+```
+
+in a small amber treatment. The product spec already distinguishes internal 500x from lower external leverage defaults.
+
+Do not let extreme leverage become the logo of the product.
+
+## 3. Remove the balance pill
+
+The current brown/olive balance card feels detached from the rest of the screen and competes with the market title.
+
+Make the balance typographic:
+
+```text
+AVAILABLE
+$13.91
+```
+
+No large container. No brown background. No green number.
+
+A balance is not profit, so it should be warm white.
+
+When the balance is zero:
+
+```text
+AVAILABLE
+$0.00
+Add funds
+```
+
+`Add funds` can be the orange element.
+
+When funded:
+
+```text
+AVAILABLE
+$13.91
+```
+
+No extra action is needed in the header.
+
+## 4. Reduce chart tint dramatically
+
+The current HYPE screen has a dark red wash over almost the entire chart. That is a major contributor to the exchange-app feeling.
+
+Recommended:
+
+```text
+Chart background       neutral black
+Chart line             asset color at 85–100%
+Glow                   asset color at 8–12%
+Area fill              asset color at 2–5%
+Grid                    white at 4–6%
+Axis labels            silver at 45–55%
+```
+
+The chart should feel colorful because of the line, not because the whole viewport is painted red.
+
+For HYPE, switch the line from coral/red to violet or electric purple. Red should remain strongly associated with loss or negative movement.
+
+## 5. The execution row is good, but make it quieter
+
+Current:
+
+```text
+Amount    Leverage    Exposure     Est. cost
+$10       500x        $5,000       $2.50
+                                      25.0% of amount
+```
+
+The information hierarchy is correct.
+
+Use silver labels, white values, and no colored background.
+
+I would slightly increase the visibility of the cost percentage:
+
+```text
+EST. COST
+$2.50
+25% of amount
+```
+
+That is a material term and should not look like legal fine print.
+
+When cost is unusually large, use a small amber warning icon—not a full orange panel.
 
 ---
 
 # Me
 
-The screen contains the correct information, but it is visually the most crowded.
+The information structure is much better than before:
 
-## 1. Make the balance neutral
+* neutral account statistics;
+* available balance;
+* deposit/withdraw;
+* active preset;
+* history;
+* settings.
 
-The bright green balance card makes `$13.91` look like profit.
+The `Active preset` simplification is especially good.
 
-Use:
+## 1. Remove the orange/brown balance-card treatment
+
+Use a neutral surface:
 
 ```text
-Available to trade
+AVAILABLE TO TRADE
 $13.91
 ```
 
-in warm white, with a subtle orange top border or accent. Green should appear only when a balance has increased or a result is positive.
+with a subtle silver border or no border.
 
-Deposit and Withdraw are good primary actions. Keep them side by side.
+For zero balance:
 
-The wallet address can move into a details row:
+* make `Deposit` the single orange primary action;
+* keep `Withdraw` gray or disabled.
+
+For a funded balance:
+
+* both Deposit and Withdraw can be monochrome outlined controls.
+
+## 2. Keep the active preset card
+
+This is a strong retail simplification:
 
 ```text
-Wallet & network ›
+AMOUNT      LEVERAGE      LOSS LIMIT
+$10         500×          $10
 ```
 
-Most retail users do not need to see a truncated address permanently.
+Keep it.
 
-## 2. Collapse TICK config into a preset summary
-
-The current grid makes Me look like an order ticket:
+But make 500x look like an exceptional setting:
 
 ```text
-4 collateral buttons
-4 leverage buttons
-4 stop buttons
-2 toggles
-```
-
-Instead, show one active preset:
-
-```text
-ACTIVE PRESET
-
-Fast
-$10 amount · 50x · $5 stop
-Take profit off
-
-[Edit preset]
-```
-
-Tapping it opens a full-screen or bottom-sheet editor containing the grids.
-
-That preserves the core preset behavior without making the main account page feel technical.
-
-For 500x:
-
-```text
-500x
+500×
 Experimental
-Internal accounts only
 ```
 
-should be explicitly differentiated.
+or show a small warning state inside the preset editor, not throughout the whole app.
 
-## 3. Remove the word `Venue` from normal settings
+## 3. Fix the content being hidden by navigation
 
-The product is supposed to hide venue complexity. Do not show:
+In the screenshot, the Settings area is being obscured by the bottom navigation. This is a layout implementation problem, not a visual preference.
+
+`Me` must be a scroll view whose bottom content padding includes:
 
 ```text
-Venue stop loss
-Venue take profit
+tab bar height
++ iPhone bottom safe area
++ 20–24px breathing space
+```
+
+The user must be able to scroll the final Settings row completely above the navigation.
+
+---
+
+# Bottom navigation
+
+You are correct: it is too high.
+
+In these screenshots, the tab bar appears roughly **one half to one full tab-bar height too far above the home indicator**.
+
+It should sit:
+
+```text
+8px above the top of the bottom safe area
+```
+
+not 50–80px above it.
+
+## Visual treatment
+
+Current navigation has:
+
+* a large outer capsule;
+* a large selected inner capsule;
+* tinted dark-green surfaces;
+* relatively heavy height.
+
+That contributes to the exchange feel.
+
+Recommended:
+
+```text
+Height             58–62px
+Horizontal inset   20px
+Bottom             safe-area inset + 8px
+Background         #0C0E0F
+Border             rgba(255,255,255,0.08)
+Radius             29–31px
+```
+
+Selected tab:
+
+```text
+Icon                orange
+Label               warm white
+Background          transparent or rgba(255,255,255,0.04)
+```
+
+Inactive tab:
+
+```text
+Icon and label      muted silver
+```
+
+Do not use a large bright selected capsule. A subtle tonal fill is enough.
+
+The active TICK icon being orange works. You do not also need orange text and a prominent selected panel.
+
+---
+
+# Correct iPhone safe-area implementation
+
+The likely bug is that the app is applying the bottom safe area more than once:
+
+```text
+SafeAreaView bottom padding
++ tab bar bottom offset
++ screen bottom padding
+```
+
+That pushes the navigation too high.
+
+## For a PWA
+
+Include:
+
+```html
+<meta
+  name="viewport"
+  content="width=device-width, initial-scale=1, viewport-fit=cover"
+/>
 ```
 
 Use:
 
-```text
-Stop loss
-Take profit
+```css
+:root {
+  --tab-bar-height: 60px;
+}
+
+html,
+body {
+  margin: 0;
+  background: #050606;
+}
+
+.app-shell {
+  min-height: 100dvh;
+  padding-top: env(safe-area-inset-top);
+}
+
+.page-content {
+  min-height: 100%;
+  padding-bottom: calc(
+    var(--tab-bar-height) +
+    env(safe-area-inset-bottom) +
+    24px
+  );
+}
+
+.bottom-tabs {
+  position: fixed;
+  left: 20px;
+  right: 20px;
+  bottom: calc(env(safe-area-inset-bottom) + 8px);
+  height: var(--tab-bar-height);
+  z-index: 100;
+}
 ```
 
-Then show a small trust detail:
+Use `100dvh`, not `100vh`, so iPhone browser and standalone-PWA viewport changes do not distort the layout.
 
-```text
-Placed directly on venue
+Do not also give `.app-shell` a bottom safe-area padding when the tab bar already consumes it.
+
+## For Expo / React Native
+
+At the root:
+
+```tsx
+<SafeAreaProvider>
+  <App />
+</SafeAreaProvider>
 ```
 
-or an information icon explaining that the stop remains active even if the TICK app disconnects.
+For a screen with an absolute tab bar:
 
-Venue abstraction is a core product decision; venue-specific concepts should not leak into ordinary consumer surfaces.
+```tsx
+const insets = useSafeAreaInsets();
+const TAB_HEIGHT = 60;
 
-## 4. Reconsider `Wins`
+return (
+  <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <ScrollView
+      contentContainerStyle={{
+        paddingTop: 12,
+        paddingBottom: TAB_HEIGHT + insets.bottom + 24,
+      }}
+    >
+      {content}
+    </ScrollView>
 
-`Net PnL`, `Trades`, and `Wins` can create an unnecessarily game-like performance hierarchy.
-
-A more informative set:
-
-```text
-Net result
-Trades
-Win rate
+    <View
+      style={{
+        position: "absolute",
+        left: 20,
+        right: 20,
+        bottom: insets.bottom + 8,
+        height: TAB_HEIGHT,
+      }}
+    >
+      {tabs}
+    </View>
+  </View>
+);
 ```
 
-or:
+If using `SafeAreaView`, apply only the edges you need:
 
-```text
-Net result
-Avg. cost
-Trades
+```tsx
+<SafeAreaView edges={["top", "left", "right"]}>
 ```
 
-Win count by itself is not especially meaningful. A trader can win many tiny trades and lose one large trade.
+Do **not** apply the bottom edge there and then apply `insets.bottom` again to the tab bar.
 
-## 5. Clean up history semantics
-
-The history layout is structurally good, but change:
+## Test these viewport sizes
 
 ```text
-UP / DOWN
+375 × 667   small iPhone / SE
+375 × 812   compact Face ID
+390 × 844   standard modern iPhone
+393 × 852   Pro
+430 × 932   Pro Max / Plus
 ```
 
-to:
+Check:
 
-```text
-LONG / SHORT
-```
-
-or:
-
-```text
-↑ LONG
-↓ SHORT
-```
-
-Use neutral chips, not green/red direction chips.
-
-Spell out:
-
-```text
-Liquidated
-```
-
-rather than `Liq` in retail-facing filters.
-
-Replace the contradictory:
-
-```text
-Settling
-closed
-```
-
-with:
-
-```text
-Closed
-Finalizing result
-```
-
-or:
-
-```text
-Reconciling
-```
-
-Rows should open into a detail sheet:
-
-```text
-Entry
-Exit
-Gross movement
-Fees
-Price impact
-Net result
-Transaction
-Execution time
-```
-
-That reinforces trust and explains why a visually successful trade might still lose after costs.
+* tab bar is 8px above the safe area;
+* the final Me row scrolls above the bar;
+* no content sits beneath the home indicator;
+* headers do not collide with the Dynamic Island;
+* no hardcoded status-bar height exists;
+* chart height is calculated from remaining space rather than a fixed screen coordinate.
 
 ---
 
-# Navigation
+# Better trade-header structure for the coding agent
 
-`Pulse / TICK / Me` is one of the strongest decisions in the current build.
+Do not absolutely position the asset name and balance independently.
 
-Keep it.
+Use a flex grid:
 
-The present navigation pill is slightly too tall and heavy. Reduce its visual weight by around 15–20%:
+```tsx
+<View style={styles.tradeHeader}>
+  <View style={styles.assetBlock}>
+    <View style={styles.symbolRow}>
+      <Text style={styles.symbol}>HYPE</Text>
+      <View style={styles.leverageChip}>
+        <Text style={styles.leverageText}>500×</Text>
+      </View>
+    </View>
 
-* smaller vertical padding;
-* tighter icon-label spacing;
-* slightly narrower selected capsule;
-* brighter inactive labels;
-* less visible outer border.
+    <Text
+      style={styles.assetName}
+      numberOfLines={1}
+      ellipsizeMode="tail"
+    >
+      Hyperliquid
+    </Text>
 
-The selected center tab can use the TICK symbol plus white text. Orange does not need to fill the whole navigation state; a small orange tick or underline may be enough.
+    <View style={styles.priceRow}>
+      <Text style={styles.price}>55.581</Text>
+      <Text style={styles.negative}>−0.16%</Text>
+    </View>
+  </View>
 
-The older concept’s five-tab navigation, leaderboard, home tab, and social profile weaken the product. Do not bring those back into V1.
+  <View style={styles.balanceBlock}>
+    <Text style={styles.balanceLabel}>AVAILABLE</Text>
+    <Text style={styles.balanceValue}>$0.00</Text>
+    <Text style={styles.addFunds}>Add funds</Text>
+  </View>
+</View>
+```
+
+Suggested layout:
+
+```tsx
+tradeHeader: {
+  flexDirection: "row",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  paddingHorizontal: 20,
+  paddingTop: 14,
+  paddingBottom: 16,
+},
+
+assetBlock: {
+  flex: 1,
+  minWidth: 0,
+  paddingRight: 16,
+},
+
+balanceBlock: {
+  width: 105,
+  alignItems: "flex-end",
+},
+```
+
+This will remain stable when the asset name is longer, when the balance has more digits, and across different iPhone widths.
 
 ---
 
-# Logo
-
-The logo idea is good.
-
-The vertical stroke cutting through the wordmark can represent:
-
-* a price tick;
-* a candlestick;
-* a timing marker;
-* the moment of execution.
-
-That gives it a relevant concept without drawing a cliché chart arrow.
-
-## What to refine
-
-### Use two lockups
-
-**Wordmark**
+# Copy this to the design/coding agent
 
 ```text
-TICK
+Perform a visual-restraint and iPhone-layout pass on the current TICK UI.
+
+Do not change the product information architecture:
+
+- Pulse
+- TICK
+- Me
+
+The current UX structure is correct. The problem is that the visual styling
+has become too similar to a conventional crypto exchange.
+
+Target feeling:
+
+- black and silver
+- premium retail
+- fast but calm
+- minimal but not empty
+- high-energy chart, restrained interface
+- no casino styling
+- no generic Binance-style orange everywhere
+
+COLOR SYSTEM
+
+Use:
+
+Background:          #050606
+Surface 1:           #0C0E0F
+Surface 2:           #111314
+Surface 3:           #17191A
+Border:              rgba(255,255,255,0.07)
+Primary text:        #F3F3EF
+Silver text:         #A7ACA8
+Muted text:          #6E7571
+Brand orange:        #FF922B
+Profit:              #2FCF9A
+Loss:                #FF5E73
+
+Approximately 70% black, 25% white/silver, and no more than 5% orange or
+semantic color.
+
+Orange is reserved for:
+
+- primary TICK identity
+- selected/active control
+- one important scanner opportunity
+- critical attention state
+
+Do not use orange simultaneously for all labels, meters, leverage, cards,
+navigation and balances.
+
+Green and red are reserved primarily for financial outcomes and price
+direction. Balances are neutral white, not green.
+
+CHARTS
+
+Every asset may have a stable chart identity color.
+
+Do not use pure profit green or loss red as ordinary chart identity.
+Use colors such as blue, cyan, violet, muted gold and silver-lilac.
+
+Keep chart background neutral black.
+Reduce chart area-fill opacity to 2–5%.
+Keep chart-line opacity high and glow subtle.
+Do not tint the whole chart panel red, green or orange.
+
+PULSE
+
+- Keep current scanner logic and ranked markets.
+- Use one consistent silver scanner meter.
+- Only the top opportunity may use an orange meter or endpoint.
+- Keep small asset-colored identity dots.
+- Replace repeated orange “SURPLUS” labels with:
+  “AFTER COST +0.062%” or “COST COVERED +0.062%”.
+- Keep WAIT rows gray.
+- Consider one unified list surface with subtle dividers instead of eight
+  visibly separate exchange-style cards.
+- “5 cost-covered” may be the single orange status in the header.
+- Do not add leaderboards or social profiles.
+
+TICK HEADER
+
+Replace:
+
+HYPE 500x Hyperliquid
+
+with a structured hierarchy:
+
+HYPE [500×]                     AVAILABLE
+Hyperliquid                         $0.00
+55.581 −0.16%                    Add funds
+
+- Symbol: 34–36px bold.
+- Leverage: small neutral graphite/silver chip.
+- Asset name: 14px silver subtitle on its own line.
+- Price: 22–24px tabular numerals.
+- Balance: right-aligned typography, no brown/green pill.
+- Balance amount is white.
+- When balance is zero, show a small orange “Add funds” action.
+- Use flex layout, not absolute coordinates.
+- Long names must truncate safely.
+- 500× should be labeled Experimental/Internal where applicable.
+
+TRADE TERMS
+
+Keep:
+
+Amount
+Leverage
+Exposure
+Estimated cost
+
+Use silver labels and white values.
+Show cost in both dollars and percentage of the amount.
+Do not hide a material percentage in tiny text.
+Avoid colored row backgrounds.
+
+ME
+
+- Remove orange/brown tint and orange border from the balance card.
+- Use a neutral black/graphite surface.
+- Make Deposit orange only when the balance is zero.
+- Keep Withdraw muted or disabled when unavailable.
+- Retain the Active preset summary.
+- Keep detailed preset controls in a separate editor.
+- Ensure History and Settings can scroll fully above the tab bar.
+- Do not let the navigation cover the Network row.
+
+BOTTOM NAVIGATION
+
+- Height: 58–62px.
+- Left/right: 20px.
+- Bottom: safe-area-inset-bottom + 8px.
+- Neutral black background.
+- Thin silver border.
+- Active icon may be orange.
+- Active text is white.
+- Inactive icons/text are muted silver.
+- Remove or greatly reduce the large selected inner capsule.
+- Lower the current navigation by roughly 40–60 points on the shown iPhone
+  layout.
+
+SAFE AREA
+
+PWA:
+
+- set viewport-fit=cover
+- use min-height: 100dvh
+- position the nav at:
+  bottom: calc(env(safe-area-inset-bottom) + 8px)
+- page content padding-bottom must equal:
+  tab height + safe-area bottom + 24px
+- do not apply the bottom safe area twice
+
+React Native:
+
+- use SafeAreaProvider and useSafeAreaInsets
+- absolute tab bar:
+  bottom: insets.bottom + 8
+- if SafeAreaView is used around the screen, exclude its bottom edge
+- ScrollView content paddingBottom:
+  TAB_HEIGHT + insets.bottom + 24
+- do not hardcode status-bar or Dynamic Island heights
+
+Test at:
+
+375×667
+375×812
+390×844
+393×852
+430×932
+
+TYPOGRAPHY
+
+Use the system/SF font.
+Use tabular numerals for all money, price and percentage values.
+Primary headings are warm white.
+Secondary labels are silver.
+Avoid all-uppercase except small 10–11px eyebrows and field labels.
+
+GENERAL
+
+- no ordinary gradients
+- no large colored card borders
+- no more than one strong orange focal point per section
+- fewer floating cards
+- more spacing and subtle dividers
+- preserve the current three-screen product
+- borrow the monochrome atmosphere from the older designer mockups,
+  not their leaderboard/social architecture
 ```
 
-for splash, marketing, and headers.
+# Final direction
 
-**App/navigation icon**
+The old designer mockups have the **better brand mood**.
 
-A standalone vertical tick/candle symbol that remains readable at 16–24 pixels.
+The current implementation has the **better product architecture**.
 
-The current wordmark will not necessarily reduce cleanly into a navigation icon.
+The finished product should combine them:
 
-### Use orange for the tick
+> **Current Pulse/TICK/Me experience, styled with the old mockups’ black, silver, typography, restraint and negative space—with orange used like punctuation, not wallpaper.**
 
-Instead of mint:
+The simplest instruction to the team is:
 
-```text
-T  [orange vertical tick]  CK
-```
-
-with the letters in warm white.
-
-The mint version looks clean but feels like a generic fintech palette. Orange gives TICK more intensity and connects to the current product.
-
-### Fix optical alignment
-
-The vertical line currently appears to extend far above and below the letter area. Refine:
-
-* exact height;
-* relationship with the `I`;
-* spacing between `T`, stroke, and `C`;
-* thickness at small sizes;
-* whether it reads as `T|CK` instead of `TICK`.
-
-Test the mark at:
-
-```text
-16px
-24px
-40px
-80px
-app-icon size
-```
-
-### Brand-motion opportunity
-
-On launch, the vertical tick could:
-
-1. appear as a thin line;
-2. pulse once;
-3. expand into the full wordmark;
-4. transition into the live chart cursor.
-
-That creates a very ownable motion identity without being loud.
-
----
-
-# What to take from the designers’ black-and-white concept
-
-Take:
-
-* restraint;
-* confident white typography;
-* large negative space;
-* simple rounded cards;
-* minimal navigation;
-* the onboarding gesture illustrations;
-* the wordmark concept.
-
-Do not take:
-
-* leaderboard as a central destination;
-* fake social profiles;
-* five navigation tabs;
-* prominent venue labels;
-* generic “trade this move” cards;
-* large social PnL numbers;
-* kiwi/avatar identity as core brand;
-* mint as the only accent;
-* “coming soon” placeholder surfaces in the main IA.
-
-The older screens look polished, but they belong to a more generic social-crypto product. Your current structure is much more ownable.
-
----
-
-# Retail design rules for the whole app
-
-Every screen should answer one primary question.
-
-```text
-Pulse:
-What is worth watching now?
-
-TICK:
-Can I act, what are the terms, and what is happening to my position?
-
-Me:
-What is my balance, preset, and history?
-```
-
-Use an 8-point spacing system and reduce the number of outlined rectangles. Right now, many controls, cards, filters, balances, and navigation items all have visible borders. Let spacing and surface tone create hierarchy; use outlines primarily for:
-
-* selected controls;
-* focused fields;
-* risk warnings;
-* actionable cards.
-
-Keep at least 44×44-point touch targets.
-
-Use tabular numerals for:
-
-* price;
-* balance;
-* exposure;
-* PnL;
-* percentages.
-
-Never use color as the only indicator. Pair it with:
-
-* `+` and `−`;
-* arrows;
-* text labels;
-* icons;
-* line style.
-
-The design should include explicit states for:
-
-```text
-Watching
-Hot
-Stale
-Market closed
-Opening
-Open long
-Open short
-Closing
-Closed, finalizing
-Failed
-Unknown/recovery
-Liquidated
-Stop hit
-```
-
-The app must not shift layout dramatically as it moves between these states. Important values should remain in stable positions.
-
----
-
-# Copy this brief to the design or UI agent
-
-```text
-Redesign and polish the current TICK product. Do not replace its information
-architecture with the older social-trading mockup.
-
-Keep the three primary tabs:
-
-1. Pulse
-2. TICK
-3. Me
-
-Brand principles:
-
-- fast, not frantic
-- intense, not noisy
-- premium, not institutional
-- retail-clear, not childish
-- market energy, not casino energy
-
-Visual system:
-
-- near-black neutral background
-- warm-white primary typography
-- graphite surfaces with minimal borders
-- orange is the only primary brand/selection accent
-- green and red are reserved primarily for financial PnL/outcomes
-- long/short direction must also use text/arrows, not color alone
-- balances should be neutral, not green
-- each asset may have a consistent chart identity color
-- asset chart color must not change based only on price direction
-- use tabular numerals for all prices, PnL, percentages, and balances
-- use an 8px spacing grid and 44px minimum touch targets
-- reduce decorative outlines; use spacing and tonal elevation
-
-TICK trade screen:
-
-- preserve the chart-dominant layout
-- show market, asset name, current price, movement, and a small leverage chip
-- do not make 500x the primary visual identity
-- 500x must appear as Experimental/Internal when present
-- add a clear scanner state: Watching, Cost covered, or Hot
-- show MOVE and COST or a plain-language “after costs” measure
-- do not use the term edge
-- before opening, prioritize four terms:
-  Amount, Exposure, Estimated cost, Liquidation distance
-- show estimated cost in dollars and as a percentage of collateral
-- stop-loss copy must distinguish stop price, loss budget, and estimated loss
-- include subtle first-use swipe guidance
-- design separate layouts for:
-  Flat, Opening, Live long, Live short, Closing, Closed-finalizing,
-  Stop hit, Liquidated, Failed, and Recovery
-- during a live position, “Est. net if closed now” is the primary financial number
-- keep a visible Close button in addition to the same-direction closing gesture
-- after authoritative close, stop live exposure immediately and show
-  “Closed · finalizing result” until reconciliation completes
-
-Pulse:
-
-- rank markets by tradeability after costs, not only raw percentage movement
-- score bars must use one consistent semantic scale
-- asset color may appear as a small identity accent or sparkline
-- label the scanner metric clearly
-- replace “7 live” with “7 active”, “4 cost-covered”, or an equivalent state
-- consider one larger Hot Now card followed by compact ranked rows
-- show enough information to explain why a market is ranked:
-  MOVE, COST, activity surplus, or a clear plain-language equivalent
-- do not add leaderboards, avatars, or social PnL to V1
-
-Me:
-
-- show available trading balance neutrally
-- keep Deposit and Withdraw prominent
-- move wallet address/network details behind a secondary row
-- replace the full settings grid on the main page with an Active Preset summary
-- open a separate editor for collateral, leverage, stop, and take profit
-- remove “Venue” from ordinary stop-loss and take-profit labels
-- optionally show “Placed directly on venue” as a trust detail
-- use LONG/SHORT rather than UP/DOWN in history
-- use neutral direction chips and green/red only for result PnL
-- spell out Liquidated rather than Liq
-- replace “Settling / closed” with “Closed · finalizing result”
-- allow each history row to open an execution/cost breakdown
-
-Navigation:
-
-- retain Pulse / TICK / Me
-- make the bottom navigation approximately 15–20% more compact
-- create a standalone TICK icon based on the vertical tick/candle motif
-- keep inactive navigation legible but subdued
-
-Logo:
-
-- refine the current TICK wordmark
-- warm-white letters with an orange vertical tick
-- create separate wordmark and compact app-icon versions
-- verify legibility at 16px, 24px, 40px, and app-icon scale
-- make sure the vertical stroke does not cause the word to read as T|CK
-- provide a simple launch animation concept where the tick becomes the
-  wordmark or chart cursor
-
-Deliver:
-
-- design tokens for color, type, spacing, radius, and motion
-- reusable component definitions
-- complete mockups for all execution states
-- iPhone-sized responsive layouts
-- motion/haptic notes
-- accessibility annotations
-- a list of removed or renamed terminology
-```
-
-# Final call
-
-The current product direction is the right one.
-
-The actual TICK screens are more valuable than the older concept because they express the unique loop: **discover movement, enter with a preset, watch net PnL, close, move on**. The older concept can help the team simplify and polish, but it should not replace the current product architecture.
-
-The most important visual decision is:
-
-> **Black and warm white establish trust. Orange makes TICK recognizable. Asset colors make markets feel alive. Green and red tell the truth about money.**
-
-That combination can feel both retail-friendly and highly distinctive.
+> **Do not redesign TICK. Desaturate it. Lower the navigation. Simplify the header. Remove 70% of the orange. Let the chart carry the energy.**

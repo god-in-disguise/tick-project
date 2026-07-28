@@ -94,6 +94,7 @@ function TickApp({
             onOpen={tick.open}
             onClose={tick.close}
             onShift={tick.shiftMarket}
+            onFund={() => setTab("profile")}
           />
         ) : null}
         {tab === "dashboard" ? <Dashboard markets={tick.markets} onMarket={selectMarket} /> : null}

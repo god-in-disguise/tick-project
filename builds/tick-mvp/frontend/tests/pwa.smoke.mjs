@@ -33,6 +33,11 @@ await page.screenshot({ path: "/tmp/tick-trade.png", fullPage: true });
 
 await page.getByRole("button", { name: "Pulse" }).click();
 await page.locator(".hot-market-list").waitFor();
+assert.equal(
+  await page.locator(".page").evaluate((element) => element.scrollWidth - element.clientWidth),
+  0,
+  "Pulse has horizontal overflow"
+);
 await page.screenshot({ path: "/tmp/tick-pulse.png", fullPage: true });
 
 await page.getByRole("button", { name: "Me" }).click();
@@ -53,12 +58,14 @@ assert.equal(overflow.y, 0);
 assert.deepEqual(errors, []);
 
 const iphonePortraitViewports = [
-  { name: "iphone-11-pro", width: 375, height: 812, safeTop: 44 },
-  { name: "iphone-11-pro-max", width: 414, height: 896, safeTop: 44 },
-  { name: "iphone-12-14", width: 390, height: 844, safeTop: 47 },
-  { name: "iphone-14-15-pro-max", width: 430, height: 932, safeTop: 59 },
-  { name: "iphone-16-17-pro", width: 402, height: 874, safeTop: 62 },
-  { name: "iphone-16-17-pro-max", width: 440, height: 956, safeTop: 62 }
+  { name: "iphone-se", width: 375, height: 667, safeTop: 20, safeBottom: 0 },
+  { name: "iphone-11-pro", width: 375, height: 812, safeTop: 44, safeBottom: 34 },
+  { name: "iphone-11-pro-max", width: 414, height: 896, safeTop: 44, safeBottom: 34 },
+  { name: "iphone-12-14", width: 390, height: 844, safeTop: 47, safeBottom: 34 },
+  { name: "iphone-14-pro", width: 393, height: 852, safeTop: 59, safeBottom: 34 },
+  { name: "iphone-14-15-pro-max", width: 430, height: 932, safeTop: 59, safeBottom: 34 },
+  { name: "iphone-16-17-pro", width: 402, height: 874, safeTop: 62, safeBottom: 34 },
+  { name: "iphone-16-17-pro-max", width: 440, height: 956, safeTop: 62, safeBottom: 34 }
 ];
 
 for (const device of iphonePortraitViewports) {
@@ -79,7 +86,7 @@ for (const device of iphonePortraitViewports) {
   await authenticate(devicePage);
   await devicePage.locator(".trade-view").waitFor({ timeout: 20_000 });
   await devicePage.addStyleTag({
-    content: `:root { --safe-area-top: ${device.safeTop}px !important; --safe-area-bottom: 34px !important; }`
+    content: `:root { --safe-area-top: ${device.safeTop}px !important; --safe-area-bottom: ${device.safeBottom}px !important; }`
   });
   const geometry = await devicePage.evaluate(() => {
     const nav = document.querySelector(".bottom-nav")?.getBoundingClientRect();
@@ -94,10 +101,35 @@ for (const device of iphonePortraitViewports) {
     };
   });
   const bottomGap = geometry.viewportHeight - geometry.navBottom;
-  assert.ok(bottomGap >= 32 && bottomGap <= 36, `${device.name}: bottom gap ${bottomGap}`);
+  const expectedBottomGap = device.safeBottom + 8;
+  assert.ok(
+    Math.abs(bottomGap - expectedBottomGap) <= 2,
+    `${device.name}: bottom gap ${bottomGap}, expected ${expectedBottomGap}`
+  );
   assert.ok(geometry.navTop >= geometry.dockBottom, `${device.name}: navigation overlaps execution dock`);
   assert.equal(geometry.overflowX, 0, `${device.name}: horizontal overflow`);
   assert.equal(geometry.overflowY, 0, `${device.name}: vertical overflow`);
+  if (device.name === "iphone-14-15-pro-max") {
+    await devicePage.getByRole("button", { name: "Me" }).click();
+    const profile = devicePage.locator(".profile-page");
+    await profile.waitFor();
+    await profile.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    const profileGeometry = await devicePage.evaluate(() => {
+      const nav = document.querySelector(".bottom-nav")?.getBoundingClientRect();
+      const lastSetting = document.querySelector(".account-facts > div:last-child")?.getBoundingClientRect();
+      return {
+        navTop: nav?.top ?? 0,
+        lastSettingBottom: lastSetting?.bottom ?? 0
+      };
+    });
+    assert.ok(
+      profileGeometry.lastSettingBottom < profileGeometry.navTop,
+      "Profile settings cannot scroll above navigation"
+    );
+    await devicePage.screenshot({ path: "/tmp/tick-iphone-pro-max.png", fullPage: true });
+  }
   await context.close();
 }
 

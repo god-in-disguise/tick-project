@@ -104,8 +104,8 @@ function draw(
 
   context.clearRect(0, 0, width, height);
   const background = context.createLinearGradient(0, 0, 0, height);
-  background.addColorStop(0, hexWithAlpha(props.theme.top, 0.9));
-  background.addColorStop(1, hexWithAlpha(props.theme.bottom, 0.48));
+  background.addColorStop(0, hexWithAlpha(props.theme.top, 1));
+  background.addColorStop(1, hexWithAlpha(props.theme.bottom, 1));
   context.fillStyle = background;
   context.fillRect(0, 0, width, height);
 
@@ -150,13 +150,13 @@ function draw(
   context.lineTo(coordinates.length === 1 ? left : coordinates[0].x, bottom);
   context.closePath();
   const area = context.createLinearGradient(0, top, 0, bottom);
-  area.addColorStop(0, hexWithAlpha(props.theme.accent, 0.20));
-  area.addColorStop(0.75, hexWithAlpha(props.theme.accent, 0.035));
+  area.addColorStop(0, hexWithAlpha(props.theme.accent, 0.05));
+  area.addColorStop(0.75, hexWithAlpha(props.theme.accent, 0.018));
   area.addColorStop(1, hexWithAlpha(props.theme.accent, 0));
   context.fillStyle = area;
   context.fill();
 
-  drawLine(context, coordinates, edge, props.theme.glow, 8, 0.11);
+  drawLine(context, coordinates, edge, props.theme.glow, 7, 0.085);
   drawLine(context, coordinates, edge, props.theme.accent, 2.25, 1);
 
   const movementColor = props.market.movePct >= 0 ? "#38d39f" : "#ff6070";

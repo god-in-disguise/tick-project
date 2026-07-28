@@ -32,7 +32,11 @@ export function Dashboard({ markets, onMarket }: Props) {
           const theme = themeFor(market.market);
           const covered = market.activitySurplusPct >= 0 && market.openingAllowed;
           return (
-            <button key={market.market} className="market-row" onClick={() => onMarket(market.market)}>
+            <button
+              key={market.market}
+              className={`market-row ${index === 0 && covered ? "top-opportunity" : ""}`}
+              onClick={() => onMarket(market.market)}
+            >
               <span className="market-rank">{String(index + 1).padStart(2, "0")}</span>
               <span className="market-identity">
                 <span className="market-identity-title">
@@ -41,7 +45,7 @@ export function Dashboard({ markets, onMarket }: Props) {
                 </span>
                 <small className={covered ? "covered" : ""}>
                   {covered
-                    ? `SURPLUS ${percent(market.activitySurplusPct, 3)}`
+                    ? `AFTER COST ${percent(market.activitySurplusPct, 3)}`
                     : `WAIT · ${percent(market.activitySurplusPct, 3)}`}
                 </small>
               </span>

@@ -28,6 +28,7 @@ type Props = {
   onOpen: (side: Side) => void;
   onClose: () => void;
   onShift: (offset: number) => void;
+  onFund: () => void;
 };
 
 type Cue = "LONG" | "SHORT" | "CLOSE" | "WAIT" | "LOCKED";
@@ -92,7 +93,6 @@ export function TradeView(props: Props) {
   return (
     <main
       className="trade-view"
-      style={{ backgroundColor: theme.top }}
       onPointerDown={(event) => {
         pointer.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -108,8 +108,8 @@ export function TradeView(props: Props) {
             <div className="market-name-row">
               <strong>{props.market.symbol}</strong>
               <b className="leverage-chip">{leverage}x</b>
-              <span>{props.market.name}</span>
             </div>
+            <span className="market-full-name">{props.market.name}</span>
             <div className="market-price-row">
               <b>{price(props.market.price)}</b>
               <span className={props.market.movePct >= 0 ? "positive" : "negative"}>
@@ -118,9 +118,12 @@ export function TradeView(props: Props) {
             </div>
           </div>
         </div>
-        <div className="balance-chip">
-          <span>Balance</span>
+        <div className="balance-summary">
+          <span>AVAILABLE</span>
           <strong>{money(props.balances?.usdc)}</strong>
+          {(props.balances?.usdc ?? 0) <= 0 ? (
+            <button type="button" onClick={props.onFund}>Add funds</button>
+          ) : null}
         </div>
       </header>
 
