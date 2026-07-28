@@ -36,12 +36,12 @@ export function MarketContext({ market, position, quote, estimatedNetPnl, theme 
     <div className="market-context">
       <div className="market-story">
         <strong key={story}>{story}</strong>
-        <span>PACE {pulse.pace}</span>
       </div>
       <MoveCostMeter
-        movePct={market.activeTapePct}
+        movePct={pulse.recentRangePct}
         costPct={market.feeHurdlePct}
         accent={theme.accent}
+        moveLabel="10s SWING"
       />
     </div>
   );
@@ -84,7 +84,10 @@ function PositionContext({
     <div className="market-context position-context" style={style}>
       <div className="market-story">
         <strong>{hasCostModel ? covered ? "COST COVERED" : "RECOVERING COST" : "POSITION LIVE"}</strong>
-        <span>{secondsOpen}s IN TRADE</span>
+        <span>
+          {hasCostModel && !covered ? `${Math.round(recovery)}% · ` : ""}
+          {secondsOpen}s IN TRADE
+        </span>
       </div>
       {hasCostModel ? (
         <div className="cost-recovery-track">

@@ -55,6 +55,7 @@ export function Dashboard({ markets, onMarket }: Props) {
                 costPct={market.feeHurdlePct}
                 accent={theme.accent}
                 compact
+                moveLabel="60s RANGE"
               />
               <span className="market-row-price">
                 <strong>{price(market.price, true)}</strong>

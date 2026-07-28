@@ -16,6 +16,7 @@ export type MarketPulse = {
   story: string;
   pace: "QUIET" | "ACTIVE" | "FAST";
   rangePositionPct: number;
+  recentRangePct: number;
 };
 
 export function buildMicroBars(
@@ -74,42 +75,37 @@ export function buildMicroBars(
 export function describeMarket(market: Market, bars: MicroBar[]): MarketPulse {
   const rangePositionPct = rangePosition(market);
   const pace = paceFor(bars);
+  const latestEndTs = bars.at(-1)?.endTs ?? 0;
+  const recentBars = bars.filter((bar) => bar.endTs > latestEndTs - 10);
+  const baselineBars = bars.filter(
+    (bar) => bar.endTs <= latestEndTs - 10 && bar.endTs > latestEndTs - 40
+  );
+  const recentRangePct = barRangePct(recentBars, market.price);
 
-  if (market.feedStatus === "disconnected" || market.feedStatus === "stale") {
-    return { story: "MARKET DATA STALE", pace: "QUIET", rangePositionPct };
-  }
-  if (market.feedStatus === "resyncing" || market.feedStatus === "delayed") {
-    return { story: "MARKET DATA DELAYED", pace: "QUIET", rangePositionPct };
-  }
   if (!market.openingAllowed) {
-    return { story: "OPENING PAUSED", pace, rangePositionPct };
+    return { story: "MARKET PAUSED", pace, rangePositionPct, recentRangePct };
   }
 
-  const recent = activityAverage(bars.slice(-5));
-  const baseline = activityAverage(bars.slice(-20, -5));
+  const recent = activityAverage(recentBars);
+  const baseline = activityAverage(baselineBars);
   if (baseline > 0 && recent >= baseline * 1.65) {
-    return { story: "PACE ACCELERATING", pace, rangePositionPct };
+    return { story: "COST TEMPO RISING", pace, rangePositionPct, recentRangePct };
   }
   if (rangePositionPct >= 94) {
-    return { story: "NEAR 90s HIGH", pace, rangePositionPct };
+    return { story: "NEAR 90s HIGH", pace, rangePositionPct, recentRangePct };
   }
   if (rangePositionPct <= 6) {
-    return { story: "NEAR 90s LOW", pace, rangePositionPct };
-  }
-  if (market.feeHurdlePct > 0 && market.activeTapePct >= market.feeHurdlePct * 2) {
-    return {
-      story: `${(market.activeTapePct / market.feeHurdlePct).toFixed(1)}× COST COVERAGE`,
-      pace,
-      rangePositionPct
-    };
-  }
-  if (market.activitySurplusPct >= 0) {
-    return { story: "COST COVERED", pace, rangePositionPct };
+    return { story: "NEAR 90s LOW", pace, rangePositionPct, recentRangePct };
   }
   if (baseline > 0 && recent <= baseline * 0.48) {
-    return { story: "PACE COOLING", pace, rangePositionPct };
+    return { story: "COST TEMPO COOLING", pace, rangePositionPct, recentRangePct };
   }
-  return { story: "WATCHING", pace, rangePositionPct };
+  return {
+    story: pace === "FAST" ? "COST TEMPO FAST" : pace === "ACTIVE" ? "COST TEMPO ACTIVE" : "COST TEMPO QUIET",
+    pace,
+    rangePositionPct,
+    recentRangePct
+  };
 }
 
 function paceFor(bars: MicroBar[]): MarketPulse["pace"] {
@@ -127,6 +123,13 @@ function activityAverage(bars: MicroBar[]): number {
     (total, bar) => total + bar.movementPct + Math.log1p(bar.changedUpdates) * 0.0001,
     0
   ) / bars.length;
+}
+
+function barRangePct(bars: MicroBar[], current: number): number {
+  if (!bars.length || current <= 0) return 0;
+  const high = Math.max(...bars.map((bar) => bar.high));
+  const low = Math.min(...bars.map((bar) => bar.low));
+  return (high - low) / current * 100;
 }
 
 function rangePosition(market: Market): number {
