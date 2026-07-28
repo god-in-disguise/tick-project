@@ -14,6 +14,8 @@
   --green: #38d39f;
   --red: #ff6070;
   --orange: #ff9f2e;
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 * {
@@ -49,12 +51,12 @@ button:disabled {
 
 .app-shell {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) calc(58px + env(safe-area-inset-bottom));
+  grid-template-rows: minmax(0, 1fr) calc(58px + var(--safe-area-bottom));
   width: 100%;
   min-width: 0;
   height: 100dvh;
   min-height: 0;
-  padding-top: env(safe-area-inset-top);
+  padding-top: var(--safe-area-top);
   background: var(--background);
   overflow: hidden;
 }
@@ -502,7 +504,7 @@ button:disabled {
 }
 
 .app-shell-standalone .bottom-nav {
-  transform: translateY(min(12px, calc(env(safe-area-inset-bottom) * 0.35)));
+  transform: translateY(min(12px, var(--safe-area-bottom)));
 }
 
 .bottom-nav button {
@@ -1510,7 +1512,7 @@ button:disabled {
 
 @media (max-height: 700px) {
   .app-shell {
-    grid-template-rows: minmax(0, 1fr) calc(58px + env(safe-area-inset-bottom));
+    grid-template-rows: minmax(0, 1fr) calc(58px + var(--safe-area-bottom));
   }
 
   .trade-view {
