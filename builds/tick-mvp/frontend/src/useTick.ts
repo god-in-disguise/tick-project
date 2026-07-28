@@ -209,9 +209,8 @@ export function useTick(initialSession: Session) {
         setMarkets(nextMarkets);
         const firstMarket = routeMarkets(nextMarkets, settings.leverage)[0]?.market;
         if (firstMarket) {
-          await loadMarketChart(firstMarket);
-          if (!alive) return;
           setActiveMarketId(firstMarket);
+          void loadMarketChart(firstMarket).catch(showError);
           void Promise.allSettled(
             nextMarkets
               .filter((market) => market.market !== firstMarket)
