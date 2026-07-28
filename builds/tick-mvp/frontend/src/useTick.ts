@@ -60,7 +60,7 @@ export function useTick(initialSession: Session) {
   const errorTimer = useRef<number | null>(null);
   const resultTimer = useRef<number | null>(null);
   const backgroundFailures = useRef(0);
-  const resumeGraceUntil = useRef(0);
+  const resumeGraceUntil = useRef(Date.now() + 6_000);
 
   const rememberQuote = useCallback((quote: Quote) => {
     quoteCache.current[quote.quoteId] = quote;
@@ -226,25 +226,34 @@ export function useTick(initialSession: Session) {
   useEffect(() => {
     let alive = true;
     const bootstrap = async () => {
-      try {
-        const nextMarkets = await api.markets({ includeTape: true });
-        if (!alive) return;
-        for (const market of nextMarkets) {
-          sequences.current[market.market] = market.sequence;
-        }
-        setMarkets(nextMarkets);
-        const firstMarket = routeMarkets(nextMarkets, settings.leverage)[0]?.market;
-        if (firstMarket) {
-          setActiveMarketId(firstMarket);
-          const selected = nextMarkets.find((market) => market.market === firstMarket);
-          if (!selected?.observations.length) {
-            void loadMarketChart(firstMarket).catch(showError);
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < 4 && alive; attempt += 1) {
+        try {
+          const nextMarkets = await api.markets({ includeTape: true });
+          if (!alive) return;
+          markBackgroundSuccess();
+          for (const market of nextMarkets) {
+            sequences.current[market.market] = market.sequence;
+          }
+          setMarkets(nextMarkets);
+          const firstMarket = routeMarkets(nextMarkets, settings.leverage)[0]?.market;
+          if (firstMarket) {
+            setActiveMarketId(firstMarket);
+            const selected = nextMarkets.find((market) => market.market === firstMarket);
+            if (!selected?.observations.length) {
+              void loadMarketChart(firstMarket).catch(showBackgroundError);
+            }
+          }
+          await Promise.all([refreshState(), refreshBalances()]);
+          return;
+        } catch (cause) {
+          lastError = cause;
+          if (attempt < 3) {
+            await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
           }
         }
-        await Promise.all([refreshState(), refreshBalances()]);
-      } catch (cause) {
-        showError(cause);
       }
+      if (alive && lastError) showError(lastError);
     };
     void bootstrap();
     return () => {
@@ -252,7 +261,14 @@ export function useTick(initialSession: Session) {
       if (errorTimer.current) window.clearTimeout(errorTimer.current);
       if (resultTimer.current) window.clearTimeout(resultTimer.current);
     };
-  }, [loadMarketChart, refreshBalances, refreshState, showError]);
+  }, [
+    loadMarketChart,
+    markBackgroundSuccess,
+    refreshBalances,
+    refreshState,
+    showBackgroundError,
+    showError
+  ]);
 
   useEffect(() => {
     const marketTimer = window.setInterval(async () => {

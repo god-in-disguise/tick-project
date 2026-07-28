@@ -67,8 +67,23 @@ assert.equal(
   ))),
   true
 );
+let wakeFailureInjected = false;
+const wakeFailurePattern = /\/api\/markets\?[^#]*includeTape=true/;
+const wakeFailureRoute = async (route) => {
+  if (!wakeFailureInjected) {
+    wakeFailureInjected = true;
+    await route.abort("connectionreset");
+    return;
+  }
+  await route.continue();
+};
+await page.route(wakeFailurePattern, wakeFailureRoute);
 await page.reload({ waitUntil: "domcontentloaded" });
 await page.locator(".trade-view").waitFor({ timeout: 20_000 });
+assert.equal(wakeFailureInjected, true);
+assert.equal(await page.locator(".error-toast").count(), 0);
+await page.unroute(wakeFailurePattern, wakeFailureRoute);
+errors.splice(0, errors.length);
 assert.equal(await page.locator(".gesture-guide").count(), 0);
 await page.waitForTimeout(1_000);
 await page.locator(".market-context").waitFor();
