@@ -501,6 +501,10 @@ button:disabled {
   overflow: hidden;
 }
 
+.app-shell-standalone .bottom-nav {
+  transform: translateY(min(12px, calc(env(safe-area-inset-bottom) * 0.35)));
+}
+
 .bottom-nav button {
   display: flex;
   align-items: center;

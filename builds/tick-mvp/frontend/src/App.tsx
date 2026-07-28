@@ -28,6 +28,7 @@ export function App() {
     <TickApp
       key={session.userId}
       session={session}
+      standalone={installed}
       onSignOut={() => {
         clearSession();
         setSession(null);
@@ -36,7 +37,15 @@ export function App() {
   );
 }
 
-function TickApp({ session, onSignOut }: { session: Session; onSignOut: () => void }) {
+function TickApp({
+  session,
+  standalone,
+  onSignOut
+}: {
+  session: Session;
+  standalone: boolean;
+  onSignOut: () => void;
+}) {
   const tick = useTick(session);
   const [tab, setTab] = useState<Tab>("trade");
 
@@ -57,7 +66,7 @@ function TickApp({ session, onSignOut }: { session: Session; onSignOut: () => vo
   };
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${standalone ? "app-shell-standalone" : ""}`}>
       <div className="app-content">
         {tab === "trade" ? (
           <TradeView
