@@ -15,12 +15,13 @@ import { QRCodeSVG } from "qrcode.react";
 
 import { api, idempotencyKey } from "../api";
 import { money, shortAddress, signedMoney } from "../format";
-import type { AccountState, Session, TradeSettings, WalletBalances } from "../types";
+import type { AccountState, Market, Session, TradeSettings, WalletBalances } from "../types";
 
 type Props = {
   session: Session | null;
   state: AccountState | null;
   balances: WalletBalances | null;
+  market: Market;
   settings: TradeSettings;
   onSettings: (settings: TradeSettings) => void;
   onSignOut: () => void;
@@ -35,7 +36,10 @@ export function Profile(props: Props) {
   const [walletMessage, setWalletMessage] = useState<string | null>(null);
   const [editingPreset, setEditingPreset] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<"all" | "wins" | "losses" | "liquidations">("all");
-  const leverageOptions = [25, 50, 100, 500];
+  const leverageOptions = [25, 50, 100, 500].filter(
+    (value) => value >= props.market.minLeverage && value <= props.market.maxLeverage
+  );
+  const fixedLeverage = props.market.minLeverage === props.market.maxLeverage;
   const address = props.session?.walletAddress ?? props.balances?.address;
   const completed = props.state?.positions.filter(
     (position) => position.status === "closed" || position.status === "liquidated"
@@ -244,10 +248,10 @@ export function Profile(props: Props) {
               <X size={20} />
             </button>
             <span className="wallet-sheet-kicker">ACTIVE PRESET</span>
-            <h2>Trade settings</h2>
-            <p>These terms apply automatically to every opening gesture.</p>
+            <h2>Trade preset</h2>
+            <p>Applied automatically when you open a position.</p>
             <div className="settings-group">
-              <label>Amount</label>
+              <label>Trade amount</label>
               <div className="segmented">
                 {[10, 20, 50, 100].map((value) => (
                   <button
@@ -261,71 +265,64 @@ export function Profile(props: Props) {
               </div>
 
               <label>Leverage</label>
-              <div className="segmented">
-                {leverageOptions.map((value) => (
-                  <button
-                    key={value}
-                    className={props.settings.leverage === value ? "active" : ""}
-                    onClick={() => props.onSettings({ ...props.settings, leverage: value })}
-                  >
-                    {value}x
-                  </button>
-                ))}
-              </div>
+              {fixedLeverage ? (
+                <div className="fixed-setting">
+                  <strong>{props.market.maxLeverage}x</strong>
+                  <span>Fixed for {props.market.symbol} DEGEN</span>
+                </div>
+              ) : (
+                <div className="segmented">
+                  {leverageOptions.map((value) => (
+                    <button
+                      key={value}
+                      className={props.settings.leverage === value ? "active" : ""}
+                      onClick={() => props.onSettings({ ...props.settings, leverage: value })}
+                    >
+                      {value}x
+                    </button>
+                  ))}
+                </div>
+              )}
 
-              <SettingToggle
+              <ProtectionSelector
                 label="Stop loss"
                 enabled={props.settings.stopLossEnabled}
-                onToggle={() =>
+                helper="Loss budget · placed on venue"
+                value={props.settings.maxLossUsd}
+                onOff={() =>
                   props.onSettings({
                     ...props.settings,
-                    stopLossEnabled: !props.settings.stopLossEnabled
+                    stopLossEnabled: false
+                  })
+                }
+                onValue={(value) =>
+                  props.onSettings({
+                    ...props.settings,
+                    stopLossEnabled: true,
+                    maxLossUsd: value
                   })
                 }
               />
-              {props.settings.stopLossEnabled ? (
-                <>
-                  <small className="venue-protection-note">Loss budget · placed directly on venue</small>
-                  <div className="segmented">
-                    {[5, 10, 20, 50].map((value) => (
-                      <button
-                        key={value}
-                        className={props.settings.maxLossUsd === value ? "active" : ""}
-                        onClick={() => props.onSettings({ ...props.settings, maxLossUsd: value })}
-                      >
-                        ${value}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : null}
 
-              <SettingToggle
+              <ProtectionSelector
                 label="Take profit"
                 enabled={props.settings.takeProfitEnabled}
-                onToggle={() =>
+                helper="Profit target · placed on venue"
+                value={props.settings.takeProfitUsd}
+                onOff={() =>
                   props.onSettings({
                     ...props.settings,
-                    takeProfitEnabled: !props.settings.takeProfitEnabled
+                    takeProfitEnabled: false
+                  })
+                }
+                onValue={(value) =>
+                  props.onSettings({
+                    ...props.settings,
+                    takeProfitEnabled: true,
+                    takeProfitUsd: value
                   })
                 }
               />
-              {props.settings.takeProfitEnabled ? (
-                <>
-                  <small className="venue-protection-note">Profit target · placed directly on venue</small>
-                  <div className="segmented">
-                    {[5, 10, 20, 50].map((value) => (
-                      <button
-                        key={value}
-                        className={props.settings.takeProfitUsd === value ? "active" : ""}
-                        onClick={() => props.onSettings({ ...props.settings, takeProfitUsd: value })}
-                      >
-                        ${value}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              ) : null}
             </div>
           </section>
         </div>,
@@ -429,28 +426,49 @@ export function Profile(props: Props) {
   );
 }
 
-function SettingToggle({
+function ProtectionSelector({
   label,
   enabled,
-  onToggle
+  helper,
+  value,
+  onOff,
+  onValue
 }: {
   label: string;
   enabled: boolean;
-  onToggle: () => void;
+  helper: string;
+  value: number;
+  onOff: () => void;
+  onValue: (value: number) => void;
 }) {
   return (
-    <div className="setting-toggle-row">
-      <label>{label}</label>
-      <button
-        className="setting-toggle"
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        aria-label={`${label} ${enabled ? "on" : "off"}`}
-        onClick={onToggle}
-      >
-        <span />
-      </button>
+    <div className="protection-setting">
+      <div>
+        <label>{label}</label>
+        <small>{helper}</small>
+      </div>
+      <div className="protection-options" role="group" aria-label={label}>
+        <button
+          className={!enabled ? "active" : ""}
+          type="button"
+          aria-pressed={!enabled}
+          onClick={onOff}
+        >
+          Off
+        </button>
+        {[5, 10, 20, 50].map((option) => (
+          <button
+            key={option}
+            className={enabled && value === option ? "active" : ""}
+            type="button"
+            aria-label={`${label} $${option}`}
+            aria-pressed={enabled && value === option}
+            onClick={() => onValue(option)}
+          >
+            ${option}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

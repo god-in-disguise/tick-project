@@ -103,6 +103,7 @@ function TickApp({
             session={tick.session}
             state={tick.state}
             balances={tick.balances}
+            market={tick.activeMarket}
             settings={tick.settings}
             onSettings={tick.setSettings}
             onSignOut={onSignOut}

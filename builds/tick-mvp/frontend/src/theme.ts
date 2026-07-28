@@ -1,15 +1,13 @@
 import type { Theme } from "./types";
 
-const surface = { top: "#050606", bottom: "#070808" };
-
 const themes: Theme[] = [
-  { accent: "#d7ad4f", glow: "#e7c979", ...surface },
-  { accent: "#5b9dff", glow: "#86b8ff", ...surface },
-  { accent: "#47d7cf", glow: "#81e7e1", ...surface },
-  { accent: "#9d7cff", glow: "#beaaff", ...surface },
-  { accent: "#b9a7d6", glow: "#d2c5e5", ...surface },
-  { accent: "#d8b84c", glow: "#e8cf7b", ...surface },
-  { accent: "#8fcfc5", glow: "#b4e0d9", ...surface }
+  { accent: "#d7ad4f", glow: "#e7c979", top: "#090805", bottom: "#070706" },
+  { accent: "#5b9dff", glow: "#86b8ff", top: "#05070a", bottom: "#060709" },
+  { accent: "#47d7cf", glow: "#81e7e1", top: "#050a09", bottom: "#060807" },
+  { accent: "#9d7cff", glow: "#beaaff", top: "#08060a", bottom: "#070608" },
+  { accent: "#b9a7d6", glow: "#d2c5e5", top: "#08070a", bottom: "#070608" },
+  { accent: "#d8b84c", glow: "#e8cf7b", top: "#090805", bottom: "#070706" },
+  { accent: "#8fcfc5", glow: "#b4e0d9", top: "#050908", bottom: "#060807" }
 ];
 
 export function themeFor(market: string): Theme {

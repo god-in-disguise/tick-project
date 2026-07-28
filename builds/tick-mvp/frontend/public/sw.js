@@ -1,4 +1,4 @@
-const CACHE = "tick-shell-v4";
+const CACHE = "tick-shell-v5";
 const SHELL = ["/", "/manifest.webmanifest", "/tick-icon.png"];
 
 self.addEventListener("install", (event) => {

@@ -20,9 +20,12 @@ page.on("console", (message) => {
 });
 page.on("pageerror", (error) => errors.push(error.message));
 
-await page.goto("http://127.0.0.1:5173/", { waitUntil: "networkidle" });
+await page.goto("http://127.0.0.1:5173/", { waitUntil: "domcontentloaded" });
 await page.locator(".install-landing").waitFor();
 assert.match(await page.locator("h1").innerText(), /Catch what is moving now/);
+await page.locator(".tick-wordmark").waitFor();
+await page.locator(".landing-live-stage").waitFor();
+await page.waitForTimeout(1_000);
 await page.screenshot({ path: "/tmp/tick-landing.png", fullPage: true });
 
 await page.goto("http://127.0.0.1:5173/?app=1", { waitUntil: "domcontentloaded" });
@@ -46,14 +49,15 @@ await page.screenshot({ path: "/tmp/tick-profile.png", fullPage: true });
 await page.locator(".preset-summary").click();
 await page.locator(".preset-sheet").waitFor();
 await page.waitForTimeout(250);
-const takeProfitToggle = page.getByRole("switch", { name: /Take profit/ });
-await takeProfitToggle.scrollIntoViewIfNeeded();
-const originalTakeProfit = await takeProfitToggle.getAttribute("aria-checked");
-await takeProfitToggle.click();
-assert.notEqual(await takeProfitToggle.getAttribute("aria-checked"), originalTakeProfit);
+const takeProfitGroup = page.getByRole("group", { name: "Take profit" });
+const takeProfitOff = takeProfitGroup.getByRole("button", { name: "Off" });
+const takeProfitTen = takeProfitGroup.getByRole("button", { name: "Take profit $10" });
+await takeProfitGroup.scrollIntoViewIfNeeded();
+const originalTakeProfit = await takeProfitTen.getAttribute("aria-pressed");
+await takeProfitTen.click();
+assert.equal(await takeProfitTen.getAttribute("aria-pressed"), "true");
 await page.screenshot({ path: "/tmp/tick-preset.png" });
-await takeProfitToggle.click();
-assert.equal(await takeProfitToggle.getAttribute("aria-checked"), originalTakeProfit);
+if (originalTakeProfit !== "true") await takeProfitOff.click();
 await page.getByRole("button", { name: "Close preset" }).click();
 
 const overflow = await page.evaluate(() => ({

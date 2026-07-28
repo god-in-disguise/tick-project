@@ -3,6 +3,7 @@ import { FormEvent, useState } from "react";
 
 import { api } from "../api";
 import type { Session } from "../types";
+import { TickWordmark } from "./TickWordmark";
 
 type Props = {
   onAuthenticated: (session: Session) => void;
@@ -29,8 +30,7 @@ export function AuthGate({ onAuthenticated }: Props) {
   return (
     <main className="auth-gate">
       <div className="auth-brand">
-        <span className="tick-candle" />
-        <strong>TICK</strong>
+        <TickWordmark />
       </div>
       <div className="auth-body">
         <span>PRIVATE ACCESS</span>

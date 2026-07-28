@@ -1,6 +1,9 @@
 import { ArrowUp, Plus, Share, Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { LandingTape } from "./LandingTape";
+import { TickWordmark } from "./TickWordmark";
+
 type InstallPrompt = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
@@ -32,19 +35,15 @@ export function InstallLanding() {
     <main className="install-landing">
       <div className="landing-noise" aria-hidden="true" />
       <header className="landing-header">
-        <img src="/tick-icon.png" alt="" />
-        <strong>TICK</strong>
+        <TickWordmark />
+        <span>PRIVATE BETA</span>
       </header>
       <section className="landing-copy">
-        <span>THE LIVE MARKET</span>
+        <span>THE MARKET MOVING NOW</span>
         <h1>Catch what is moving now.</h1>
-        <p>Real prices. Net outcomes. One fast trading loop built for iPhone.</p>
+        <p>Find live movement, see the cost, and trade through one focused iPhone loop.</p>
       </section>
-      <div className="landing-tape" aria-hidden="true">
-        <i />
-        <b />
-        <span />
-      </div>
+      <LandingTape />
       <footer className="landing-footer">
         <button type="button" onClick={install}>
           <Smartphone size={19} />
