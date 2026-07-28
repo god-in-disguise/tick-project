@@ -5,6 +5,8 @@ import logging
 from decimal import Decimal
 
 from tick_mvp.execution.service import ExecutionService
+from tick_mvp.wallets.arbitrum import WithdrawalRetryable
+from tick_mvp.wallets.service import WithdrawalService
 
 
 LOGGER = logging.getLogger("tick.worker")
@@ -28,13 +30,15 @@ async def prepare_user_wallet(ctx: dict, user_id: str, required_collateral_usd: 
 
 
 async def execute_withdrawal_request(ctx: dict, withdrawal_id: str) -> dict[str, str]:
-    """Placeholder withdrawal task.
-
-    Production implementation validates available USDC, signs from the user's
-    platform wallet, broadcasts on Arbitrum, and records gas charged in USDC.
-    """
     LOGGER.info("withdrawal request queued", extra={"withdrawalId": withdrawal_id})
-    return {"withdrawalId": withdrawal_id, "status": "queued"}
+    service: WithdrawalService = ctx["withdrawal_service"]
+    try:
+        result = await asyncio.to_thread(service.execute, withdrawal_id)
+    except WithdrawalRetryable as exc:
+        from arq import Retry
+
+        raise Retry(defer=1) from exc
+    return {key: str(value) for key, value in result.items() if value is not None}
 
 
 async def reconcile_positions(ctx: dict) -> dict[str, str]:

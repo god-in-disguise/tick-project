@@ -455,6 +455,13 @@ Current MVP decision:
 - backend executes approved wallet/setup/withdrawal actions through workers
 - platform pays gas where possible and records USDC gas charges
 
+Current implementation status:
+
+- Arbitrum USDC withdrawal requests are persisted and serialized against active positions.
+- The worker encrypts and persists the exact signed transaction before broadcast, then reuses the same bytes and hash during recovery.
+- Confirmed withdrawals append a wallet-sourced ledger event.
+- Automatic ETH top-up and USDC gas charging are still required before external multi-user testing.
+
 This is simpler for a private MVP and investor demo because users do not need to understand wallets, ETH gas, delegates, or allowances. It also creates custody/security obligations, so it should not be described as production-grade public custody until signing isolation, withdrawal controls, revocation, limits, monitoring, and incident handling are hardened.
 
 Local live canary used max allowance/delegation for speed. That is acceptable for founder/demo wallets only, not a broad-public default.

@@ -30,6 +30,8 @@ class Settings:
     arb_chain_id: int = 42161
     arb_rpc_url: str = ""
     arb_wss_url: str = ""
+    arb_usdc_address: str = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
+    arb_usdc_transfer_gas: int = 150_000
     custody_provider: str = "development"
     custody_private_key_encryption_key: str = ""
     gas_payer_mode: str = "platform_agent"
@@ -98,6 +100,10 @@ def get_settings() -> Settings:
         arb_chain_id=_int_env("ARB_CHAIN_ID", 42161),
         arb_rpc_url=os.getenv("ARB_RPC_URL", ""),
         arb_wss_url=_arb_wss_url(),
+        arb_usdc_address=os.getenv("ARB_USDC_ADDRESS")
+        or os.getenv("GTRADE_USDC_ADDRESS")
+        or "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        arb_usdc_transfer_gas=_int_env("ARB_USDC_TRANSFER_GAS", 150_000),
         custody_provider=os.getenv("CUSTODY_PROVIDER", "development"),
         custody_private_key_encryption_key=os.getenv("CUSTODY_PRIVATE_KEY_ENCRYPTION_KEY", ""),
         gas_payer_mode=os.getenv("GAS_PAYER_MODE", "platform_agent"),

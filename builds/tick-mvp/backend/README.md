@@ -25,7 +25,8 @@ The first gTrade extraction is now started. The backend has live gTrade quote su
 - Private keys are encrypted before storage in Postgres using `CUSTODY_PRIVATE_KEY_ENCRYPTION_KEY`.
 - Users deposit Arbitrum USDC to their platform wallet.
 - Withdrawals are automatic worker jobs after request validation.
-- Users should not manage ETH. Platform/delegated gas is charged back in USDC through ledger events.
+- Withdrawal signing persists encrypted raw transaction bytes before broadcast, so retries reuse the same nonce and transaction hash.
+- Automatic ETH top-ups and USDC gas charging remain required before external multi-user testing.
 - gTrade is the first live venue, but tables and API contracts use venue-neutral primitives.
 
 ## Current Contract Pass
@@ -58,10 +59,11 @@ Verified local Docker smoke:
 - BTCDEGEN quotes normalize to venue execution leverage and include estimated open/close costs, liquidation estimate, and stop-loss estimate.
 - open/close creates persisted quote, intent, execution attempt, position, and reconciliation rows.
 - ARQ worker consumes queued open/close/withdrawal jobs and returns dry-run execution results when `TICK_REAL_EXECUTION_ENABLED=false`.
+- USDC withdrawals validate wallet state, exclude active positions, persist signed bytes before broadcast, recover by deterministic transaction hash, and append a confirmed ledger event.
 - idempotency returns the original attempt for duplicate payloads.
 - idempotent replays use deterministic ARQ job IDs, so the same execution is not queued twice.
 - idempotency key reuse with a different payload returns conflict.
-- one active position and one active close command are enforced at the API/store layer.
+- one active position, one active close command, and no position/withdrawal overlap are enforced at the API/store layer.
 
 Live execution is behind `TICK_REAL_EXECUTION_ENABLED`. When enabled, the worker decrypts the user's platform wallet key, auto-approves USDC if needed, signs from that user wallet, and races identical raw bytes through the configured `ARB_RPC_URL` and Arbitrum's direct sequencer. It keeps the useful local-MVP speed work: persistent providers, per-wallet nonce and allowance caches, a short-lived shared fee cache, fixed hot-path gas limits, and deterministic tx hashes.
 
@@ -78,8 +80,9 @@ shared event stream, and automatically submits the configured max USDC
 approval when the requested collateral is not already covered. Market metadata,
 live prices, and fee inputs are warmed at process level.
 
-The next hardening work is durable event journaling, recovery after ambiguous
-RPC responses, and the shared whitelisted market-feed API used by the PWA.
+The next hardening work is automatic per-user gas funding, USDC gas accounting,
+withdrawal controls in the PWA, and deployment canaries for restart and
+ambiguous-broadcast recovery.
 
 ## Package Layout
 
@@ -90,6 +93,7 @@ The code is layered for readability without turning the MVP into a framework pro
 - `tick_mvp.infrastructure` - storage and queue adapters.
 - `tick_mvp.venues` - venue-specific market, quote, and transaction primitives.
 - `tick_mvp.execution` - worker orchestration between persisted attempts and venue adapters.
+- `tick_mvp.wallets` - chain-level deposit/withdrawal execution and recovery.
 - `tick_mvp.workers` - ARQ tasks plus long-running market/event service entrypoints.
 - `tick_mvp.core` - runtime settings.
 

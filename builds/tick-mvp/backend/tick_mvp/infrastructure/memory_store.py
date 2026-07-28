@@ -153,6 +153,33 @@ class MemoryStore:
             wallet_id = self._wallet_by_user.get(user_id)
             if wallet_id is None:
                 raise StoreNotFound("wallet not found")
+            if request.asset.upper() != "USDC":
+                raise StoreConflict("only Arbitrum USDC withdrawals are supported")
+            if any(
+                item.userId == user_id
+                and item.status
+                in {
+                    PositionStatus.OPENING,
+                    PositionStatus.OPEN,
+                    PositionStatus.CLOSING,
+                    PositionStatus.UNKNOWN,
+                }
+                for item in self._positions.values()
+            ):
+                raise StoreConflict("withdrawal unavailable while a position is active")
+            if any(
+                item.userId == user_id
+                and item.status
+                in {
+                    WithdrawalStatus.REQUESTED,
+                    WithdrawalStatus.VALIDATED,
+                    WithdrawalStatus.SIGNED,
+                    WithdrawalStatus.BROADCAST,
+                    WithdrawalStatus.UNKNOWN,
+                }
+                for item in self._withdrawals.values()
+            ):
+                raise StoreConflict("user already has a pending withdrawal")
             now = _now()
             withdrawal = WithdrawalResponse(
                 id=_id("withdrawal"),
@@ -217,6 +244,19 @@ class MemoryStore:
                 raise StoreConflict("quote expired")
             if any(item.userId == user_id and item.status in {PositionStatus.OPENING, PositionStatus.OPEN, PositionStatus.CLOSING, PositionStatus.UNKNOWN} for item in self._positions.values()):
                 raise StoreConflict("user already has an active position")
+            if any(
+                item.userId == user_id
+                and item.status
+                in {
+                    WithdrawalStatus.REQUESTED,
+                    WithdrawalStatus.VALIDATED,
+                    WithdrawalStatus.SIGNED,
+                    WithdrawalStatus.BROADCAST,
+                    WithdrawalStatus.UNKNOWN,
+                }
+                for item in self._withdrawals.values()
+            ):
+                raise StoreConflict("user has a pending withdrawal")
 
             now = _now()
             intent = TradeIntentResponse(

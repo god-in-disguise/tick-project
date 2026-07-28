@@ -119,6 +119,84 @@ def test_withdrawal_request_is_idempotent() -> None:
     assert store.state(user.id).withdrawals[0].id == first.id
 
 
+def test_pending_withdrawal_blocks_a_new_position() -> None:
+    store = MemoryStore(default_venue="gtrade")
+    user, _ = store.upsert_google_user(
+        provider_subject="google-subject-withdrawal-lock",
+        email="withdrawal-lock@example.com",
+        display_name="Withdrawal Lock",
+        avatar_url=None,
+        chain_id=42161,
+        custody_provider="encrypted_postgres",
+    )
+    store.request_withdrawal(
+        user.id,
+        WithdrawalRequest(
+            amount="1",
+            destinationAddress="0x1111111111111111111111111111111111111111",
+            idempotencyKey="withdraw-lock-0001",
+        ),
+    )
+    quote = store.create_quote(
+        user.id,
+        QuoteRequest(
+            market="BTCDEGEN/USD",
+            side="long",
+            ticketUsd="10",
+            leverage="100",
+        ),
+    )
+
+    try:
+        store.accept_open(
+            user.id,
+            OpenRequest(quoteId=quote.quoteId, idempotencyKey="open-lock-0001"),
+        )
+    except Exception as exc:
+        assert "pending withdrawal" in str(exc)
+    else:
+        raise AssertionError("expected pending-withdrawal conflict")
+
+
+def test_active_position_blocks_withdrawal() -> None:
+    store = MemoryStore(default_venue="gtrade")
+    user, _ = store.upsert_google_user(
+        provider_subject="google-subject-position-lock",
+        email="position-lock@example.com",
+        display_name="Position Lock",
+        avatar_url=None,
+        chain_id=42161,
+        custody_provider="encrypted_postgres",
+    )
+    quote = store.create_quote(
+        user.id,
+        QuoteRequest(
+            market="BTCDEGEN/USD",
+            side="long",
+            ticketUsd="10",
+            leverage="100",
+        ),
+    )
+    store.accept_open(
+        user.id,
+        OpenRequest(quoteId=quote.quoteId, idempotencyKey="open-position-lock"),
+    )
+
+    try:
+        store.request_withdrawal(
+            user.id,
+            WithdrawalRequest(
+                amount="1",
+                destinationAddress="0x1111111111111111111111111111111111111111",
+                idempotencyKey="withdraw-position-lock",
+            ),
+        )
+    except Exception as exc:
+        assert "position is active" in str(exc)
+    else:
+        raise AssertionError("expected active-position conflict")
+
+
 def test_session_token_round_trip() -> None:
     token = create_session_token(user_id="alice", wallet_address="0xabc", secret="secret", ttl_seconds=60)
     session = verify_session_token(token, secret="secret")

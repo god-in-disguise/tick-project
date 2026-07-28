@@ -4,6 +4,7 @@ import logging
 
 from tick_mvp.core.config import get_settings
 from tick_mvp.execution.service import ExecutionService
+from tick_mvp.wallets.service import WithdrawalService
 from tick_mvp.workers.tasks import (
     execute_trade_attempt,
     execute_withdrawal_request,
@@ -20,6 +21,7 @@ async def startup(ctx: dict) -> None:
     service = ExecutionService()
     service.start()
     ctx["execution_service"] = service
+    ctx["withdrawal_service"] = WithdrawalService()
     logging.getLogger("tick.worker").info("ARQ worker started")
 
 
@@ -27,6 +29,9 @@ async def shutdown(ctx: dict) -> None:
     service: ExecutionService | None = ctx.get("execution_service")
     if service is not None:
         service.stop()
+    withdrawal_service: WithdrawalService | None = ctx.get("withdrawal_service")
+    if withdrawal_service is not None:
+        withdrawal_service.stop()
     logging.getLogger("tick.worker").info("ARQ worker stopped")
 
 

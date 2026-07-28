@@ -13,7 +13,7 @@ class GeneratedWallet:
     encrypted_private_key: bytes
 
 
-class PrivateKeyCipher:
+class SecretCipher:
     def __init__(self, key: str) -> None:
         if not key:
             raise CustodyError("CUSTODY_PRIVATE_KEY_ENCRYPTION_KEY is not configured")
@@ -27,11 +27,15 @@ class PrivateKeyCipher:
 
         return Fernet.generate_key().decode()
 
-    def encrypt(self, private_key_hex: str) -> bytes:
-        return self._fernet.encrypt(private_key_hex.encode())
+    def encrypt(self, value: str) -> bytes:
+        return self._fernet.encrypt(value.encode())
 
-    def decrypt(self, encrypted_private_key: bytes) -> str:
-        return self._fernet.decrypt(encrypted_private_key).decode()
+    def decrypt(self, encrypted_value: bytes) -> str:
+        return self._fernet.decrypt(encrypted_value).decode()
+
+
+class PrivateKeyCipher(SecretCipher):
+    pass
 
 
 class PlatformWalletFactory:

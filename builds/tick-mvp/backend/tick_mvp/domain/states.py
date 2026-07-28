@@ -34,6 +34,7 @@ class WithdrawalStatus(StrEnum):
     VALIDATED = "validated"
     SIGNED = "signed"
     BROADCAST = "broadcast"
+    UNKNOWN = "unknown"
     CONFIRMED = "confirmed"
     FAILED = "failed"
     CANCELED = "canceled"

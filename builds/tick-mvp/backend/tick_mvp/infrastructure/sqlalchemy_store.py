@@ -180,6 +180,15 @@ class SQLAlchemyStore:
                     raise StoreConflict("idempotency key reused with different payload")
                 return withdrawal_response(existing)
 
+            user = session.get(User, user_id, with_for_update=True)
+            if user is None:
+                raise StoreNotFound("user not found")
+            if request.asset.upper() != "USDC":
+                raise StoreConflict("only Arbitrum USDC withdrawals are supported")
+            if _active_position_exists(session, user_id):
+                raise StoreConflict("withdrawal unavailable while a position is active")
+            if _pending_withdrawal_exists(session, user_id):
+                raise StoreConflict("user already has a pending withdrawal")
             wallet = _primary_wallet(session, user_id)
             if wallet is None:
                 raise StoreNotFound("wallet not found")
@@ -290,8 +299,13 @@ class SQLAlchemyStore:
                 raise StoreNotFound("quote not found")
             if quote.expires_at <= now:
                 raise StoreConflict("quote expired")
+            user = session.get(User, user_id, with_for_update=True)
+            if user is None:
+                raise StoreNotFound("user not found")
             if _active_position_exists(session, user_id):
                 raise StoreConflict("user already has an active position")
+            if _pending_withdrawal_exists(session, user_id):
+                raise StoreConflict("user has a pending withdrawal")
             wallet = _primary_wallet(session, user_id)
             if wallet is None:
                 raise StoreNotFound("wallet not found")
@@ -367,7 +381,12 @@ class SQLAlchemyStore:
             if existing is not None:
                 return existing
 
-            position = session.get(Position, request.positionId)
+            position = (
+                session.query(Position)
+                .filter(Position.id == request.positionId)
+                .with_for_update()
+                .one_or_none()
+            )
             if position is None or position.user_id != user_id:
                 raise StoreNotFound("position not found")
             if position.status not in {PositionStatus.OPENING.value, PositionStatus.OPEN.value, PositionStatus.UNKNOWN.value}:
@@ -522,6 +541,26 @@ def _active_position_exists(session, user_id: str) -> bool:
         .filter(
             Position.user_id == user_id,
             Position.status.in_([PositionStatus.OPENING.value, PositionStatus.OPEN.value, PositionStatus.CLOSING.value, PositionStatus.UNKNOWN.value]),
+        )
+        .first()
+        is not None
+    )
+
+
+def _pending_withdrawal_exists(session, user_id: str) -> bool:
+    return (
+        session.query(Withdrawal.id)
+        .filter(
+            Withdrawal.user_id == user_id,
+            Withdrawal.status.in_(
+                [
+                    WithdrawalStatus.REQUESTED.value,
+                    WithdrawalStatus.VALIDATED.value,
+                    WithdrawalStatus.SIGNED.value,
+                    WithdrawalStatus.BROADCAST.value,
+                    WithdrawalStatus.UNKNOWN.value,
+                ]
+            ),
         )
         .first()
         is not None
