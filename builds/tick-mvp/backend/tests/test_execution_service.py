@@ -8,7 +8,7 @@ pytest.importorskip("sqlalchemy")
 from tick_mvp.core.config import Settings
 from tick_mvp.domain.states import TradeAction, TradeSide
 from tick_mvp.execution.repository import ExecutionContext
-from tick_mvp.execution.service import ExecutionService
+from tick_mvp.execution.service import ExecutionService, InsufficientSpendableUSDC
 
 
 class FakeRepository:
@@ -41,7 +41,13 @@ class FakeRepository:
 
 
 class FakeVenue:
-    def prepare_wallet(self, *, private_key_hex: str, required_collateral_usd: Decimal):
+    def prepare_wallet(
+        self,
+        *,
+        private_key_hex: str,
+        required_collateral_usd: Decimal,
+        ensure_transaction_gas=None,
+    ):
         assert private_key_hex == "0x" + "1" * 64
         return {
             "allowanceReady": required_collateral_usd == Decimal("10"),
@@ -58,6 +64,11 @@ class BalanceVenue:
         assert private_key_hex == "0x" + "1" * 64
         self.reads += 1
         return next(self._balances)
+
+
+class UnexpectedBalanceReadVenue:
+    def collateral_balance_usd(self, *, private_key_hex: str) -> Decimal:
+        raise AssertionError("open hot path must not read collateral balance")
 
 
 def test_execution_service_dry_run_does_not_trade() -> None:
@@ -93,3 +104,22 @@ def test_close_balance_waits_for_returned_collateral() -> None:
 
     assert balance == Decimal("41.50")
     assert venue.reads == 3
+
+
+def test_open_without_prepared_balance_does_not_block_on_rpc() -> None:
+    repository = FakeRepository()
+    context = repository.load("exec_1")
+    service = ExecutionService(settings=Settings(), repository=repository)
+    service._venue = UnexpectedBalanceReadVenue()
+
+    service._require_open_balance(context)
+
+
+def test_open_rejects_known_insufficient_spendable_balance() -> None:
+    repository = FakeRepository()
+    context = repository.load("exec_1")
+    service = ExecutionService(settings=Settings(), repository=repository)
+    service._remember_balance(context.user_id, Decimal("9.99"))
+
+    with pytest.raises(InsufficientSpendableUSDC):
+        service._require_open_balance(context)

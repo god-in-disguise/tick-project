@@ -49,6 +49,7 @@ class GasTransaction:
     gas_used: int
     effective_gas_price: int
     operation: str
+    gas_payer_address: str | None = None
 
     @property
     def native_cost(self) -> Decimal:
@@ -257,6 +258,7 @@ def gas_transaction(
     gas_used: int | None,
     effective_gas_price: int | None,
     operation: str,
+    gas_payer_address: str | None = None,
 ) -> GasTransaction | None:
     if not tx_hash or gas_used is None or effective_gas_price is None:
         return None
@@ -265,6 +267,7 @@ def gas_transaction(
         gas_used=int(gas_used),
         effective_gas_price=int(effective_gas_price),
         operation=operation,
+        gas_payer_address=gas_payer_address,
     )
 
 
@@ -280,6 +283,9 @@ def gas_transactions_from_payload(payload: object) -> list[GasTransaction]:
             gas_used=_int_or_none(item.get("gasUsed")),
             effective_gas_price=_int_or_none(item.get("effectiveGasPrice")),
             operation=str(item.get("operation") or item.get("label") or "wallet"),
+            gas_payer_address=(
+                str(item["gasPayer"]) if item.get("gasPayer") else None
+            ),
         )
         if transaction is not None:
             transactions.append(transaction)

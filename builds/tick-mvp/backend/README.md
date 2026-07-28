@@ -25,8 +25,10 @@ The first gTrade extraction is now started. The backend has live gTrade quote su
 - Private keys are encrypted before storage in Postgres using `CUSTODY_PRIVATE_KEY_ENCRYPTION_KEY`.
 - Users deposit Arbitrum USDC to their platform wallet.
 - Users never need to deposit, hold, or understand ETH.
-- A dedicated platform gas wallet tops up low user wallets to the configured ETH target.
-- Confirmed approval/open/close/withdrawal gas is converted through the Arbitrum Chainlink ETH/USD feed and reserved from the user's spendable USDC.
+- Each user wallet delegates gTrade execution to TICK's platform execution agent.
+- Normal opens and closes keep the user wallet as position owner while the platform agent signs and pays ETH gas.
+- A dedicated platform gas wallet tops up user wallets only when one-time setup or a withdrawal needs the user wallet to sign.
+- Confirmed setup, open, close, and withdrawal gas is converted through the Arbitrum Chainlink ETH/USD feed and reserved from the user's spendable USDC.
 - Platform top-up and future treasury-sweep overhead is a TICK cost, not a user gas charge.
 - Withdrawals are automatic worker jobs after request validation.
 - Withdrawal signing persists encrypted raw transaction bytes before broadcast, so retries reuse the same nonce and transaction hash.
@@ -71,7 +73,7 @@ Verified local Docker smoke:
 - idempotency key reuse with a different payload returns conflict.
 - one active position, one active close command, and no position/withdrawal overlap are enforced at the API/store layer.
 
-Live execution is behind `TICK_REAL_EXECUTION_ENABLED`. When enabled, the worker decrypts the user's platform wallet key, auto-approves USDC if needed, signs from that user wallet, and races identical raw bytes through the configured `ARB_RPC_URL` and Arbitrum's direct sequencer. It keeps the useful local-MVP speed work: persistent providers, per-wallet nonce and allowance caches, a short-lived shared fee cache, fixed hot-path gas limits, and deterministic tx hashes.
+Live execution is behind `TICK_REAL_EXECUTION_ENABLED`. When enabled, the worker decrypts the user's platform wallet key for one-time delegation, allowance, and withdrawal operations. Normal gTrade opens and closes are wrapped in `delegatedTradingAction`, signed by the platform execution agent, and leave collateral, position ownership, and PnL on the user's wallet. Identical signed bytes race through the configured `ARB_RPC_URL` and Arbitrum's direct sequencer. The worker keeps both write transports warm, persistent providers, a process-wide sender nonce coordinator, allowance/delegate caches, a short-lived shared fee cache, fixed hot-path gas limits, and deterministic transaction hashes.
 
 The worker keeps one direct Arbitrum callback stream and one normalized Gains
 event stream for all active TICK users. Events are correlated by wallet, pair,
@@ -80,11 +82,40 @@ normalized Gains stream is a fallback, and delayed `/open-trades` reads are
 recovery. Close is committed when venue execution is observed; wallet PnL
 reconciliation follows outside the exposure-critical path.
 
-The quote endpoint also schedules wallet preparation before the gesture. The
-worker warms that user's pending nonce and allowance, tracks the wallet on the
-shared event stream, and automatically submits the configured max USDC
-approval when the requested collateral is not already covered. Market metadata,
-live prices, and fee inputs are warmed at process level.
+The quote endpoint also schedules wallet preparation before the gesture. This
+background job observes balance, allowance, and delegate state, tracks the
+wallet on the shared event stream, and completes missing one-time setup. It does
+not hold the user's lock while merely reading ready state, and a normal
+delegated open does not block on balance, allowance, or delegate RPC reads.
+Known insufficient prepared balance still fails locally; otherwise the gTrade
+contract remains the atomic collateral and permission validator. Market
+metadata, live prices, and fee inputs are warmed at process level.
+
+July 28 local delegated canary after removing preparation from the hot path:
+
+- `$15` BTC/USD long at `100x`, `$2` venue stop, one-second hold.
+- API acceptance: `23.7ms`.
+- Connector wallet preparation: `2.0ms`.
+- Transaction response: `1.10s`; receipt observed at `1.56s`.
+- Direct gTrade open callback: `2.11s` from connector start.
+- Position visible through a `100ms` polling canary: `2.28s`.
+- Close visible: `2.67s` in this sample.
+- User wallet paid no ETH; agent nonces were serialized process-wide.
+- Venue cash flow and wallet reconciliation produced a final `-$1.305076`.
+
+The first platform-agent version regressed visible open to `3.35s`. Removing
+the blocking balance read and quote-preparation lock contention returned it to
+`2.28s`, effectively the same as the previous direct-signing baseline
+(`2.26s`). This was a regression fix, not a new protocol-speed improvement.
+The remaining local latency is transaction transport/receipt propagation plus
+the venue oracle callback, so deployed-region RPC measurements are required
+before setting an SLO.
+
+The worker also primes the direct-sequencer TLS session at startup and refreshes
+it every ten seconds. A local cold request spent `0.58-0.85s` in connection/TLS
+setup, while a request reusing the same connection took about `0.19s`. This
+removes the first-open-after-idle penalty; it does not change gTrade's oracle
+callback latency.
 
 The next hardening work is withdrawal controls in the PWA, asynchronous
 treasury collection of reserved USDC gas charges, and deployment canaries for
@@ -114,6 +145,9 @@ Runtime shape follows the ARQ/FastAPI boilerplate pattern, but reduced to the pi
 - Signed Arbitrum writes race the configured RPC and direct sequencer using
   identical raw bytes; reads, receipts, and recovery remain on the configured
   provider.
+- One worker process currently owns the shared platform-agent nonce stream.
+  Multi-process execution requires agent sharding or a durable nonce lease
+  before horizontal scaling.
 
 The execution attempt stores its deterministic transaction hash and nonce
 before either write request. Route winner and per-route response timings are

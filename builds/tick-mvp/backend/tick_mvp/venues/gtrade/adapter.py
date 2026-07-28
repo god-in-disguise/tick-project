@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any
+from typing import Any, Callable
 
 from tick_mvp.core.config import Settings
 from tick_mvp.domain.states import TradeSide
@@ -101,8 +101,13 @@ class GTradeVenue:
         *,
         private_key_hex: str,
         required_collateral_usd: Decimal,
+        ensure_transaction_gas: Callable[[], Any] | None = None,
     ) -> dict[str, Any]:
-        return self._wallet.prepare_wallet(private_key_hex, required_collateral_usd)
+        return self._wallet.prepare_wallet(
+            private_key_hex,
+            required_collateral_usd,
+            ensure_transaction_gas=ensure_transaction_gas,
+        )
 
     def markets(self, *, limit: int = 10) -> dict[str, Any]:
         return self._public.markets(limit=limit)

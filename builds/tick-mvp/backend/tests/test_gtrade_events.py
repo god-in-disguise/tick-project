@@ -9,6 +9,7 @@ from eth_abi import encode
 
 from tick_mvp.core.config import Settings
 from tick_mvp.domain.states import PositionStatus
+from tick_mvp.infrastructure.evm_nonce import EVM_NONCES
 from tick_mvp.venues.gtrade.events import GTradeEventStream
 from tick_mvp.venues.gtrade.onchain_events import (
     MARKET_EXECUTED_DATA_TYPES,
@@ -251,7 +252,8 @@ def test_open_confirmation_uses_actual_venue_risk_levels() -> None:
 
 
 def test_wallet_preparation_caches_nonce_and_existing_allowance(monkeypatch) -> None:
-    wallet = GTradeWalletExecutor(Settings())
+    EVM_NONCES.invalidate(OWNER_A)
+    wallet = GTradeWalletExecutor(Settings(gas_payer_mode="user_wallet"))
     web3 = SimpleNamespace(
         eth=SimpleNamespace(
             get_transaction_count=lambda _address, _state: 12,
@@ -262,17 +264,37 @@ def test_wallet_preparation_caches_nonce_and_existing_allowance(monkeypatch) -> 
     monkeypatch.setattr(wallet._events, "start", lambda: None)
     monkeypatch.setattr(wallet, "_usdc_allowance", lambda _web3, _address: Decimal("100"))
     monkeypatch.setattr(wallet, "_usdc_balance", lambda _web3, _address: Decimal("42.76"))
+    monkeypatch.setattr(wallet, "_web3", lambda: web3)
 
     result = wallet.prepare_wallet("0x" + "1" * 64, Decimal("10"))
 
     assert result["allowanceReady"] is True
     assert result["approvalSubmitted"] is False
-    assert wallet._nonce_cache[OWNER_A.lower()] == 12
+    assert EVM_NONCES.peek(OWNER_A) == 12
     assert wallet._allowance_cache[OWNER_A.lower()] == Decimal("100")
 
 
-def test_wallet_preparation_approves_once_before_the_trade(monkeypatch) -> None:
+def test_sequencer_warmer_reuses_provider_transport(monkeypatch) -> None:
     wallet = GTradeWalletExecutor(Settings())
+    requests: list[tuple[str, list[object]]] = []
+    sequencer = SimpleNamespace(
+        provider=SimpleNamespace(
+            make_request=lambda method, params: requests.append((method, params))
+        )
+    )
+    monkeypatch.setattr(wallet, "_sequencer", lambda: sequencer)
+
+    wallet._warm_sequencer_connection()
+    wallet._warm_sequencer_connection()
+
+    assert requests == [
+        ("eth_chainId", []),
+        ("eth_chainId", []),
+    ]
+
+
+def test_wallet_preparation_approves_once_before_the_trade(monkeypatch) -> None:
+    wallet = GTradeWalletExecutor(Settings(gas_payer_mode="user_wallet"))
     web3 = SimpleNamespace(
         eth=SimpleNamespace(
             get_transaction_count=lambda _address, _state: 12,
@@ -283,6 +305,7 @@ def test_wallet_preparation_approves_once_before_the_trade(monkeypatch) -> None:
     monkeypatch.setattr(wallet._events, "start", lambda: None)
     monkeypatch.setattr(wallet, "_usdc_allowance", lambda _web3, _address: Decimal("0"))
     monkeypatch.setattr(wallet, "_usdc_balance", lambda _web3, _address: Decimal("42.76"))
+    monkeypatch.setattr(wallet, "_web3", lambda: web3)
     monkeypatch.setattr(wallet, "_prepare_tx_params", lambda _web3, _address: (12, {}))
     monkeypatch.setattr(
         wallet,
@@ -298,11 +321,102 @@ def test_wallet_preparation_approves_once_before_the_trade(monkeypatch) -> None:
         ),
     )
 
-    result = wallet.prepare_wallet("0x" + "1" * 64, Decimal("10"))
+    gas_requests: list[bool] = []
+    result = wallet.prepare_wallet(
+        "0x" + "1" * 64,
+        Decimal("10"),
+        ensure_transaction_gas=lambda: gas_requests.append(True),
+    )
 
     assert result["allowanceReady"] is True
     assert result["approvalSubmitted"] is True
     assert wallet._allowance_cache[OWNER_A.lower()] > Decimal("10")
+    assert gas_requests == [True]
+
+
+def test_delegated_trading_wraps_call_and_uses_platform_agent(monkeypatch) -> None:
+    wallet = GTradeWalletExecutor(
+        Settings(
+            gas_payer_mode="platform_agent",
+            platform_gas_wallet_private_key="0x" + "2" * 64,
+        )
+    )
+    agent = SimpleNamespace(address=OWNER_B)
+    delegated_call = object()
+    captured: dict[str, object] = {}
+
+    class Functions:
+        def delegatedTradingAction(self, trader, call_data):
+            captured["trader"] = trader
+            captured["callData"] = call_data
+            return delegated_call
+
+    monkeypatch.setattr(wallet, "_agent", lambda: agent)
+    monkeypatch.setattr(wallet, "_current_delegate", lambda _trader: OWNER_B)
+    monkeypatch.setattr(
+        wallet,
+        "_trading",
+        lambda _web3: SimpleNamespace(functions=Functions()),
+    )
+    monkeypatch.setattr(wallet, "_web3", lambda: object())
+    monkeypatch.setattr(
+        wallet,
+        "_send",
+        lambda account, address, fn, **_kwargs: VenueTxResult(
+            status="confirmed",
+            tx_hash="0xabc",
+            nonce=8,
+            block_number=10,
+            gas_used=100,
+            effective_gas_price=20,
+            payload={"label": "open", "gasPayer": address},
+        ),
+    )
+
+    result = wallet._send_trading_action(
+        trader_account=object(),
+        trader_address=OWNER_A,
+        fn=SimpleNamespace(_encode_transaction_data=lambda: "0x1234"),
+        label="open",
+        gas=1,
+        prepared=None,
+        on_transaction_prepared=None,
+    )
+
+    assert captured == {"trader": OWNER_A, "callData": b"\x12\x34"}
+    assert result.payload["delegated"] is True
+    assert result.payload["trader"] == OWNER_A
+    assert result.payload["gasPayer"] == OWNER_B
+
+
+def test_prepared_delegated_wallet_does_not_request_user_gas(monkeypatch) -> None:
+    wallet = GTradeWalletExecutor(
+        Settings(
+            gas_payer_mode="platform_agent",
+            platform_gas_wallet_private_key="0x" + "2" * 64,
+        )
+    )
+    web3 = object()
+    gas_requests: list[bool] = []
+
+    monkeypatch.setattr(wallet, "_account", lambda _key: (object(), OWNER_A, web3))
+    monkeypatch.setattr(wallet._events, "track_owner", lambda _owner: None)
+    monkeypatch.setattr(wallet._events, "start", lambda: None)
+    monkeypatch.setattr(wallet, "execution_agent_address", lambda: OWNER_B)
+    monkeypatch.setattr(wallet, "_current_delegate", lambda _trader: OWNER_B)
+    monkeypatch.setattr(wallet, "_usdc_allowance", lambda _web3, _address: Decimal("100"))
+    monkeypatch.setattr(wallet, "_usdc_balance", lambda _web3, _address: Decimal("42.76"))
+
+    result = wallet.prepare_wallet(
+        "0x" + "1" * 64,
+        Decimal("10"),
+        ensure_transaction_gas=lambda: gas_requests.append(True),
+    )
+
+    assert result["delegationReady"] is True
+    assert result["allowanceReady"] is True
+    assert result["gasTransactions"] == []
+    assert gas_requests == []
 
 
 def test_terminal_event_distinguishes_stop_loss_from_liquidation() -> None:

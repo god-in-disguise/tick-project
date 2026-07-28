@@ -129,8 +129,8 @@ class DualBroadcaster:
             race.select(observed)
             return race
 
-        errors = ", ".join(
-            f"{route}={outcome.error_type}"
+        errors = "; ".join(
+            f"{route}={outcome.error_type}: {outcome.error}"
             for route, outcome in sorted(race._outcomes.items())
         )
         raise BroadcastError(f"all Arbitrum write routes failed ({errors or 'unknown errors'})")
@@ -161,12 +161,13 @@ def _run_route(
             error=_safe_error(exc),
         )
     LOGGER.info(
-        "Arbitrum broadcast route completed route=%s status=%s elapsedMs=%.1f txHash=%s errorType=%s",
+        "Arbitrum broadcast route completed route=%s status=%s elapsedMs=%.1f txHash=%s errorType=%s error=%s",
         outcome.route,
         outcome.status,
         outcome.elapsed_ms,
         outcome.tx_hash,
         outcome.error_type,
+        outcome.error,
     )
     return outcome
 

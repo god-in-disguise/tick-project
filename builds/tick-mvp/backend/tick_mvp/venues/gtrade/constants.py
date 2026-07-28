@@ -69,6 +69,30 @@ TRADING_ABI = [
         "stateMutability": "nonpayable",
         "type": "function",
     },
+    {
+        "inputs": [{"name": "delegate", "type": "address"}],
+        "name": "setTradingDelegate",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
+    {
+        "inputs": [{"name": "trader", "type": "address"}],
+        "name": "getTradingDelegate",
+        "outputs": [{"name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [
+            {"name": "trader", "type": "address"},
+            {"name": "callData", "type": "bytes"},
+        ],
+        "name": "delegatedTradingAction",
+        "outputs": [{"name": "", "type": "bytes"}],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
 ]
 
 ERC20_ABI = [

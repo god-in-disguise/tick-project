@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from tick_mvp.core.config import Settings
 from tick_mvp.infrastructure.arbitrum_broadcast import DualBroadcaster
+from tick_mvp.infrastructure.evm_nonce import EVM_NONCES
 from tick_mvp.wallets.repository import WithdrawalContext
 
 
@@ -74,35 +75,42 @@ class ArbitrumUSDCTransferExecutor:
         raw_transaction: bytes
         expected_tx_hash: str
         nonce: int
-
-        if context.signed_raw_transaction:
-            raw_transaction = bytes.fromhex(
-                context.signed_raw_transaction.removeprefix("0x")
-            )
-            expected_tx_hash = _normalize_hash(web3.keccak(raw_transaction).hex())
-            if context.tx_hash and expected_tx_hash != _normalize_hash(context.tx_hash):
-                raise WithdrawalAmbiguous("stored signed transaction hash does not match")
-            if context.nonce is None:
-                raise WithdrawalAmbiguous("stored signed transaction has no nonce")
-            nonce = context.nonce
-        else:
-            raw_transaction, expected_tx_hash, nonce = self._prepare(context, web3)
-            on_prepared(
-                expected_tx_hash,
-                nonce,
-                f"0x{raw_transaction.hex()}",
-            )
-
+        sender = web3.to_checksum_address(context.wallet_address)
         started = time.perf_counter()
-        race = self._broadcaster.broadcast(
-            raw_transaction=raw_transaction,
-            expected_tx_hash=expected_tx_hash,
-            primary_web3=web3,
-            sequencer_web3=self._sequencer(),
-        )
-        broadcast_at = time.perf_counter()
-        race.wait_for_outcomes(timeout=0.02)
-        on_broadcast(expected_tx_hash, race.payload())
+        with EVM_NONCES.sender_lock(sender):
+            try:
+                if context.signed_raw_transaction:
+                    raw_transaction = bytes.fromhex(
+                        context.signed_raw_transaction.removeprefix("0x")
+                    )
+                    expected_tx_hash = _normalize_hash(web3.keccak(raw_transaction).hex())
+                    if context.tx_hash and expected_tx_hash != _normalize_hash(context.tx_hash):
+                        raise WithdrawalAmbiguous("stored signed transaction hash does not match")
+                    if context.nonce is None:
+                        raise WithdrawalAmbiguous("stored signed transaction has no nonce")
+                    nonce = context.nonce
+                    EVM_NONCES.observe(sender, nonce)
+                else:
+                    raw_transaction, expected_tx_hash, nonce = self._prepare(context, web3)
+                    on_prepared(
+                        expected_tx_hash,
+                        nonce,
+                        f"0x{raw_transaction.hex()}",
+                    )
+
+                race = self._broadcaster.broadcast(
+                    raw_transaction=raw_transaction,
+                    expected_tx_hash=expected_tx_hash,
+                    primary_web3=web3,
+                    sequencer_web3=self._sequencer(),
+                )
+                broadcast_at = time.perf_counter()
+                race.wait_for_outcomes(timeout=0.02)
+                on_broadcast(expected_tx_hash, race.payload())
+            except Exception:
+                EVM_NONCES.invalidate(sender)
+                raise
+
         receipt = web3.eth.wait_for_transaction_receipt(
             expected_tx_hash,
             timeout=90,
@@ -151,19 +159,14 @@ class ArbitrumUSDCTransferExecutor:
         destination = web3.to_checksum_address(context.destination_address)
         amount_units = _amount_units(context.amount)
         contract = self._usdc(web3)
+        nonce = EVM_NONCES.reserve(web3, address)
 
-        with ThreadPoolExecutor(max_workers=4, thread_name_prefix="withdrawal-read") as executor:
-            nonce_future = executor.submit(
-                web3.eth.get_transaction_count,
-                address,
-                "pending",
-            )
+        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="withdrawal-read") as executor:
             fee_future = executor.submit(_fee_params, web3)
             usdc_future = executor.submit(
                 contract.functions.balanceOf(address).call,
             )
             native_future = executor.submit(web3.eth.get_balance, address)
-            nonce = int(nonce_future.result())
             fee_params = fee_future.result()
             usdc_balance = int(usdc_future.result())
             native_balance = int(native_future.result())

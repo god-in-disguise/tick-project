@@ -59,21 +59,33 @@ class ExecutionService:
             wallet_id, wallet_address, private_key_hex = (
                 self._repository.load_user_wallet_context(user_id)
             )
-            gas = self._gas_funding.ensure_funded(
-                user_id=user_id,
-                wallet_id=wallet_id,
-                wallet_address=wallet_address,
-            )
         else:
             wallet_address, private_key_hex = (
                 self._repository.load_user_wallet_credentials(user_id)
             )
+            wallet_id = ""
         prepare = getattr(self._venue, "prepare_wallet", None)
         if prepare is None:
             return {"userId": user_id, "status": "unsupported"}
+
+        def ensure_transaction_gas() -> dict[str, object]:
+            nonlocal gas
+            if gas is None:
+                gas = self._gas_funding.ensure_funded(
+                    user_id=user_id,
+                    wallet_id=wallet_id,
+                    wallet_address=wallet_address,
+                )
+            return gas
+
         result = prepare(
             private_key_hex=private_key_hex,
             required_collateral_usd=required_collateral_usd,
+            ensure_transaction_gas=(
+                ensure_transaction_gas
+                if self._settings.tick_real_execution_enabled
+                else None
+            ),
         )
         raw_balance = _decimal_or_none(result.get("collateralBalanceUsd"))
         if raw_balance is not None:
@@ -103,7 +115,8 @@ class ExecutionService:
                 "reason": "TICK_REAL_EXECUTION_ENABLED=false",
             }
         try:
-            self._ensure_execution_gas(context)
+            if self._settings.gas_payer_mode.strip().lower() == "user_wallet":
+                self._ensure_execution_gas(context)
             if context.action == TradeAction.OPEN:
                 self._require_open_balance(context)
             result = self._execute_live(context)
@@ -194,10 +207,12 @@ class ExecutionService:
     def _require_open_balance(self, context: ExecutionContext) -> None:
         raw_balance = self._cached_balance(context.user_id)
         if raw_balance is None:
-            raw_balance = self._venue.collateral_balance_usd(
-                private_key_hex=context.private_key_hex
+            LOGGER.info(
+                "open balance preflight skipped userId=%s executionAttemptId=%s reason=no_prepared_snapshot",
+                context.user_id,
+                context.execution_id,
             )
-            self._remember_balance(context.user_id, raw_balance)
+            return
         self._require_spendable(
             user_id=context.user_id,
             required_usdc=context.ticket_usd,
@@ -231,6 +246,7 @@ class ExecutionService:
             gas_used=tx.gas_used,
             effective_gas_price=tx.effective_gas_price,
             operation=context.action.value,
+            gas_payer_address=tx.payload.get("gasPayer"),
         )
         if primary is not None:
             transactions.append(primary)
@@ -265,7 +281,10 @@ class ExecutionService:
         wallet_address: str,
     ) -> None:
         for transaction in transactions:
-            self._gas_funding.note_spent(wallet_address, transaction.native_cost)
+            self._gas_funding.note_spent(
+                transaction.gas_payer_address or wallet_address,
+                transaction.native_cost,
+            )
             try:
                 self._gas_accounting.charge(
                     user_id=user_id,

@@ -10,6 +10,7 @@ from typing import Any, Callable
 from tick_mvp.core.config import Settings, get_settings
 from tick_mvp.domain.states import GasTopupStatus
 from tick_mvp.infrastructure.arbitrum_broadcast import DualBroadcaster
+from tick_mvp.infrastructure.evm_nonce import EVM_NONCES
 from tick_mvp.wallets.gas_repository import GasTopupContext, GasTopupRepository
 
 
@@ -37,7 +38,6 @@ class ArbitrumGasTopupExecutor:
         self._read_web3 = None
         self._sequencer_web3 = None
         self._broadcaster = DualBroadcaster()
-        self._nonce_lock = threading.RLock()
 
     @property
     def platform_address(self) -> str:
@@ -59,45 +59,39 @@ class ArbitrumGasTopupExecutor:
         on_prepared: PreparedHandler,
         on_broadcast: BroadcastHandler,
     ) -> GasTopupResult:
-        with self._nonce_lock:
-            return self._transfer_locked(
-                context,
-                on_prepared=on_prepared,
-                on_broadcast=on_broadcast,
-            )
-
-    def _transfer_locked(
-        self,
-        context: GasTopupContext,
-        *,
-        on_prepared: PreparedHandler,
-        on_broadcast: BroadcastHandler,
-    ) -> GasTopupResult:
         web3 = self._web3()
-        if context.signed_raw_transaction:
-            raw_transaction = bytes.fromhex(
-                context.signed_raw_transaction.removeprefix("0x")
-            )
-            tx_hash = _normalize_hash(web3.keccak(raw_transaction).hex())
-            if context.tx_hash and tx_hash != _normalize_hash(context.tx_hash):
-                raise GasFundingError("stored gas top-up transaction hash does not match")
-            if context.nonce is None:
-                raise GasFundingError("stored gas top-up transaction has no nonce")
-            nonce = context.nonce
-        else:
-            raw_transaction, tx_hash, nonce = self._prepare(context, web3)
-            on_prepared(tx_hash, nonce, f"0x{raw_transaction.hex()}")
-
         started = time.perf_counter()
-        race = self._broadcaster.broadcast(
-            raw_transaction=raw_transaction,
-            expected_tx_hash=tx_hash,
-            primary_web3=web3,
-            sequencer_web3=self._sequencer(),
-        )
-        broadcast_at = time.perf_counter()
-        race.wait_for_outcomes(timeout=0.02)
-        on_broadcast(tx_hash, race.payload())
+        sender = web3.to_checksum_address(self.platform_address)
+        with EVM_NONCES.sender_lock(sender):
+            try:
+                if context.signed_raw_transaction:
+                    raw_transaction = bytes.fromhex(
+                        context.signed_raw_transaction.removeprefix("0x")
+                    )
+                    tx_hash = _normalize_hash(web3.keccak(raw_transaction).hex())
+                    if context.tx_hash and tx_hash != _normalize_hash(context.tx_hash):
+                        raise GasFundingError("stored gas top-up transaction hash does not match")
+                    if context.nonce is None:
+                        raise GasFundingError("stored gas top-up transaction has no nonce")
+                    nonce = context.nonce
+                    EVM_NONCES.observe(sender, nonce)
+                else:
+                    raw_transaction, tx_hash, nonce = self._prepare(context, web3)
+                    on_prepared(tx_hash, nonce, f"0x{raw_transaction.hex()}")
+
+                race = self._broadcaster.broadcast(
+                    raw_transaction=raw_transaction,
+                    expected_tx_hash=tx_hash,
+                    primary_web3=web3,
+                    sequencer_web3=self._sequencer(),
+                )
+                broadcast_at = time.perf_counter()
+                race.wait_for_outcomes(timeout=0.02)
+                on_broadcast(tx_hash, race.payload())
+            except Exception:
+                EVM_NONCES.invalidate(sender)
+                raise
+
         receipt = web3.eth.wait_for_transaction_receipt(
             tx_hash,
             timeout=90,
@@ -141,7 +135,7 @@ class ArbitrumGasTopupExecutor:
         amount_wei = int(context.amount_native * Decimal(10**18))
         if amount_wei <= 0:
             raise GasFundingError("gas top-up amount must be positive")
-        nonce = int(web3.eth.get_transaction_count(account.address, "pending"))
+        nonce = EVM_NONCES.reserve(web3, account.address)
         fee_params = _fee_params(web3)
         max_cost = amount_wei + (
             self._settings.gas_topup_transfer_gas * fee_params["maxFeePerGas"]

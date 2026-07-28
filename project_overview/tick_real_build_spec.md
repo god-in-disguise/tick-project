@@ -57,7 +57,7 @@ These decisions override the older two-venue-start and Ostium-first language in 
 | User positions | One active position and one in-flight command per user in V1. |
 | Scanner gating | Main TICK feed blocks opening unless cost coverage, freshness, venue health, and risk checks pass. |
 | Wallet model | Current MVP uses Google login and platform-created Arbitrum wallets with encrypted Postgres key material. This is deliberate for the demo/private MVP, not a final broad-public custody architecture. |
-| Wallet execution | V1 uses one platform-created Arbitrum wallet per user. The backend stores its encrypted key, signs only validated user intents, and prepares nonce, allowance, gas, and event tracking before the gesture. Delegated execution remains a future option where it materially improves gas sponsorship or wallet portability. |
+| Wallet execution | V1 uses one platform-created Arbitrum wallet per user plus a TICK execution agent. The user wallet owns collateral and positions; after one-time delegation and allowance setup, the agent submits normal gTrade opens/closes and pays ETH gas. TICK charges actual gas to the user's spendable-USDC ledger. |
 | Allowance | Max allowance is local/internal only. External users should get bounded allowance or explicit revocation, unless the cohort is intentionally founder/demo wallets. |
 | Build strategy | Strangler-style extraction. Preserve the working gTrade behavior and mobile loop, but move execution truth to Postgres, durable workers, event journals, and a single reducer. |
 
@@ -452,17 +452,20 @@ Current MVP decision:
 - backend creates a per-user Arbitrum wallet
 - private key is encrypted before storage in Postgres using an env encryption key
 - user deposits Arbitrum USDC to that wallet
-- backend executes approved wallet/setup/withdrawal actions through workers
-- platform pays gas where possible and records USDC gas charges
+- backend completes one-time gTrade delegation/allowance setup through workers
+- normal gTrade opens/closes are signed by the TICK execution agent while the user wallet remains owner
+- platform pays ETH gas and records actual USDC gas charges
+- withdrawals remain signed by the user's platform-created wallet
 
 Current implementation status:
 
 - Arbitrum USDC withdrawal requests are persisted and serialized against active positions.
 - The worker encrypts and persists the exact signed transaction before broadcast, then reuses the same bytes and hash during recovery.
 - Confirmed withdrawals append a wallet-sourced ledger event.
-- TICK automatically tops low user wallets up from a dedicated platform ETH wallet. Users only deposit and see USDC.
+- TICK automatically tops up low user wallets only when setup or withdrawal requires a user-wallet transaction. Normal delegated opens/closes spend agent ETH. Users only deposit and see USDC.
 - Actual confirmed approval/open/close/withdrawal gas is converted through the Arbitrum Chainlink ETH/USD feed and reserved from spendable USDC in an idempotent ledger event keyed by transaction hash.
 - Platform top-up overhead is absorbed by TICK. Reserved USDC treasury collection runs asynchronously and never blocks open or close.
+- A process-wide nonce coordinator serializes all current senders across setup, delegated trading, top-ups, and withdrawals. V1 runs one execution worker; horizontal execution scaling requires agent sharding or a durable nonce lease.
 
 This is simpler for a private MVP and investor demo because users do not need to understand wallets, ETH gas, delegates, or allowances. It also creates custody/security obligations, so it should not be described as production-grade public custody until signing isolation, withdrawal controls, revocation, limits, monitoring, and incident handling are hardened.
 
@@ -1217,7 +1220,7 @@ These are the remaining product/architecture choices that should be settled befo
 - Custody boundary after the private MVP: keep platform-created wallets, move to embedded/self-custody, or support both.
 - PWA versus native after the investor/team build: PWA is fastest to share, but Expo/native remains the best reference for gestures, haptics, and notifications.
 - External 500x policy: internal/demo mode is allowed; broader user access needs explicit eligibility, native stops, and visible cost/liquidation terms.
-- Wallet signing model: direct platform wallet signing, delegated per-user agents, or a hybrid where the wallet owns funds and the agent pays gas for venue actions.
+- Custody/signing provider after the private MVP: preserve the same wallet repository boundary if platform-encrypted keys move to Privy, KMS-backed signing, or embedded self-custody.
 - Allowance and revocation UX: founder/demo can use max allowance, but broader users need a clear permission screen and revocation path.
 - Scanner gate strictness: whether demo mode can override tradeability checks, and how clearly that is separated from real-money production mode.
 - First second venue: Lighter, Aster, Pacifica, GMTrade, or Ostium should remain shadow/research until the gTrade lifecycle passes canary certification.

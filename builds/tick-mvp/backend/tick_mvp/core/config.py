@@ -60,6 +60,10 @@ class Settings:
     gtrade_fixed_open_gas: int = 2_300_000
     gtrade_fixed_close_gas: int = 2_000_000
     gtrade_fixed_approve_gas: int = 100_000
+    gtrade_fixed_delegate_gas: int = 120_000
+    gtrade_delegated_open_gas: int = 2_700_000
+    gtrade_delegated_close_gas: int = 2_400_000
+    gtrade_delegate_cache_seconds: float = 300.0
 
     aark_api_url: str = "https://api.aark.digital"
     aark_ws_url: str = "wss://ws-api.aark.digital"
@@ -144,6 +148,19 @@ def get_settings() -> Settings:
         gtrade_fixed_open_gas=_int_env("GTRADE_OPEN_GAS", 2_300_000),
         gtrade_fixed_close_gas=_int_env("GTRADE_CLOSE_GAS", 2_000_000),
         gtrade_fixed_approve_gas=_int_env("GTRADE_APPROVE_GAS", 100_000),
+        gtrade_fixed_delegate_gas=_int_env("GTRADE_DELEGATE_GAS", 120_000),
+        gtrade_delegated_open_gas=_int_env(
+            "GTRADE_DELEGATED_OPEN_GAS",
+            2_700_000,
+        ),
+        gtrade_delegated_close_gas=_int_env(
+            "GTRADE_DELEGATED_CLOSE_GAS",
+            2_400_000,
+        ),
+        gtrade_delegate_cache_seconds=_float_env(
+            "GTRADE_DELEGATE_CACHE_SECONDS",
+            300.0,
+        ),
         aark_api_url=os.getenv("AARK_API_URL", "https://api.aark.digital"),
         aark_ws_url=os.getenv("AARK_WS_URL", "wss://ws-api.aark.digital"),
         aark_mode=os.getenv("AARK_MODE", "AARK"),

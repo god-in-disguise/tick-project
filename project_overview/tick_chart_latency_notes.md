@@ -156,10 +156,13 @@ July 27 identical-byte dual-write canaries from the local Docker backend:
 - 100x close worker total: `1.479s`; visible through polling in `1.649s`
 
 The direct sequencer was cold on each first open and warm by the corresponding
-close. The fixed race therefore preserves the commercial RPC's warm-open path
-while allowing the sequencer to remove roughly `220-300ms` when it wins. These
-are development-machine samples; repeat the same trace from the deployed
-backend region before setting an SLO.
+close. A cold local request later measured `0.58-0.85s` in connection/TLS setup,
+while a request reusing the same connection took about `0.19s`. The worker now
+primes that transport at startup and sends a harmless keepalive every ten
+seconds. The fixed race preserves the commercial RPC fallback while allowing
+the sequencer to remove roughly `220-300ms` when it wins. These are
+development-machine samples; repeat the same trace from the deployed backend
+region before setting an SLO.
 
 The initial backend waited `4.49s` for the normalized close event even though
 the economic close callback was already onchain. The current worker therefore
@@ -195,9 +198,37 @@ therefore pre-arms direct callback and normalized venue events, removes wallet
 preparation from the gesture path, and races those event sources against
 delayed REST recovery.
 
+July 28 delegated-agent hot-path correction:
+
+- The first extracted-agent canary showed `3.35s` visible open.
+- A cold execution-service balance cache caused a redundant Arbitrum USDC read.
+- The quote-triggered preparation job also held the per-user lock for about
+  `0.7-0.8s` while reading balance, allowance, and delegate state.
+- Both reads were removed from the normal delegated gesture path.
+- A subsequent canary showed `2.28s` visible open, removing the regression but
+  only returning to the prior direct-signing baseline of about `2.26s`.
+- Connector preparation was `2.0ms`, confirming local preparation is no longer
+  the bottleneck.
+- The remaining sample comprised `1.10s` write response, receipt at `1.56s`,
+  direct callback at `2.11s`, and roughly `0.17s` API/poll delivery.
+
+A same-machine, same-RPC A/B then temporarily returned to direct user-wallet
+signing. Its open was slower (`3.65s`) and close was faster (`1.85s`), so the
+delegated wrapper was not the systematic delay. Yesterday's fastest direct
+open and today's corrected delegated open both used four Arbitrum blocks from
+initiation to callback. Prepared-to-callback time was `1.73s` yesterday versus
+`2.10s` today, a `0.37s` sample difference inside transaction inclusion and
+block/callback timing rather than local preparation.
+
+Balance, allowance, and delegation are still prepared before trading and
+observed in the background. A known insufficient prepared balance fails
+locally. If the in-memory snapshot is cold, the contract is the atomic
+collateral/permission validator instead of paying an extra RPC round trip
+before every risk-bearing request.
+
 Implementation order:
 
-1. Keep the configured primary RPC warm.
+1. Keep both the configured primary RPC and direct-sequencer TLS session warm.
 2. Keep nonce, fee, allowance, and price state warm per active wallet/market.
 3. Persist the deterministic hash before broadcasting identical signed bytes.
 4. Race the commercial RPC and direct sequencer for transaction submission.

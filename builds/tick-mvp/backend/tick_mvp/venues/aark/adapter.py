@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any
+from typing import Any, Callable
 
 from tick_mvp.core.config import Settings
 from tick_mvp.domain.states import TradeSide
@@ -108,6 +108,7 @@ class AarkVenue:
         *,
         private_key_hex: str,
         required_collateral_usd: Decimal,
+        ensure_transaction_gas: Callable[[], Any] | None = None,
     ) -> dict[str, Any]:
         return self._wallet.prepare_wallet(private_key_hex, required_collateral_usd)
 
@@ -119,4 +120,3 @@ class AarkVenue:
 
     def tape(self, market: str, *, since: int) -> dict[str, Any]:
         return self._public.tape(market, since=since)
-

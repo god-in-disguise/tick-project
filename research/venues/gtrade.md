@@ -55,7 +55,7 @@ ETH/USD         200x
 
 The 500x degen crypto group has a minimum notional of about $5,000, so at 500x the minimum collateral is about $10. Normal BTC/ETH at 200x have a minimum notional of about $2,857, so the minimum collateral is about $14.29.
 
-The local test wallet progressed beyond dry calls. TICK opened and closed real BTCDEGEN/USD 500x positions, tested delegated execution, tested venue stops, observed real fee drag, and measured the difference between initiation confirmation, venue callback, UI state, and final wallet delta.
+The local test wallet progressed beyond dry calls. TICK opened and closed real BTCDEGEN/USD 500x and BTC/USD 100x positions, tested delegated execution, tested venue stops, observed real fee drag, and measured the difference between initiation confirmation, venue callback, UI state, and final wallet delta.
 
 Representative lessons:
 
@@ -69,13 +69,40 @@ close visibility: improved after cache-first close, but still needs direct event
 
 The exact numbers vary by sample, market, route, RPC, and oracle callback timing. Do not use one canary as a production SLA.
 
+July 28 production-backend extraction sample:
+
+```text
+$15 BTC/USD long, 100x, $2 venue stop
+API acceptance:                   23.7 ms
+local wallet preparation:          2.0 ms
+write RPC response:             1,099.1 ms
+receipt observed:               1,561.7 ms
+direct open callback:           2,110.4 ms
+position visible to canary:     2,277.4 ms
+close visible to canary:        2,673.2 ms
+final wallet result:              -$1.305076
+```
+
+The first platform-agent implementation regressed visible open to `3.35s`.
+Removing a redundant balance RPC and quote-preparation lock contention returned
+the path to `2.28s`, effectively the same as the previous direct-signing
+baseline (`2.26s`). This restored the old speed; it did not make the venue
+faster. In the corrected trace, local preparation was no longer material.
+
+The next transport audit found one remaining local warm-up regression: the
+primary RPC was kept active by fee refreshes, but the direct-sequencer provider
+was lazy and could lose its TLS connection between trades. Cold TLS measured
+`0.58-0.85s`; connection reuse measured about `0.19s`. The worker now primes
+the direct sequencer at startup and keeps that session active every ten
+seconds.
+
 ## Execution Model
 
-- User connects an EVM wallet.
-- User keeps custody of collateral.
-- For direct trading, the user approves the diamond contract to spend collateral and signs trade transactions.
-- For delegated trading, the user sets a trading delegate.
-- The delegate can submit trading actions for the trader, while collateral and PnL remain tied to the trader.
+- TICK creates one Arbitrum wallet per user and encrypts its key in Postgres for the private MVP.
+- The user wallet owns collateral, positions, and PnL.
+- One-time setup approves the diamond and delegates trading to TICK's execution agent.
+- The agent submits normal opens/closes and pays ETH gas; actual gas is charged to the user's USDC ledger.
+- Setup and withdrawals still use the user-wallet signer.
 - Opens/closes emit request events first, then oracle fulfillment events.
 
 This fits TICK better than a fully custodial backend. The delegated path is useful, but it is broad authority and must be constrained by backend policy, per-user limits, allowed pairs, notional caps, and revocation UX.
