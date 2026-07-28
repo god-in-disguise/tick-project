@@ -161,7 +161,7 @@ export function Profile(props: Props) {
         <strong>{money(available)}</strong>
         <div className="wallet-actions">
           <button
-            className={available <= 0 ? "primary" : ""}
+            className="primary"
             type="button"
             onClick={() => setWalletAction("deposit")}
           >
@@ -189,7 +189,7 @@ export function Profile(props: Props) {
         </button>
       </section>
 
-      <div className="section-heading">
+      <div className="section-heading preset-heading">
         <div>
           <Settings2 size={15} />
           <strong>Active preset</strong>
@@ -213,7 +213,7 @@ export function Profile(props: Props) {
         <ChevronRight size={18} />
       </button>
 
-      <div className="section-heading">
+      <div className="section-heading history-heading">
         <div>
           <History size={15} />
           <strong>History</strong>
@@ -257,7 +257,7 @@ export function Profile(props: Props) {
         )}
       </section>
 
-      <div className="section-heading">
+      <div className="section-heading utility-heading">
         <strong>Settings</strong>
       </div>
       <section className="account-facts">
@@ -286,78 +286,84 @@ export function Profile(props: Props) {
             <h2>Trade preset</h2>
             <p>Applied automatically when you open a position.</p>
             <div className="settings-group">
-              <label>Trade amount</label>
-              <div className="segmented">
-                {[10, 20, 50, 100].map((value) => (
-                  <button
-                    key={value}
-                    className={props.settings.ticketUsd === value ? "active" : ""}
-                    onClick={() => props.onSettings({ ...props.settings, ticketUsd: value })}
-                  >
-                    ${value}
-                  </button>
-                ))}
-              </div>
-
-              <label>Leverage</label>
-              {fixedLeverage ? (
-                <div className="fixed-setting">
-                  <strong>{props.market.maxLeverage}x</strong>
-                  <span>Fixed for {props.market.symbol} DEGEN</span>
-                </div>
-              ) : (
+              <section className="preset-control-group">
+                <span className="preset-group-label">POSITION</span>
+                <label>Trade amount</label>
                 <div className="segmented">
-                  {leverageOptions.map((value) => (
+                  {[10, 20, 50, 100].map((value) => (
                     <button
                       key={value}
-                      className={props.settings.leverage === value ? "active" : ""}
-                      onClick={() => props.onSettings({ ...props.settings, leverage: value })}
+                      className={props.settings.ticketUsd === value ? "active" : ""}
+                      onClick={() => props.onSettings({ ...props.settings, ticketUsd: value })}
                     >
-                      {value}x
+                      ${value}
                     </button>
                   ))}
                 </div>
-              )}
 
-              <ProtectionSelector
-                label="Stop loss"
-                enabled={props.settings.stopLossEnabled}
-                helper="Loss budget · placed on venue"
-                value={props.settings.maxLossUsd}
-                onOff={() =>
-                  props.onSettings({
-                    ...props.settings,
-                    stopLossEnabled: false
-                  })
-                }
-                onValue={(value) =>
-                  props.onSettings({
-                    ...props.settings,
-                    stopLossEnabled: true,
-                    maxLossUsd: value
-                  })
-                }
-              />
+                <label>Leverage</label>
+                {fixedLeverage ? (
+                  <div className="fixed-setting">
+                    <strong>{props.market.maxLeverage}x</strong>
+                    <span>Fixed for {props.market.symbol} DEGEN</span>
+                  </div>
+                ) : (
+                  <div className="segmented">
+                    {leverageOptions.map((value) => (
+                      <button
+                        key={value}
+                        className={props.settings.leverage === value ? "active" : ""}
+                        onClick={() => props.onSettings({ ...props.settings, leverage: value })}
+                      >
+                        {value}x
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </section>
 
-              <ProtectionSelector
-                label="Take profit"
-                enabled={props.settings.takeProfitEnabled}
-                helper="Profit target · placed on venue"
-                value={props.settings.takeProfitUsd}
-                onOff={() =>
-                  props.onSettings({
-                    ...props.settings,
-                    takeProfitEnabled: false
-                  })
-                }
-                onValue={(value) =>
-                  props.onSettings({
-                    ...props.settings,
-                    takeProfitEnabled: true,
-                    takeProfitUsd: value
-                  })
-                }
-              />
+              <section className="preset-control-group protection-group">
+                <span className="preset-group-label">PROTECTION</span>
+                <ProtectionSelector
+                  label="Stop loss"
+                  enabled={props.settings.stopLossEnabled}
+                  helper="Loss budget · placed on venue"
+                  value={props.settings.maxLossUsd}
+                  onOff={() =>
+                    props.onSettings({
+                      ...props.settings,
+                      stopLossEnabled: false
+                    })
+                  }
+                  onValue={(value) =>
+                    props.onSettings({
+                      ...props.settings,
+                      stopLossEnabled: true,
+                      maxLossUsd: value
+                    })
+                  }
+                />
+
+                <ProtectionSelector
+                  label="Take profit"
+                  enabled={props.settings.takeProfitEnabled}
+                  helper="Profit target · placed on venue"
+                  value={props.settings.takeProfitUsd}
+                  onOff={() =>
+                    props.onSettings({
+                      ...props.settings,
+                      takeProfitEnabled: false
+                    })
+                  }
+                  onValue={(value) =>
+                    props.onSettings({
+                      ...props.settings,
+                      takeProfitEnabled: true,
+                      takeProfitUsd: value
+                    })
+                  }
+                />
+              </section>
             </div>
           </section>
         </div>,
@@ -511,7 +517,7 @@ function ProtectionSelector({
   onValue: (value: number) => void;
 }) {
   return (
-    <div className="protection-setting">
+    <div className={`protection-setting ${enabled ? "enabled" : "disabled"}`}>
       <div>
         <label>{label}</label>
         <small>{helper}</small>

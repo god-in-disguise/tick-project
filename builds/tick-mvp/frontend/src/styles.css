@@ -998,10 +998,10 @@ button:disabled {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  min-height: 70px;
+  min-height: 58px;
   margin-top: 0;
-  border: 0.5px solid var(--line);
-  border-radius: 7px;
+  border: 0;
+  border-radius: 0;
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
@@ -1048,10 +1048,11 @@ button:disabled {
 .wallet-summary {
   display: flex;
   flex-direction: column;
-  padding: 16px 0;
-  border-top: 0.5px solid var(--line);
-  border-bottom: 0.5px solid var(--line);
-  background: transparent;
+  padding: 15px 14px 13px;
+  border: 0.5px solid rgba(255, 146, 43, 0.22);
+  border-left: 2px solid var(--orange);
+  border-radius: 8px;
+  background: rgba(255, 146, 43, 0.025);
 }
 
 .wallet-summary-heading > span {
@@ -1141,7 +1142,7 @@ button:disabled {
   gap: 8px;
   min-height: 40px;
   margin-top: 9px;
-  padding: 0 10px;
+  padding: 0 2px;
   border-top: 0.5px solid var(--line);
   color: var(--muted);
   background: transparent;
@@ -1174,6 +1175,7 @@ button:disabled {
   border-radius: 8px;
   color: var(--text);
   background: var(--panel);
+  box-shadow: inset 2px 0 var(--orange);
   text-align: left;
 }
 
@@ -1243,10 +1245,29 @@ button:disabled {
   margin-top: 0;
 }
 
+.preset-control-group {
+  padding: 13px;
+  border: 0.5px solid var(--line);
+  border-radius: 8px;
+  background: rgba(5, 6, 6, 0.34);
+}
+
+.preset-control-group + .preset-control-group {
+  margin-top: 12px;
+}
+
+.preset-group-label {
+  display: block;
+  color: var(--orange);
+  font-size: 8px;
+  font-weight: 950;
+}
+
 .settings-group label {
   display: block;
-  margin: 14px 0 7px;
-  font-size: 13px;
+  margin: 12px 0 7px;
+  color: var(--silver);
+  font-size: 11px;
   font-weight: 900;
 }
 
@@ -1267,9 +1288,9 @@ button:disabled {
 }
 
 .segmented button.active {
-  border-color: rgba(243, 243, 239, 0.58);
+  border-color: rgba(255, 146, 43, 0.72);
   color: var(--text);
-  background: rgba(243, 243, 239, 0.1);
+  background: rgba(255, 146, 43, 0.12);
 }
 
 .fixed-setting {
@@ -1294,9 +1315,19 @@ button:disabled {
 }
 
 .protection-setting {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 0.5px solid var(--line);
+  margin-top: 10px;
+  padding: 11px;
+  border: 0.5px solid var(--line);
+  border-radius: 7px;
+  background: rgba(12, 14, 15, 0.72);
+}
+
+.protection-setting.enabled {
+  border-color: rgba(255, 146, 43, 0.24);
+}
+
+.protection-setting.disabled {
+  opacity: 0.72;
 }
 
 .protection-setting > div:first-child {
@@ -1335,9 +1366,9 @@ button:disabled {
 }
 
 .protection-options button.active {
-  border-color: rgba(243, 243, 239, 0.58);
+  border-color: rgba(255, 146, 43, 0.72);
   color: var(--text);
-  background: rgba(243, 243, 239, 0.1);
+  background: rgba(255, 146, 43, 0.12);
 }
 
 .section-heading {
@@ -1345,6 +1376,19 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   margin: 22px 1px 9px;
+}
+
+.preset-heading svg {
+  color: var(--orange);
+}
+
+.history-heading svg {
+  color: var(--silver);
+}
+
+.utility-heading {
+  margin-top: 25px;
+  color: var(--silver);
 }
 
 .section-heading > div {
@@ -1457,16 +1501,18 @@ button:disabled {
 
 .account-facts {
   margin-top: 0;
-  padding: 0 13px;
-  border-radius: 8px;
-  background: var(--panel);
+  padding: 0;
+  border-top: 0.5px solid var(--line);
+  border-bottom: 0.5px solid var(--line);
+  border-radius: 0;
+  background: transparent;
 }
 
 .account-facts div {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 48px;
+  min-height: 42px;
   border-bottom: 0.5px solid var(--line);
 }
 
@@ -1476,12 +1522,13 @@ button:disabled {
 
 .account-facts span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
 }
 
 .account-facts strong {
-  font-size: 12px;
+  color: var(--silver);
+  font-size: 10px;
   font-weight: 800;
 }
 
