@@ -11,10 +11,12 @@ import type {
   TradeSettings,
   WalletBalances
 } from "../types";
+import { GestureGuide } from "./GestureGuide";
 import { MarketCanvas } from "./MarketCanvas";
 import { MarketContext } from "./MarketContext";
 
 type Props = {
+  userId: string;
   market: Market;
   position: Position | null;
   quote: Quote | null;
@@ -220,6 +222,10 @@ export function TradeView(props: Props) {
         ) : null}
 
         {props.error ? <div className="error-toast">{props.error}</div> : null}
+
+        {!props.position && !props.busy ? (
+          <GestureGuide userId={props.userId} />
+        ) : null}
 
         <div className="execution-dock">
           <div className="terms">

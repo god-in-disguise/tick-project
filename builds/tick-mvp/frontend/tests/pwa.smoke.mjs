@@ -42,6 +42,20 @@ await page.screenshot({ path: "/tmp/tick-landing.png", fullPage: true });
 await page.goto("http://127.0.0.1:5173/?app=1", { waitUntil: "domcontentloaded" });
 await authenticate(page);
 await page.locator(".trade-view").waitFor({ timeout: 20_000 });
+const gestureGuide = page.locator(".gesture-guide");
+await gestureGuide.waitFor();
+await gestureGuide.getByRole("button", { name: "Got it" }).click();
+assert.equal(await gestureGuide.count(), 0);
+assert.equal(
+  await page.evaluate(() => Object.keys(localStorage).some((key) => (
+    key.startsWith("tick.gesture-guide.v1.")
+    && localStorage.getItem(key) === "dismissed"
+  ))),
+  true
+);
+await page.reload({ waitUntil: "domcontentloaded" });
+await page.locator(".trade-view").waitFor({ timeout: 20_000 });
+assert.equal(await page.locator(".gesture-guide").count(), 0);
 await page.waitForTimeout(1_000);
 await page.locator(".market-context").waitFor();
 await page.locator(".tape-heat").waitFor();

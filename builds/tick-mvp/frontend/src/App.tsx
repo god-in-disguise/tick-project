@@ -80,6 +80,7 @@ function TickApp({
       <div className="app-content">
         {tab === "trade" ? (
           <TradeView
+            userId={session.userId}
             market={tick.activeMarket}
             position={tick.activePosition}
             quote={tick.activeQuote}
