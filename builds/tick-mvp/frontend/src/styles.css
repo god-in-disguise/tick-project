@@ -313,6 +313,116 @@ button:disabled {
   height: 100%;
 }
 
+.market-context {
+  position: absolute;
+  z-index: 2;
+  top: 11px;
+  right: 72px;
+  left: 18px;
+  pointer-events: none;
+}
+
+.market-story {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.market-story strong {
+  color: var(--text);
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  animation: market-story-in 180ms ease-out;
+}
+
+.market-story span {
+  color: var(--silver);
+  font-size: 8px;
+  line-height: 10px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.move-cost-values {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  color: var(--silver);
+  font-size: 8px;
+  line-height: 10px;
+  font-weight: 750;
+}
+
+.move-cost-values strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.move-cost-track,
+.cost-recovery-track {
+  position: relative;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(231, 240, 237, 0.11);
+}
+
+.move-cost-track i,
+.cost-recovery-track i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--move-width);
+  border-radius: inherit;
+  background: var(--meter-accent);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--meter-accent) 36%, transparent);
+}
+
+.move-cost-track b {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: var(--cost-left);
+  width: 1px;
+  background: var(--orange);
+  box-shadow: 0 0 5px rgba(255, 156, 50, 0.42);
+}
+
+.position-context .market-story {
+  margin-bottom: 7px;
+}
+
+.position-context .market-story strong {
+  color: var(--orange);
+}
+
+.cost-recovery-track i {
+  width: var(--recovery-width);
+  transition: width 180ms linear;
+}
+
+.move-cost-meter.compact {
+  width: 100%;
+}
+
+.move-cost-meter.compact .move-cost-values {
+  margin-bottom: 3px;
+  font-size: 7px;
+}
+
+.move-cost-meter.compact .move-cost-track {
+  height: 2px;
+}
+
+@keyframes market-story-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .pnl-panel {
   position: absolute;
   top: 34%;

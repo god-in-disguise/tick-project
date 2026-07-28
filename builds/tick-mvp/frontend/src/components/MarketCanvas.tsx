@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { price } from "../format";
+import { buildMicroBars } from "../marketActivity";
 import type { Market, Side, Theme } from "../types";
 
 type Props = {
   market: Market;
   theme: Theme;
   entry: number | null;
+  breakEven: number | null;
   stopLoss: number | null;
   takeProfit: number | null;
   liquidation: number | null;
@@ -85,8 +87,9 @@ function draw(
   const height = canvas.height / dpr;
   if (width <= 1 || height <= 1) return;
 
-  const top = 22;
+  const top = 68;
   const bottom = height - (props.entry !== null ? 124 : 62);
+  const plotBottom = bottom - 29;
   const left = 0;
   const right = width - 58;
   const now = Date.now() / 1000;
@@ -100,7 +103,7 @@ function draw(
   const domain = stableDomain(domainRef, props.market.market, targetDomain);
   const span = Math.max(domain.max - domain.min, Number.EPSILON);
   const x = (time: number) => left + clamp((time - start) / WINDOW_SECONDS, 0, 1) * (right - left);
-  const y = (value: number) => bottom - ((value - domain.min) / span) * (bottom - top);
+  const y = (value: number) => plotBottom - ((value - domain.min) / span) * (plotBottom - top);
 
   context.clearRect(0, 0, width, height);
   const background = context.createLinearGradient(0, 0, 0, height);
@@ -116,7 +119,7 @@ function draw(
   context.textAlign = "right";
   context.textBaseline = "middle";
   for (const ratio of [0.12, 0.36, 0.60, 0.84]) {
-    const gridY = top + (bottom - top) * ratio;
+    const gridY = top + (plotBottom - top) * ratio;
     context.beginPath();
     context.moveTo(left, gridY);
     context.lineTo(right, gridY);
@@ -128,14 +131,18 @@ function draw(
     const gridX = left + (right - left) * ratio;
     context.beginPath();
     context.moveTo(gridX, top);
-    context.lineTo(gridX, bottom);
+    context.lineTo(gridX, plotBottom);
     context.stroke();
   }
 
-  overlay(context, props.entry, domain, y, right, props.side === "short" ? "#ff6070" : "#38d39f", "ENTRY");
-  overlay(context, props.takeProfit, domain, y, right, "#38d39f", "TP", 0);
-  overlay(context, props.stopLoss, domain, y, right, "#ffc166", "SL", 1);
-  overlay(context, props.liquidation, domain, y, right, "#ff6070", "LIQ", 2);
+  overlay(context, props.entry, domain, y, right, props.side === "short" ? "#ff6070" : "#38d39f", "ENTRY", 0);
+  overlay(context, props.breakEven, domain, y, right, "#ff9c32", "NET BE", 1);
+  overlay(context, props.takeProfit, domain, y, right, "#38d39f", "TP", 2);
+  overlay(context, props.stopLoss, domain, y, right, "#ffc166", "SL", 3);
+  overlay(context, props.liquidation, domain, y, right, "#ff6070", "LIQ", 4);
+
+  const microBars = buildMicroBars(props.market.observations, now, 2, WINDOW_SECONDS);
+  drawMicrostructure(context, microBars, x, y, plotBottom, bottom, props.theme.accent);
 
   const coordinates = source.map((point) => ({ x: x(point.receivedTs), y: y(point.price) }));
   const lastReal = coordinates.at(-1) ?? { x: right, y: y(props.market.price) };
@@ -146,8 +153,8 @@ function draw(
   context.beginPath();
   traceMonotone(context, coordinates.length === 1 ? [{ x: left, y: coordinates[0].y }, ...coordinates] : coordinates);
   context.lineTo(edge.x, edge.y);
-  context.lineTo(edge.x, bottom);
-  context.lineTo(coordinates.length === 1 ? left : coordinates[0].x, bottom);
+  context.lineTo(edge.x, plotBottom);
+  context.lineTo(coordinates.length === 1 ? left : coordinates[0].x, plotBottom);
   context.closePath();
   const area = context.createLinearGradient(0, top, 0, bottom);
   area.addColorStop(0, hexWithAlpha(props.theme.accent, 0.1));
@@ -182,7 +189,7 @@ function draw(
   context.font = "900 10px -apple-system, BlinkMacSystemFont, sans-serif";
   const tagWidth = Math.max(49, context.measureText(label).width + 18);
   const tagX = right + 4;
-  const tagY = clamp(edge.y - 10, top, bottom - 20);
+  const tagY = clamp(edge.y - 10, top, plotBottom - 20);
   roundedRect(context, tagX, tagY, tagWidth, 20, 10);
   context.fillStyle = movementColor;
   context.fill();
@@ -190,6 +197,57 @@ function draw(
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillText(label, tagX + tagWidth / 2, tagY + 10.5);
+}
+
+function drawMicrostructure(
+  context: CanvasRenderingContext2D,
+  bars: ReturnType<typeof buildMicroBars>,
+  x: (time: number) => number,
+  y: (value: number) => number,
+  plotBottom: number,
+  bottom: number,
+  accent: string
+) {
+  if (!bars.length) return;
+
+  context.save();
+  context.strokeStyle = hexWithAlpha(accent, 0.19);
+  context.fillStyle = hexWithAlpha(accent, 0.13);
+  for (const bar of bars) {
+    if (bar.high === bar.low) continue;
+    const center = x((bar.startTs + bar.endTs) / 2);
+    context.lineWidth = 0.8;
+    context.beginPath();
+    context.moveTo(center, y(bar.high));
+    context.lineTo(center, y(bar.low));
+    context.stroke();
+
+    const bodyTop = Math.min(y(bar.open), y(bar.close));
+    const bodyHeight = Math.max(1, Math.abs(y(bar.open) - y(bar.close)));
+    context.fillRect(center - 1.2, bodyTop, 2.4, bodyHeight);
+  }
+
+  const scores = bars.map(
+    (bar) => bar.movementPct + Math.log1p(bar.changedUpdates) * 0.0001 + Math.log1p(bar.updates) * 0.00002
+  );
+  const maximum = Math.max(...scores, Number.EPSILON);
+  const baseline = plotBottom + 24;
+  context.fillStyle = hexWithAlpha(accent, 0.2);
+  bars.forEach((bar, index) => {
+    const center = x((bar.startTs + bar.endTs) / 2);
+    const width = Math.max(1.5, x(bar.endTs) - x(bar.startTs) - 1.5);
+    const activityHeight = Math.max(1, scores[index] / maximum * 18);
+    context.fillRect(center - width / 2, baseline - activityHeight, width, activityHeight);
+  });
+
+  context.fillStyle = "rgba(7,10,10,0.84)";
+  context.fillRect(0, plotBottom + 7, 52, 19);
+  context.fillStyle = "rgba(224,235,232,0.38)";
+  context.font = "750 8px -apple-system, BlinkMacSystemFont, sans-serif";
+  context.textAlign = "left";
+  context.textBaseline = "bottom";
+  context.fillText("ACTIVITY", 8, bottom - 1);
+  context.restore();
 }
 
 function drawLine(

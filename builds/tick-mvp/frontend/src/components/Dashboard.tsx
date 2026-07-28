@@ -3,6 +3,7 @@ import { ChartNoAxesCombined } from "lucide-react";
 import { percent, price } from "../format";
 import { themeFor } from "../theme";
 import type { Market } from "../types";
+import { MoveCostMeter } from "./MoveCostMeter";
 
 type Props = {
   markets: Market[];
@@ -49,13 +50,12 @@ export function Dashboard({ markets, onMarket }: Props) {
                     : `WAIT · ${percent(market.activitySurplusPct, 3)}`}
                 </small>
               </span>
-              <span className={`activity-track ${covered ? "covered" : ""}`}>
-                <i
-                  style={{
-                    width: `${Math.max(8, Math.min(100, market.score / 2))}%`
-                  }}
-                />
-              </span>
+              <MoveCostMeter
+                movePct={market.activeTapePct}
+                costPct={market.feeHurdlePct}
+                accent={theme.accent}
+                compact
+              />
               <span className="market-row-price">
                 <strong>{price(market.price, true)}</strong>
                 <small className={market.movePct >= 0 ? "positive" : "negative"}>

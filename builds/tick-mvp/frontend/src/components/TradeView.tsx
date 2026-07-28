@@ -12,6 +12,7 @@ import type {
   WalletBalances
 } from "../types";
 import { MarketCanvas } from "./MarketCanvas";
+import { MarketContext } from "./MarketContext";
 
 type Props = {
   market: Market;
@@ -49,6 +50,12 @@ export function TradeView(props: Props) {
   const positionOpening = props.position?.status === "opening";
   const positionClosing = props.position?.status === "closing" || props.busyAction === "close";
   const executionPending = positionOpening || positionClosing || props.busy;
+  const positionCost = props.position ? props.quote?.estimatedRoundTripCostUsd ?? 0 : 0;
+  const breakEven = props.position?.entryPrice && props.position.notionalUsd > 0 && positionCost > 0
+    ? props.position.entryPrice * (
+      1 + (props.position.side === "long" ? 1 : -1) * positionCost / props.position.notionalUsd
+    )
+    : null;
 
   const flash = (next: Cue) => {
     setCue(next);
@@ -128,10 +135,18 @@ export function TradeView(props: Props) {
       </header>
 
       <section className="chart-stage">
+        <MarketContext
+          market={props.market}
+          position={props.position}
+          quote={props.quote}
+          estimatedNetPnl={props.estimatedNetPnl}
+          theme={theme}
+        />
         <MarketCanvas
           market={props.market}
           theme={theme}
           entry={props.position?.entryPrice ?? null}
+          breakEven={breakEven}
           stopLoss={props.position?.stopLossPrice ?? props.quote?.stopLossPrice ?? null}
           takeProfit={props.position?.takeProfitPrice ?? props.quote?.takeProfitPrice ?? null}
           liquidation={props.position?.liquidationPrice ?? props.quote?.liquidationPrice ?? null}

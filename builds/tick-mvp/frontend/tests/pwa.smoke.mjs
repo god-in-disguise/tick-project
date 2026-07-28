@@ -32,10 +32,13 @@ await page.goto("http://127.0.0.1:5173/?app=1", { waitUntil: "domcontentloaded" 
 await authenticate(page);
 await page.locator(".trade-view").waitFor({ timeout: 20_000 });
 await page.waitForTimeout(1_000);
+await page.locator(".market-context").waitFor();
+await page.locator(".move-cost-meter").waitFor();
 await page.screenshot({ path: "/tmp/tick-trade.png", fullPage: true });
 
 await page.getByRole("button", { name: "Pulse" }).click();
 await page.locator(".hot-market-list").waitFor();
+assert.ok(await page.locator(".hot-market-list .move-cost-meter").count() > 0);
 assert.equal(
   await page.locator(".page").evaluate((element) => element.scrollWidth - element.clientWidth),
   0,
