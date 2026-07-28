@@ -15,14 +15,15 @@ import type {
   WalletBalances
 } from "./types";
 
-const SETTINGS_KEY = "tick.trade.settings";
+const SETTINGS_KEY = "tick.trade.settings.v2";
+const LEGACY_SETTINGS_KEY = "tick.trade.settings";
 const QUOTES_KEY = "tick.trade.quotes";
 const ACTIVE_STATUSES = new Set(["opening", "open", "closing", "unknown"]);
 const DEFAULT_SETTINGS: TradeSettings = {
   ticketUsd: 10,
   leverage: 500,
   maxLossUsd: 10,
-  stopLossEnabled: true,
+  stopLossEnabled: false,
   takeProfitUsd: 10,
   takeProfitEnabled: false
 };
@@ -661,7 +662,17 @@ function applyAccepted(
 
 function readSettings(): TradeSettings {
   try {
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}") };
+    const current = localStorage.getItem(SETTINGS_KEY);
+    if (current) return { ...DEFAULT_SETTINGS, ...JSON.parse(current) };
+
+    const legacy = JSON.parse(localStorage.getItem(LEGACY_SETTINGS_KEY) ?? "{}");
+    const migrated = {
+      ...DEFAULT_SETTINGS,
+      ...legacy,
+      stopLossEnabled: false
+    };
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(migrated));
+    return migrated;
   } catch {
     return DEFAULT_SETTINGS;
   }
