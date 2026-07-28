@@ -44,6 +44,7 @@ export function TradeView(props: Props) {
   const cost = previewQuote?.estimatedRoundTripCostUsd ?? 0;
   const positionOpening = props.position?.status === "opening";
   const positionClosing = props.position?.status === "closing" || props.busyAction === "close";
+  const executionPending = positionOpening || positionClosing || props.busy;
 
   const flash = (next: Cue) => {
     setCue(next);
@@ -132,28 +133,30 @@ export function TradeView(props: Props) {
         />
 
         {props.position ? (
-          <div className="pnl-panel">
+          <div className={`pnl-panel ${executionPending ? "execution-pending" : ""}`}>
             <span>
               {positionClosing ? "CLOSING" : positionOpening ? "OPENING" : props.position.side.toUpperCase()} · {props.position.leverage}x
             </span>
             {positionClosing ? (
               <strong>Exiting</strong>
             ) : positionOpening || props.estimatedNetPnl === null ? (
-              <strong>Opening</strong>
+              <strong>Matching</strong>
             ) : (
               <strong className={props.estimatedNetPnl >= 0 ? "positive" : "negative"}>
                 {signedMoney(props.estimatedNetPnl)}
               </strong>
             )}
+            {executionPending ? <ExecutionProgress /> : null}
             <small>
-              {positionClosing ? "venue close sent" : positionOpening ? "venue confirmation" : "estimated net"}
+              {positionClosing ? "waiting for venue" : positionOpening ? "waiting for venue" : "estimated net"}
             </small>
           </div>
         ) : props.busyAction === "long" || props.busyAction === "short" ? (
-          <div className="pnl-panel">
+          <div className="pnl-panel execution-pending">
             <span>{props.busyAction.toUpperCase()} · {leverage}x</span>
-            <strong>Opening</strong>
-            <small>order accepted</small>
+            <strong>Sending</strong>
+            <ExecutionProgress />
+            <small>signing route</small>
           </div>
         ) : null}
 
@@ -225,6 +228,14 @@ function Term({ label, value }: { label: string; value: string }) {
     <div className="term">
       <span>{label}</span>
       <strong>{value === "0.00000" ? "--" : value}</strong>
+    </div>
+  );
+}
+
+function ExecutionProgress() {
+  return (
+    <div className="execution-progress" aria-hidden="true">
+      <i />
     </div>
   );
 }

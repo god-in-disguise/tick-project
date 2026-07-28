@@ -11,6 +11,7 @@ from threading import RLock
 from typing import Any, Callable
 
 import requests
+from requests.adapters import HTTPAdapter
 
 from tick_mvp.core.config import Settings
 from tick_mvp.domain.states import TradeSide
@@ -42,6 +43,11 @@ class GTradeWalletExecutor:
         self._allowance_cache: dict[str, Decimal] = {}
         self._delegate_cache: dict[str, tuple[str, float]] = {}
         self._rest_session = requests.Session()
+        self._sequencer_session = requests.Session()
+        self._sequencer_session.mount(
+            "https://",
+            HTTPAdapter(pool_connections=2, pool_maxsize=4, max_retries=0),
+        )
         self._broadcaster = DualBroadcaster()
         self._events = GTradeEventStream(
             settings.gtrade_backend_ws_url,
@@ -80,6 +86,7 @@ class GTradeWalletExecutor:
             self._fee_thread.join(timeout=2)
         self._events.stop()
         self._broadcaster.close()
+        self._sequencer_session.close()
         self._rest_session.close()
 
     def prepare_wallet(
@@ -403,7 +410,11 @@ class GTradeWalletExecutor:
             return self._sequencer_web3
         _, Web3 = _web3_imports()
         self._sequencer_web3 = Web3(
-            Web3.HTTPProvider(DIRECT_SEQUENCER_URL, request_kwargs={"timeout": 8})
+            Web3.HTTPProvider(
+                DIRECT_SEQUENCER_URL,
+                request_kwargs={"timeout": 8},
+                session=self._sequencer_session,
+            )
         )
         return self._sequencer_web3
 

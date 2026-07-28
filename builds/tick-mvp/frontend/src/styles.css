@@ -254,6 +254,36 @@ button:disabled {
   white-space: nowrap;
 }
 
+.pnl-panel.execution-pending {
+  background: rgba(7, 16, 17, 0.62);
+}
+
+.execution-progress {
+  position: relative;
+  width: 72%;
+  height: 2px;
+  margin: 3px 0 4px;
+  border-radius: 1px;
+  background: rgba(231, 240, 237, 0.1);
+  overflow: hidden;
+}
+
+.execution-progress i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -44%;
+  width: 44%;
+  border-radius: 1px;
+  background: currentColor;
+  animation: execution-progress 720ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes execution-progress {
+  from { transform: translateX(0); }
+  to { transform: translateX(330%); }
+}
+
 .gesture-cue {
   position: absolute;
   top: 31%;
@@ -445,7 +475,7 @@ button:disabled {
 
 @media (min-height: 780px) and (max-width: 699px) {
   .bottom-nav {
-    transform: translateY(22px);
+    transform: translateY(29px);
   }
 }
 

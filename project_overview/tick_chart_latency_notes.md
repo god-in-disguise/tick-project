@@ -156,11 +156,12 @@ July 27 identical-byte dual-write canaries from the local Docker backend:
 - 100x close worker total: `1.479s`; visible through polling in `1.649s`
 
 The direct sequencer was cold on each first open and warm by the corresponding
-close. A cold local request later measured `0.58-0.85s` in connection/TLS setup,
-while a request reusing the same connection took about `0.19s`. The worker now
-primes that transport at startup and sends a harmless keepalive every ten
-seconds. The fixed race preserves the commercial RPC fallback while allowing
-the sequencer to remove roughly `220-300ms` when it wins. These are
+close. The first keepalive implementation used Web3's thread-local session
+cache and therefore warmed the wrong transport pool. The worker now owns one
+explicit shared `requests.Session`, primes it at startup, and sends a harmless
+keepalive every ten seconds. A cross-thread Docker check measured `1.35s` cold
+and `198ms` reused. The fixed race preserves the commercial RPC fallback while
+allowing the sequencer to remove roughly `220-300ms` when it wins. These are
 development-machine samples; repeat the same trace from the deployed backend
 region before setting an SLO.
 

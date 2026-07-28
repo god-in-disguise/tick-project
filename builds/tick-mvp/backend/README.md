@@ -111,11 +111,11 @@ The remaining local latency is transaction transport/receipt propagation plus
 the venue oracle callback, so deployed-region RPC measurements are required
 before setting an SLO.
 
-The worker also primes the direct-sequencer TLS session at startup and refreshes
-it every ten seconds. A local cold request spent `0.58-0.85s` in connection/TLS
-setup, while a request reusing the same connection took about `0.19s`. This
-removes the first-open-after-idle penalty; it does not change gTrade's oracle
-callback latency.
+The worker also primes one explicit shared direct-sequencer TLS session at
+startup and refreshes it every ten seconds. A cross-thread Docker check measured
+`1.35s` for the cold connection and `198ms` when the broadcaster reused it.
+This removes the first-open-after-idle transport penalty; it does not change
+gTrade's oracle callback latency.
 
 The next hardening work is withdrawal controls in the PWA, asynchronous
 treasury collection of reserved USDC gas charges, and deployment canaries for

@@ -92,9 +92,10 @@ faster. In the corrected trace, local preparation was no longer material.
 The next transport audit found one remaining local warm-up regression: the
 primary RPC was kept active by fee refreshes, but the direct-sequencer provider
 was lazy and could lose its TLS connection between trades. Cold TLS measured
-`0.58-0.85s`; connection reuse measured about `0.19s`. The worker now primes
-the direct sequencer at startup and keeps that session active every ten
-seconds.
+`0.58-0.85s`; connection reuse measured about `0.19s`. Web3's default
+thread-scoped cache initially warmed the wrong pool, so the final worker uses
+one explicit shared HTTP session across keepalive and broadcaster threads. A
+Docker cross-thread check measured `1.35s` cold and `198ms` reused.
 
 ## Execution Model
 
