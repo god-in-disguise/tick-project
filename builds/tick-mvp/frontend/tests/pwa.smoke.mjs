@@ -77,12 +77,30 @@ const wakeFailureRoute = async (route) => {
   }
   await route.continue();
 };
+let liveStateAttempts = 0;
+const liveStateFailurePattern = /\/api\/events$/;
+const liveStateFailureRoute = async (route) => {
+  liveStateAttempts += 1;
+  if (liveStateAttempts === 1) {
+    await route.fulfill({
+      status: 503,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "temporary stream interruption" })
+    });
+    return;
+  }
+  await route.continue();
+};
 await page.route(wakeFailurePattern, wakeFailureRoute);
+await page.route(liveStateFailurePattern, liveStateFailureRoute);
 await page.reload({ waitUntil: "domcontentloaded" });
 await page.locator(".trade-view").waitFor({ timeout: 20_000 });
+await page.waitForTimeout(1_250);
 assert.equal(wakeFailureInjected, true);
+assert.ok(liveStateAttempts >= 2);
 assert.equal(await page.locator(".error-toast").count(), 0);
 await page.unroute(wakeFailurePattern, wakeFailureRoute);
+await page.unroute(liveStateFailurePattern, liveStateFailureRoute);
 errors.splice(0, errors.length);
 assert.equal(await page.locator(".gesture-guide").count(), 0);
 await page.waitForTimeout(1_000);

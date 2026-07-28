@@ -290,21 +290,24 @@ export function useTick(initialSession: Session) {
   useEffect(() => {
     const controller = new AbortController();
     let reconnectTimer: number | null = null;
-    const connect = () => {
-      api.stateEvents(refreshState, controller.signal).catch((cause) => {
-        if (controller.signal.aborted) return;
-        showBackgroundError(cause);
-        reconnectTimer = window.setTimeout(connect, 1_000);
-      });
+    const connect = async () => {
+      try {
+        await api.stateEvents(refreshState, controller.signal);
+      } catch {
+        // iOS suspends long-lived streams in the background; polling remains authoritative.
+      }
+      if (controller.signal.aborted) return;
+      void refreshState();
+      reconnectTimer = window.setTimeout(connect, 1_000);
     };
-    connect();
+    void connect();
     const recoveryTimer = window.setInterval(refreshState, 3_000);
     return () => {
       controller.abort();
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       window.clearInterval(recoveryTimer);
     };
-  }, [refreshState, showBackgroundError]);
+  }, [refreshState]);
 
   useEffect(() => {
     if (!activeMarket || activeMarket.observations.length) return;
