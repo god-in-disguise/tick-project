@@ -349,6 +349,14 @@ button:disabled {
   letter-spacing: 0.03em;
 }
 
+.market-story-low strong {
+  color: var(--red);
+}
+
+.market-story-high strong {
+  color: var(--green);
+}
+
 .move-cost-status {
   margin-bottom: 4px;
   color: var(--silver);
@@ -811,10 +819,14 @@ button:disabled {
 }
 
 .page-header h1 {
+  max-width: min(78vw, 310px);
+  overflow: hidden;
   margin: 1px 0 0;
   font-size: 30px;
   line-height: 34px;
   font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .page-header small {
@@ -1632,7 +1644,9 @@ button:disabled {
 
 .install-landing {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: repeat(4, auto);
+  align-content: start;
+  gap: clamp(16px, 3vh, 28px);
   padding: calc(18px + env(safe-area-inset-top)) clamp(20px, 5vw, 72px)
     calc(24px + env(safe-area-inset-bottom));
 }
@@ -1675,9 +1689,8 @@ button:disabled {
 .landing-copy {
   position: relative;
   z-index: 2;
-  align-self: center;
   max-width: 720px;
-  padding-bottom: 25vh;
+  padding-top: clamp(32px, 8vh, 82px);
 }
 
 .landing-copy > span,
@@ -1706,18 +1719,17 @@ button:disabled {
 }
 
 .landing-live-stage {
-  position: absolute;
+  position: relative;
   z-index: 1;
-  right: clamp(20px, 5vw, 72px);
-  bottom: 104px;
-  left: clamp(20px, 5vw, 72px);
-  height: min(34vh, 300px);
+  width: 100%;
+  min-height: 260px;
+  height: min(38vh, 360px);
   border-top: 0.5px solid var(--line);
   border-bottom: 0.5px solid var(--line);
   overflow: hidden;
 }
 
-.landing-live-stage canvas {
+.landing-live-stage .market-canvas {
   position: absolute;
   inset: 35px 0 45px;
   display: block;
@@ -1979,14 +1991,7 @@ button:disabled {
 
 @media (max-width: 699px) {
   .landing-copy {
-    padding-bottom: 8vh;
-  }
-
-  .landing-tape {
-    right: -28vw;
-    bottom: 28vh;
-    left: 12vw;
-    height: 25vh;
+    padding-top: clamp(28px, 5vh, 48px);
   }
 }
 

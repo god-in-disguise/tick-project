@@ -20,6 +20,11 @@ export function MarketContext({ market, position, quote, estimatedNetPnl, theme 
   );
   const pulse = describeMarket(market, bars);
   const story = useStableStory(market.market, pulse.story);
+  const storyTone = story.includes("90s LOW")
+    ? "market-story-low"
+    : story.includes("90s HIGH")
+      ? "market-story-high"
+      : "";
 
   if (position) {
     return (
@@ -34,7 +39,7 @@ export function MarketContext({ market, position, quote, estimatedNetPnl, theme 
 
   return (
     <div className="market-context">
-      <div className="market-story">
+      <div className={`market-story ${storyTone}`}>
         <strong key={story}>{story}</strong>
       </div>
       <MoveCostMeter

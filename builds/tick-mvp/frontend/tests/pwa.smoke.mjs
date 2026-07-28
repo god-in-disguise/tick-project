@@ -48,6 +48,8 @@ await page.screenshot({ path: "/tmp/tick-pulse.png", fullPage: true });
 
 await page.getByRole("button", { name: "Me" }).click();
 await page.locator(".profile-page").waitFor();
+assert.notEqual(await page.locator(".profile-page .page-header h1").innerText(), "Me");
+assert.equal(await page.locator(".profile-page .page-header > svg").count(), 0);
 await page.screenshot({ path: "/tmp/tick-profile.png", fullPage: true });
 await page.locator(".preset-summary").click();
 await page.locator(".preset-sheet").waitFor();

@@ -13,6 +13,7 @@ type Props = {
   takeProfit: number | null;
   liquidation: number | null;
   side: Side | null;
+  compact?: boolean;
 };
 
 type Domain = { min: number; max: number; market: string; lastExtremeAt: number };
@@ -87,8 +88,8 @@ function draw(
   const height = canvas.height / dpr;
   if (width <= 1 || height <= 1) return;
 
-  const top = 68;
-  const bottom = height - (props.entry !== null ? 124 : 62);
+  const top = props.compact ? 12 : 68;
+  const bottom = props.compact ? height : height - (props.entry !== null ? 124 : 62);
   const plotBottom = bottom - 29;
   const left = 0;
   const right = width - 58;

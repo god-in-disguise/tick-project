@@ -6,7 +6,6 @@ import {
   History,
   LogOut,
   Settings2,
-  WalletCards,
   X
 } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
@@ -99,10 +98,8 @@ export function Profile(props: Props) {
       <header className="page-header">
         <div>
           <span>ACCOUNT</span>
-          <h1>Me</h1>
-          <small>{displayName}</small>
+          <h1>{displayName}</h1>
         </div>
-        <WalletCards size={22} />
       </header>
 
       <section className="performance-strip">
