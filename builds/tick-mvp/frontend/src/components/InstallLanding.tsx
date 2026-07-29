@@ -40,39 +40,81 @@ export function InstallLanding() {
         <TickWordmark />
         <span>PRIVATE BETA</span>
       </header>
-      <section className="landing-copy">
-        <span>THE MARKET MOVING NOW</span>
-        <h1>Catch what is moving now.</h1>
-        <p>Find live movement, see the cost, and trade through one focused iPhone loop.</p>
-      </section>
+      <div className="landing-hero">
+        <section className="landing-copy">
+          <span>THE MARKET MOVING NOW</span>
+          <h1>Catch what is moving now.</h1>
+          <p>
+            TICK turns live volatility into one focused mobile loop: discover an active
+            market, understand the terms, and open or close in one gesture.
+          </p>
+        </section>
+        <InstallAction desktop={desktop} install={install} />
+      </div>
       <LandingTape />
-      <footer className="landing-footer">
-        {desktop ? (
-          <div className="desktop-handoff">
-            <div className="desktop-handoff-qr">
-              <QRCodeSVG
-                value={installUrl()}
-                size={92}
-                bgColor="#f3f3ef"
-                fgColor="#080b0c"
-                level="M"
-              />
-            </div>
-            <div>
-              <span>CONTINUE ON IPHONE</span>
-              <strong>Scan to open TICK</strong>
-              <small>Use your Camera, then add TICK from Safari to your Home Screen.</small>
-            </div>
+
+      <section className="landing-product" aria-labelledby="landing-product-title">
+        <div className="landing-section-heading">
+          <span>THE TICK LOOP</span>
+          <h2 id="landing-product-title">From movement to a position in seconds.</h2>
+          <p>TICK surfaces activity, not direction. The user still decides long or short.</p>
+        </div>
+        <div className="landing-product-steps">
+          <article>
+            <span>01 · PULSE</span>
+            <h3>Find active markets</h3>
+            <p>
+              Markets are ranked by live movement, execution cost, freshness, and route
+              quality, not by a static watchlist.
+            </p>
+          </article>
+          <article>
+            <span>02 · TICK</span>
+            <h3>Act with one gesture</h3>
+            <p>
+              One chart and one visible preset. Swipe up to go long, down to go short,
+              and close without building an order ticket.
+            </p>
+          </article>
+          <article>
+            <span>03 · RESULT</span>
+            <h3>See the real outcome</h3>
+            <p>
+              Estimated PnL starts after costs. Opening, live exposure, closing, and the
+              final wallet result remain separate and explicit.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section className="landing-principle" aria-labelledby="landing-principle-title">
+        <div>
+          <span>BUILT FOR REAL EXECUTION</span>
+          <h2 id="landing-principle-title">
+            Simpler trading without hiding the machinery.
+          </h2>
+        </div>
+        <div className="landing-principle-copy">
+          <p>
+            TICK normalizes venue differences into the terms that matter on a phone:
+            available markets, leverage, estimated cost, opening and closing time, and
+            the realized result.
+          </p>
+          <div className="landing-facts" aria-label="Product capabilities">
+            <span>LIVE MARKET DATA</span>
+            <span>REAL POSITIONS</span>
+            <span>NET RESULTS</span>
+            <span>MULTI-VENUE CORE</span>
           </div>
-        ) : (
-          <>
-            <button type="button" onClick={install}>
-              <Smartphone size={19} />
-              Add TICK to iPhone
-            </button>
-            <small>The trading app opens from your Home Screen.</small>
-          </>
-        )}
+        </div>
+      </section>
+
+      <footer className="landing-beta">
+        <div>
+          <span>PRIVATE BETA · IPHONE FIRST</span>
+          <strong>Live markets. Real execution. Invite-only access.</strong>
+        </div>
+        <TickWordmark className="landing-footer-mark" />
       </footer>
 
       {instructions && !desktop ? (
@@ -90,6 +132,45 @@ export function InstallLanding() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+function InstallAction({
+  desktop,
+  install
+}: {
+  desktop: boolean;
+  install: () => Promise<void>;
+}) {
+  return (
+    <div className="landing-footer">
+      {desktop ? (
+        <div className="desktop-handoff">
+          <div className="desktop-handoff-qr">
+            <QRCodeSVG
+              value={installUrl()}
+              size={92}
+              bgColor="#f3f3ef"
+              fgColor="#080b0c"
+              level="M"
+            />
+          </div>
+          <div>
+            <span>CONTINUE ON IPHONE</span>
+            <strong>Scan to open TICK</strong>
+            <small>Use your Camera, then add TICK from Safari to your Home Screen.</small>
+          </div>
+        </div>
+      ) : (
+        <>
+          <button type="button" onClick={() => void install()}>
+            <Smartphone size={19} />
+            Add TICK to iPhone
+          </button>
+          <small>The trading app opens from your Home Screen.</small>
+        </>
+      )}
+    </div>
   );
 }
 
