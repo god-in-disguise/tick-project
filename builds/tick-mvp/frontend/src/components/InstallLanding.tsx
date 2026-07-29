@@ -1,4 +1,4 @@
-import { ArrowUp, Plus, Share, Smartphone } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, Share, Smartphone } from "lucide-react";
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -48,12 +48,20 @@ export function InstallLanding() {
             TICK turns live volatility into one focused mobile loop: discover an active
             market, understand the terms, and open or close in one gesture.
           </p>
+          <a className="landing-learn-more" href="#how-tick-works">
+            Explore TICK
+            <ArrowDown size={14} />
+          </a>
         </section>
         <InstallAction desktop={desktop} install={install} />
       </div>
       <LandingTape />
 
-      <section className="landing-product" aria-labelledby="landing-product-title">
+      <section
+        id="how-tick-works"
+        className="landing-product"
+        aria-labelledby="landing-product-title"
+      >
         <div className="landing-section-heading">
           <span>THE TICK LOOP</span>
           <h2 id="landing-product-title">From movement to a position in seconds.</h2>

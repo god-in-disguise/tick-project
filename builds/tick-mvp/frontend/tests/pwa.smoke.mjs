@@ -26,6 +26,18 @@ assert.match(await page.locator("h1").innerText(), /Catch what is moving now/);
 await page.locator(".tick-wordmark").waitFor();
 await page.locator(".landing-live-stage").waitFor();
 await page.waitForTimeout(1_000);
+const landing = page.locator(".install-landing");
+const landingSize = await landing.evaluate((element) => ({
+  height: element.clientHeight,
+  contentHeight: element.scrollHeight
+}));
+assert.ok(landingSize.contentHeight > landingSize.height, "Landing page has no scrollable product content");
+await page.locator(".landing-learn-more").click();
+await page.waitForTimeout(500);
+assert.ok(await landing.evaluate((element) => element.scrollTop > 0), "Landing product link did not scroll");
+await landing.evaluate((element) => {
+  element.scrollTop = 0;
+});
 const landingTabs = page.locator(".landing-market-tabs button");
 for (let index = 1; index < await landingTabs.count(); index += 1) {
   const tab = landingTabs.nth(index);
@@ -33,8 +45,14 @@ for (let index = 1; index < await landingTabs.count(); index += 1) {
   const startedAt = Date.now();
   await tab.click();
   const canvas = page.locator(`canvas[aria-label="${symbol} live price chart"]`);
-  await canvas.waitFor();
+  await canvas.waitFor({ state: "attached" });
   assert.ok(Date.now() - startedAt < 500, `${symbol} landing chart waited for another request`);
+  assert.equal(await canvas.getAttribute("aria-hidden"), "false");
+  assert.equal(
+    await page.locator(".landing-live-stage canvas[aria-hidden='false']").count(),
+    1,
+    `${symbol} was blended with another landing chart`
+  );
   assert.ok(await canvas.evaluate(hasVisibleCanvasPixels), `${symbol} landing chart is blank`);
 }
 await page.screenshot({ path: "/tmp/tick-landing.png", fullPage: true });

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { api } from "../api";
 import type { Market, MarketObservation } from "../types";
@@ -8,10 +8,8 @@ import { MarketCanvas } from "./MarketCanvas";
 const WINDOW_SECONDS = 90;
 
 export function LandingTape() {
-  const sequenceRef = useRef(0);
   const [markets, setMarkets] = useState<Market[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
-  const [observations, setObservations] = useState<MarketObservation[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -34,13 +32,14 @@ export function LandingTape() {
     if (!selected) return;
     let active = true;
     const retained = markets.find((market) => market.market === selected);
+    let sequence = retained?.sequence ?? 0;
 
     const bootstrap = async () => {
       try {
         const chart = await api.chart(selected);
         if (!active) return;
-        sequenceRef.current = chart.sequence;
-        setObservations(chart.observations);
+        sequence = chart.sequence;
+        updateMarketTape(selected, chart.observations, chart.sequence, setMarkets);
       } catch {
         // The landing remains usable when the public tape is temporarily unavailable.
       }
@@ -48,39 +47,39 @@ export function LandingTape() {
 
     const update = async () => {
       try {
-        const tape = await api.tape(selected, sequenceRef.current);
+        const tape = await api.tape(selected, sequence);
         if (!active) return;
         if (tape.resyncRequired) {
           await bootstrap();
           return;
         }
-        sequenceRef.current = tape.sequence;
+        sequence = tape.sequence;
         if (tape.observations.length === 0) return;
-        setObservations((current) => trimObservations([...current, ...tape.observations]));
+        setMarkets((current) => current.map((market) => (
+          market.market === selected
+            ? {
+                ...market,
+                price: tape.observations.at(-1)?.price ?? market.price,
+                observations: trimObservations([...market.observations, ...tape.observations]),
+                sequence: tape.sequence
+              }
+            : market
+        )));
       } catch {
         // The next interval retries without replacing the last truthful frame.
       }
     };
 
-    setObservations(retained?.observations ?? []);
-    sequenceRef.current = retained?.sequence ?? 0;
-    if (!retained?.observations.length) void bootstrap();
+    // The retained snapshot is painted immediately; this refresh runs behind it.
+    void bootstrap();
     const interval = window.setInterval(() => void update(), 700);
     return () => {
       active = false;
       window.clearInterval(interval);
     };
-  }, [selected, markets]);
+  }, [selected]);
 
   const activeMarket = markets.find((market) => market.market === selected) ?? markets[0] ?? null;
-  const previewMarket = activeMarket
-    ? {
-        ...activeMarket,
-        price: observations.at(-1)?.price ?? activeMarket.price,
-        observations,
-        sequence: sequenceRef.current
-      }
-    : null;
 
   return (
     <section className="landing-live-stage" aria-label="Live market preview">
@@ -95,10 +94,11 @@ export function LandingTape() {
           <strong>CONNECTING</strong>
         )}
       </div>
-      {previewMarket ? (
+      {markets.map((market) => (
         <MarketCanvas
-          market={previewMarket}
-          theme={themeFor(previewMarket.market)}
+          key={market.market}
+          market={market}
+          theme={themeFor(market.market)}
           entry={null}
           breakEven={null}
           stopLoss={null}
@@ -106,8 +106,9 @@ export function LandingTape() {
           liquidation={null}
           side={null}
           compact
+          active={market.market === selected}
         />
-      ) : null}
+      ))}
       <div className="landing-market-tabs" aria-label="Preview market">
         {markets.map((market) => (
           <button
@@ -125,6 +126,24 @@ export function LandingTape() {
       </div>
     </section>
   );
+}
+
+function updateMarketTape(
+  marketId: string,
+  observations: MarketObservation[],
+  sequence: number,
+  setMarkets: React.Dispatch<React.SetStateAction<Market[]>>
+) {
+  setMarkets((current) => current.map((market) => (
+    market.market === marketId
+      ? {
+          ...market,
+          price: observations.at(-1)?.price ?? market.price,
+          observations: trimObservations(observations),
+          sequence
+        }
+      : market
+  )));
 }
 
 function trimObservations(observations: MarketObservation[]): MarketObservation[] {

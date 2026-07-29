@@ -1998,8 +1998,11 @@ button:disabled {
 
 .install-landing {
   display: block;
+  height: 100dvh;
   overflow-x: hidden;
   overflow-y: auto;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
   padding: calc(18px + env(safe-area-inset-top)) clamp(20px, 5vw, 72px)
     calc(36px + env(safe-area-inset-bottom));
 }
@@ -2082,6 +2085,22 @@ button:disabled {
   font-weight: 650;
 }
 
+.landing-learn-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 18px;
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.landing-learn-more svg {
+  color: var(--orange);
+  stroke-width: 2.4;
+}
+
 .landing-live-stage {
   position: relative;
   z-index: 1;
@@ -2100,6 +2119,7 @@ button:disabled {
   display: block;
   width: 100%;
   height: calc(100% - 80px);
+  transition: none;
 }
 
 .landing-live-meta {
