@@ -39,10 +39,7 @@ export function Profile(props: Props) {
   const [addressCopied, setAddressCopied] = useState(false);
   const [editingPreset, setEditingPreset] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<"all" | "wins" | "losses" | "liquidations">("all");
-  const leverageOptions = [25, 50, 100, 500].filter(
-    (value) => value >= props.market.minLeverage && value <= props.market.maxLeverage
-  );
-  const fixedLeverage = props.market.minLeverage === props.market.maxLeverage;
+  const leverageOptions = [25, 50, 100, 500];
   const address = props.session?.walletAddress ?? props.balances?.address;
   const completed = props.state?.positions.filter(
     (position) => position.status === "closed" || position.status === "liquidated"
@@ -302,24 +299,19 @@ export function Profile(props: Props) {
                 </div>
 
                 <label>Leverage</label>
-                {fixedLeverage ? (
-                  <div className="fixed-setting">
-                    <strong>{props.market.maxLeverage}x</strong>
-                    <span>Fixed for {props.market.symbol} DEGEN</span>
-                  </div>
-                ) : (
-                  <div className="segmented">
-                    {leverageOptions.map((value) => (
-                      <button
-                        key={value}
-                        className={props.settings.leverage === value ? "active" : ""}
-                        onClick={() => props.onSettings({ ...props.settings, leverage: value })}
-                      >
-                        {value}x
-                      </button>
-                    ))}
-                  </div>
-                )}
+                <div className="segmented" role="group" aria-label="Leverage">
+                  {leverageOptions.map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      className={props.settings.leverage === value ? "active" : ""}
+                      aria-pressed={props.settings.leverage === value}
+                      onClick={() => props.onSettings({ ...props.settings, leverage: value })}
+                    >
+                      {value}x
+                    </button>
+                  ))}
+                </div>
               </section>
 
               <section className="preset-control-group protection-group">
