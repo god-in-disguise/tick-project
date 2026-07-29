@@ -173,7 +173,7 @@ function draw(
   const mode = props.mode ?? "live";
   const windowSeconds = visualWindowSeconds;
   const top = props.compact ? 12 : mode === "context" ? 54 : 68;
-  const bottom = props.compact ? height : height - (props.entry !== null ? 124 : 62);
+  const bottom = props.compact ? height : height - (props.entry !== null ? 132 : 82);
   const plotBottom = bottom - 29;
   const left = 0;
   const right = width - 58;

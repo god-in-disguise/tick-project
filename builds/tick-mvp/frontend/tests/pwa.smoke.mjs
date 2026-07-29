@@ -36,7 +36,12 @@ await page.locator(".landing-learn-more").click();
 await page.waitForTimeout(500);
 assert.ok(await landing.evaluate((element) => element.scrollTop > 0), "Landing product link did not scroll");
 await landing.evaluate((element) => {
+  element.style.scrollBehavior = "auto";
   element.scrollTop = 0;
+});
+await page.waitForFunction(() => {
+  const element = document.querySelector(".install-landing");
+  return element instanceof HTMLElement && element.scrollTop <= 1;
 });
 const landingTabs = page.locator(".landing-market-tabs button");
 for (let index = 1; index < await landingTabs.count(); index += 1) {
@@ -127,6 +132,12 @@ await page.waitForTimeout(1_000);
 await page.locator(".market-context").waitFor();
 await page.locator(".tape-heat").waitFor();
 await page.screenshot({ path: "/tmp/tick-trade.png", fullPage: true });
+const balanceButton = page.getByRole("button", { name: /Available balance/ });
+await balanceButton.click();
+await page.getByRole("heading", { name: "Deposit USDC" }).waitFor();
+await page.getByRole("button", { name: "Close wallet" }).click();
+await page.getByRole("button", { name: "TICK" }).click();
+await page.locator(".trade-view").waitFor();
 const liveCanvas = page.locator('canvas[aria-label$="live price chart"]');
 const contextButton = page.getByRole("button", { name: "Zoom out chart" });
 await contextButton.waitFor();
@@ -134,10 +145,15 @@ await page.waitForFunction(() => {
   const button = document.querySelector('button[aria-label="Zoom out chart"]');
   return button instanceof HTMLButtonElement && !button.disabled;
 });
+const contextTransitionStartedAt = Date.now();
 await contextButton.click();
 const contextCanvas = page.locator('canvas[aria-label$="one hour context chart"]');
 await page.getByRole("button", { name: "Opening one hour chart" }).waitFor();
 await page.getByRole("button", { name: "Zoom in chart" }).waitFor({ timeout: 3_000 });
+assert.ok(
+  Date.now() - contextTransitionStartedAt < 1_800,
+  "One-hour chart transition exceeded the 1.2 second animation budget"
+);
 await page.locator(".hour-range-rail").waitFor();
 await page.waitForTimeout(250);
 assert.equal(await contextCanvas.getAttribute("aria-hidden"), "false");

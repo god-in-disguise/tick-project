@@ -273,49 +273,47 @@ button:disabled {
 .balance-summary {
   display: flex;
   flex: none;
-  flex-direction: column;
-  align-items: flex-end;
-  width: 119px;
-  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: auto;
+  min-width: 119px;
+  max-width: 46vw;
+  height: 40px;
   margin-left: 12px;
-  padding: 6px 10px;
+  padding: 0 12px;
   border: 0.5px solid rgba(255, 255, 255, 0.14);
   border-radius: 16px;
   background: rgba(128, 128, 128, 0.15);
-  box-shadow: inset 0 1px rgba(255, 255, 255, 0.06);
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.14),
+    inset 0 -1px rgba(255, 255, 255, 0.06);
 }
 
-.balance-summary span {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.balance-summary > svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
   color: var(--silver);
-  font-size: 9px;
-  font-weight: 800;
-}
-
-.balance-summary span svg {
-  width: 11px;
-  height: 11px;
   stroke-width: 1.8;
 }
 
 .balance-summary strong {
-  margin-top: 1px;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  margin: 0;
   color: var(--text);
-  font-size: 18px;
-  line-height: 20px;
-  font-weight: 700;
+  font-size: 20px;
+  line-height: 24px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.balance-summary button {
-  margin-top: 4px;
-  padding: 0;
-  color: var(--orange);
-  background: transparent;
-  font-size: 10px;
-  font-weight: 850;
+.balance-summary:active {
+  transform: scale(0.98);
 }
 
 .chart-stage {
@@ -357,7 +355,7 @@ button:disabled {
 .chart-mode-button {
   position: absolute;
   z-index: 6;
-  top: 10px;
+  top: 6px;
   right: 12px;
   display: inline-flex;
   width: 128px;
@@ -417,7 +415,7 @@ button:disabled {
   background: var(--orange);
   content: "";
   transform-origin: left;
-  animation: chart-window-progress 2s linear both;
+  animation: chart-window-progress 1.2s linear both;
 }
 
 .chart-mode-button:disabled {
@@ -1086,6 +1084,57 @@ button:disabled {
   font-weight: 700;
 }
 
+.funding-prompt {
+  position: absolute;
+  z-index: 8;
+  top: 12px;
+  right: 12px;
+  left: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 10px 10px 14px;
+  border: 0.5px solid rgba(255, 123, 67, 0.38);
+  border-radius: 16px;
+  background: rgba(22, 20, 18, 0.94);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.funding-prompt span,
+.funding-prompt strong,
+.funding-prompt small {
+  display: block;
+}
+
+.funding-prompt strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 700;
+}
+
+.funding-prompt small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 12px;
+  font-weight: 500;
+}
+
+.funding-prompt button {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 8px;
+  color: #000000;
+  background: #e2fcef;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .execution-dock {
   position: absolute;
   z-index: 3;
@@ -1483,6 +1532,8 @@ button:disabled {
   height: clamp(205px, 26dvh, 260px);
   margin: 10px -8px 8px;
   overflow: hidden;
+  background:
+    linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.055) 100%);
 }
 
 .pulse-feature-chart::after {
@@ -1504,17 +1555,43 @@ button:disabled {
 
 .pulse-feature-line {
   fill: none;
-  stroke: color-mix(in srgb, var(--feature-accent) 78%, var(--silver-bright));
+  stroke: color-mix(in srgb, var(--feature-accent) 84%, var(--silver-bright));
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-width: 2.2;
+  stroke-width: 2.05;
   vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--feature-glow) 30%, transparent));
 }
 
 .pulse-feature-area {
-  fill: color-mix(in srgb, var(--feature-accent) 10%, transparent);
   stroke: none;
+}
+
+.pulse-feature-grid line {
+  stroke: rgba(229, 234, 231, 0.065);
+  stroke-width: 0.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.pulse-feature-glow {
+  fill: none;
+  stroke: var(--feature-glow);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-opacity: 0.2;
+  stroke-width: 8;
+  vector-effect: non-scaling-stroke;
+}
+
+.pulse-feature-edge-glow {
+  fill: var(--feature-glow);
+  opacity: 0.22;
+}
+
+.pulse-feature-edge {
+  fill: color-mix(in srgb, var(--feature-accent) 84%, var(--silver-bright));
+  stroke: color-mix(in srgb, var(--feature-accent) 24%, var(--silver-bright));
+  stroke-width: 0.75;
+  vector-effect: non-scaling-stroke;
 }
 
 .pulse-feature-chart > span {

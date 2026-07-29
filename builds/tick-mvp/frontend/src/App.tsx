@@ -58,6 +58,7 @@ function TickApp({
 }) {
   const tick = useTick(session);
   const [tab, setTab] = useState<Tab>("trade");
+  const [depositRequested, setDepositRequested] = useState(false);
 
   if (!tick.activeMarket) {
     return (
@@ -73,6 +74,10 @@ function TickApp({
     if (tick.activePosition || tick.busy) return;
     await tick.selectMarket(market);
     setTab("trade");
+  };
+  const requestFunding = () => {
+    setDepositRequested(true);
+    setTab("profile");
   };
 
   return (
@@ -95,7 +100,7 @@ function TickApp({
             onOpen={tick.open}
             onClose={tick.close}
             onShift={tick.shiftMarket}
-            onFund={() => setTab("profile")}
+            onFund={requestFunding}
           />
         ) : null}
         {tab === "dashboard" ? <Dashboard markets={tick.markets} onMarket={selectMarket} /> : null}
@@ -107,6 +112,8 @@ function TickApp({
             market={tick.activeMarket}
             settings={tick.settings}
             estimatedNetPnl={tick.estimatedNetPnl}
+            depositRequested={depositRequested}
+            onDepositRequestHandled={() => setDepositRequested(false)}
             onSettings={tick.setSettings}
             onTrade={() => setTab("trade")}
             onSignOut={onSignOut}

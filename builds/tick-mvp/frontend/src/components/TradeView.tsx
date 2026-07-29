@@ -50,7 +50,7 @@ type ContextSnapshot = {
 };
 
 const CONTEXT_SECONDS = 60 * 60;
-const CHART_TRANSITION_MS = 2_000;
+const CHART_TRANSITION_MS = 1_200;
 const contextCache = new Map<string, ContextSnapshot>();
 
 export function TradeView(props: Props) {
@@ -73,6 +73,8 @@ export function TradeView(props: Props) {
   const amount = previewQuote?.ticketUsd ?? props.settings.ticketUsd;
   const exposure = previewQuote?.notionalUsd ?? amount * leverage;
   const costPct = amount > 0 ? cost / amount * 100 : 0;
+  const available = props.balances?.spendableUsdc ?? props.balances?.usdc;
+  const needsFunding = available !== null && available !== undefined && available < amount;
   const positionOpening = props.position?.status === "opening";
   const positionClosing = props.position?.status === "closing" || props.busyAction === "close";
   const executionPending = positionOpening || positionClosing || props.busy;
@@ -179,6 +181,11 @@ export function TradeView(props: Props) {
       props.onClose();
       return;
     }
+    if (needsFunding) {
+      flash("WAIT");
+      props.onFund();
+      return;
+    }
     flash(side === "long" ? "LONG" : "SHORT");
     props.onOpen(side);
   };
@@ -211,16 +218,16 @@ export function TradeView(props: Props) {
             </div>
           </div>
         </div>
-        <div className="balance-summary">
-          <span>
-            <WalletCards aria-hidden="true" />
-            AVAILABLE
-          </span>
-          <strong>{money(props.balances?.usdc)}</strong>
-          {(props.balances?.usdc ?? 0) <= 0 ? (
-            <button type="button" onClick={props.onFund}>Add funds</button>
-          ) : null}
-        </div>
+        <button
+          className="balance-summary"
+          type="button"
+          aria-label={`Available balance ${money(available)}. Deposit USDC`}
+          onClick={props.onFund}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <WalletCards aria-hidden="true" />
+          <strong>{money(available)}</strong>
+        </button>
       </header>
 
       <section
@@ -378,7 +385,23 @@ export function TradeView(props: Props) {
           </div>
         ) : null}
 
-        {props.error ? <div className="error-toast">{props.error}</div> : null}
+        {props.error ? (
+          fundingError(props.error) ? (
+            <div className="funding-prompt" role="alert">
+              <span>
+                <strong>Add USDC to trade</strong>
+                <small>Your amount is larger than the available balance.</small>
+              </span>
+              <button
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={props.onFund}
+              >
+                Deposit
+              </button>
+            </div>
+          ) : <div className="error-toast">{props.error}</div>
+        ) : null}
 
         {!props.position && !props.busy ? (
           <GestureGuide userId={props.userId} />
@@ -441,6 +464,10 @@ function ExecutionProgress() {
       <i />
     </div>
   );
+}
+
+function fundingError(message: string): boolean {
+  return /insufficient.*usdc|usdc.*balance/i.test(message);
 }
 
 type HourRange = {

@@ -471,7 +471,8 @@ export function useTick(initialSession: Session) {
 
   const open = useCallback(async (side: Side) => {
     if (!activeMarket || activePosition || actionBusy.current) return;
-    if (balances?.usdc !== null && balances?.usdc !== undefined && balances.usdc < settings.ticketUsd) {
+    const spendableUsdc = balances?.spendableUsdc ?? balances?.usdc;
+    if (spendableUsdc !== null && spendableUsdc !== undefined && spendableUsdc < settings.ticketUsd) {
       showError(new Error("Insufficient spendable USDC"));
       return;
     }
@@ -509,7 +510,17 @@ export function useTick(initialSession: Session) {
     } finally {
       actionBusy.current = false;
     }
-  }, [activeMarket, activePosition, balances?.usdc, quotes, refreshState, rememberQuote, settings, showError]);
+  }, [
+    activeMarket,
+    activePosition,
+    balances?.spendableUsdc,
+    balances?.usdc,
+    quotes,
+    refreshState,
+    rememberQuote,
+    settings,
+    showError
+  ]);
 
   const close = useCallback(async () => {
     if (!activePosition || actionBusy.current) return;

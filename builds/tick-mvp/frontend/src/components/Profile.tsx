@@ -10,7 +10,7 @@ import {
   Settings2,
   X
 } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -25,6 +25,8 @@ type Props = {
   market: Market;
   settings: TradeSettings;
   estimatedNetPnl: number | null;
+  depositRequested: boolean;
+  onDepositRequestHandled: () => void;
   onSettings: (settings: TradeSettings) => void;
   onTrade: () => void;
   onSignOut: () => void;
@@ -83,6 +85,12 @@ export function Profile(props: Props) {
     }),
     [history, historyFilter]
   );
+
+  useEffect(() => {
+    if (!props.depositRequested) return;
+    setWalletAction("deposit");
+    props.onDepositRequestHandled();
+  }, [props.depositRequested, props.onDepositRequestHandled]);
 
   const withdraw = async (event: FormEvent) => {
     event.preventDefault();
