@@ -106,7 +106,9 @@ function TickApp({
             balances={tick.balances}
             market={tick.activeMarket}
             settings={tick.settings}
+            estimatedNetPnl={tick.estimatedNetPnl}
             onSettings={tick.setSettings}
+            onTrade={() => setTab("trade")}
             onSignOut={onSignOut}
             onBalances={tick.refreshBalances}
           />

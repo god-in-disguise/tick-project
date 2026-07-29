@@ -40,6 +40,7 @@ type Props = {
 
 type Cue = "LONG" | "SHORT" | "CLOSE" | "WAIT" | "LOCKED";
 type ChartMode = "live" | "context";
+type ChartTransition = "expanding" | "collapsing";
 type ContextSnapshot = {
   bars: MarketBar[];
   observations: MarketObservation[];
@@ -49,18 +50,21 @@ type ContextSnapshot = {
 };
 
 const CONTEXT_SECONDS = 60 * 60;
+const CHART_TRANSITION_MS = 2_000;
 const contextCache = new Map<string, ContextSnapshot>();
 
 export function TradeView(props: Props) {
   const theme = themeFor(props.market.market);
   const [cue, setCue] = useState<Cue | null>(null);
   const [chartMode, setChartMode] = useState<ChartMode>("live");
+  const [chartTransition, setChartTransition] = useState<ChartTransition | null>(null);
   const [context, setContext] = useState<ContextSnapshot | null>(
     () => contextCache.get(props.market.market) ?? null
   );
   const [contextLoading, setContextLoading] = useState(false);
   const pointer = useRef<{ id: number; x: number; y: number } | null>(null);
   const cueTimer = useRef<number | null>(null);
+  const chartTransitionTimer = useRef<number | null>(null);
   const previewQuote = [props.quotes.long, props.quotes.short].find(
     (quote) => quote?.market === props.market.market
   ) ?? null;
@@ -78,8 +82,8 @@ export function TradeView(props: Props) {
       1 + (props.position.side === "long" ? 1 : -1) * positionCost / props.position.notionalUsd
     )
     : null;
-  const contextObservations = useMemo(
-    () => contextLine(context, props.market),
+  const chartObservations = useMemo(
+    () => morphObservations(context, props.market),
     [context, props.market.market, props.market.price, props.market.sequence]
   );
   const contextRange = useMemo(
@@ -90,6 +94,8 @@ export function TradeView(props: Props) {
   useEffect(() => {
     let canceled = false;
     setChartMode("live");
+    setChartTransition(null);
+    if (chartTransitionTimer.current) window.clearTimeout(chartTransitionTimer.current);
     const cached = contextCache.get(props.market.market) ?? null;
     setContext(cached);
 
@@ -120,6 +126,22 @@ export function TradeView(props: Props) {
       window.clearInterval(timer);
     };
   }, [props.market.market]);
+
+  useEffect(() => () => {
+    if (chartTransitionTimer.current) window.clearTimeout(chartTransitionTimer.current);
+  }, []);
+
+  const toggleChartWindow = () => {
+    if (!context || chartTransition) return;
+    const nextMode: ChartMode = chartMode === "live" ? "context" : "live";
+    setChartTransition(nextMode === "context" ? "expanding" : "collapsing");
+    setChartMode(nextMode);
+    if (chartTransitionTimer.current) window.clearTimeout(chartTransitionTimer.current);
+    chartTransitionTimer.current = window.setTimeout(() => {
+      setChartTransition(null);
+      chartTransitionTimer.current = null;
+    }, CHART_TRANSITION_MS);
+  };
 
   const flash = (next: Cue) => {
     setCue(next);
@@ -198,22 +220,57 @@ export function TradeView(props: Props) {
         </div>
       </header>
 
-      <section className={`chart-stage chart-${chartMode}`}>
+      <section
+        className={[
+          "chart-stage",
+          `chart-${chartMode}`,
+          chartTransition ? `chart-transition-${chartTransition}` : ""
+        ].filter(Boolean).join(" ")}
+      >
         <button
           type="button"
-          className={`chart-mode-button ${chartMode === "context" ? "is-context" : ""}`}
-          aria-label={chartMode === "live" ? "Zoom out chart" : "Zoom in chart"}
-          disabled={chartMode === "live" && !context}
+          className={[
+            "chart-mode-button",
+            chartMode === "context" ? "is-context" : "",
+            chartTransition ? "is-transitioning" : ""
+          ].filter(Boolean).join(" ")}
+          aria-label={
+            chartTransition === "expanding"
+              ? "Opening one hour chart"
+              : chartTransition === "collapsing"
+                ? "Returning to live chart"
+                : chartMode === "live"
+                  ? "Zoom out chart"
+                  : "Zoom in chart"
+          }
+          disabled={(chartMode === "live" && !context) || chartTransition !== null}
           onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
-            setChartMode((current) => current === "live" ? "context" : "live");
+            toggleChartWindow();
           }}
         >
           {chartMode === "live" ? <Maximize2 aria-hidden="true" /> : <Minimize2 aria-hidden="true" />}
-          <span>{chartMode === "live" ? contextLoading ? "LOADING" : "ZOOM OUT" : "ZOOM IN"}</span>
+          <span>
+            {chartTransition === "expanding"
+              ? "EXPANDING"
+              : chartTransition === "collapsing"
+                ? "COLLAPSING"
+                : chartMode === "live"
+                  ? contextLoading ? "LOADING" : "ZOOM OUT"
+                  : "ZOOM IN"}
+          </span>
+          <small>
+            {chartTransition === "expanding"
+              ? "1H"
+              : chartTransition === "collapsing"
+                ? "90S"
+                : chartMode === "live"
+                  ? "1H"
+                  : "90S"}
+          </small>
         </button>
-        {chartMode === "live" ? (
+        {chartMode === "live" && !chartTransition ? (
           <MarketContext
             key={`context-${props.market.market}`}
             market={props.market}
@@ -222,7 +279,7 @@ export function TradeView(props: Props) {
             estimatedNetPnl={props.estimatedNetPnl}
             theme={theme}
           />
-        ) : context ? (
+        ) : chartMode === "context" && !chartTransition && context ? (
           <>
             <div className="context-caption">
               <strong>1H CONTEXT</strong>
@@ -242,26 +299,17 @@ export function TradeView(props: Props) {
           liquidation={props.position?.liquidationPrice ?? props.quote?.liquidationPrice ?? null}
           side={props.position?.side ?? null}
           mode="live"
-          active={chartMode === "live"}
+          active
+          windowSeconds={
+            chartMode === "context" && context
+              ? contextWindowSeconds(context)
+              : 90
+          }
+          windowTransitionMs={CHART_TRANSITION_MS}
+          ariaWindowLabel={chartMode === "context" ? "one hour context" : "live price"}
+          observations={chartObservations}
+          bars={context?.bars}
         />
-        {context ? (
-          <MarketCanvas
-            key={`context-chart-${props.market.market}`}
-            market={props.market}
-            theme={theme}
-            entry={props.position?.entryPrice ?? null}
-            breakEven={breakEven}
-            stopLoss={props.position?.stopLossPrice ?? props.quote?.stopLossPrice ?? null}
-            takeProfit={props.position?.takeProfitPrice ?? props.quote?.takeProfitPrice ?? null}
-            liquidation={props.position?.liquidationPrice ?? props.quote?.liquidationPrice ?? null}
-            side={props.position?.side ?? null}
-            mode="context"
-            active={chartMode === "context"}
-            windowSeconds={contextWindowSeconds(context)}
-            observations={contextObservations}
-            bars={context.bars}
-          />
-        ) : null}
 
         {props.position ? (
           <div className={`pnl-panel ${executionPending ? "execution-pending" : ""}`}>
@@ -430,6 +478,18 @@ function contextLine(snapshot: ContextSnapshot | null, market: Market): MarketOb
     });
   }
   return observations;
+}
+
+function morphObservations(
+  snapshot: ContextSnapshot | null,
+  market: Market
+): MarketObservation[] {
+  const context = contextLine(snapshot, market);
+  const liveStart = market.observations[0]?.receivedTs ?? Number.POSITIVE_INFINITY;
+  return [
+    ...context.filter((observation) => observation.receivedTs < liveStart),
+    ...market.observations
+  ];
 }
 
 function sampleObservations(observations: MarketObservation[], limit: number): MarketObservation[] {

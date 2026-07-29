@@ -1,4 +1,10 @@
-import { ArrowDown, ArrowUp } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  type LucideIcon
+} from "lucide-react";
 import { useState } from "react";
 
 type Props = {
@@ -20,21 +26,17 @@ export function GestureGuide({ userId }: Props) {
 
   return (
     <div className="gesture-guide" aria-label="Trade gesture guide">
-      <div className="gesture-guide-panel">
-        <span className="gesture-guide-kicker">ONE GESTURE</span>
-        <strong>Choose a direction</strong>
+      <section className="gesture-guide-panel">
+        <header>
+          <span className="gesture-guide-kicker">THE TICK LOOP</span>
+          <strong>How TICK works</strong>
+          <p>One deliberate gesture acts on the market in front of you.</p>
+        </header>
         <div className="gesture-guide-actions">
-          <div>
-            <ArrowUp aria-hidden="true" />
-            <span>Swipe up</span>
-            <b>LONG</b>
-          </div>
-          <i aria-hidden="true" />
-          <div>
-            <ArrowDown aria-hidden="true" />
-            <span>Swipe down</span>
-            <b>SHORT</b>
-          </div>
+          <Gesture direction="up" Icon={ArrowUp} gesture="Swipe up" action="Go long" />
+          <Gesture direction="down" Icon={ArrowDown} gesture="Swipe down" action="Go short" />
+          <Gesture direction="left" Icon={ArrowLeft} gesture="Swipe left" action="Next market" />
+          <Gesture direction="right" Icon={ArrowRight} gesture="Swipe right" action="Previous market" />
         </div>
         <button
           type="button"
@@ -42,9 +44,34 @@ export function GestureGuide({ userId }: Props) {
           onPointerDown={(event) => event.stopPropagation()}
           onPointerUp={(event) => event.stopPropagation()}
         >
-          Got it
+          Start exploring
         </button>
-      </div>
+      </section>
+    </div>
+  );
+}
+
+function Gesture({
+  direction,
+  Icon,
+  gesture,
+  action
+}: {
+  direction: "up" | "down" | "left" | "right";
+  Icon: LucideIcon;
+  gesture: string;
+  action: string;
+}) {
+  return (
+    <div className="gesture-guide-action">
+      <span className={`gesture-motion gesture-motion-${direction}`} aria-hidden="true">
+        <i />
+        <Icon />
+      </span>
+      <span>
+        <small>{gesture}</small>
+        <b>{action}</b>
+      </span>
     </div>
   );
 }

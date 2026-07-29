@@ -23,7 +23,7 @@ page.on("pageerror", (error) => errors.push(error.message));
 await page.goto("http://127.0.0.1:5173/", { waitUntil: "domcontentloaded" });
 await page.locator(".install-landing").waitFor();
 assert.match(await page.locator("h1").innerText(), /Catch what is moving now/);
-await page.locator(".tick-wordmark").waitFor();
+await page.locator(".tick-wordmark").first().waitFor();
 await page.locator(".landing-live-stage").waitFor();
 await page.waitForTimeout(1_000);
 const landing = page.locator(".install-landing");
@@ -76,7 +76,9 @@ await authenticate(page);
 await page.locator(".trade-view").waitFor({ timeout: 20_000 });
 const gestureGuide = page.locator(".gesture-guide");
 await gestureGuide.waitFor();
-await gestureGuide.getByRole("button", { name: "Got it" }).click();
+assert.match(await gestureGuide.innerText(), /Swipe up\s+Go long/);
+assert.match(await gestureGuide.innerText(), /Swipe left\s+Next market/);
+await gestureGuide.getByRole("button", { name: "Start exploring" }).click();
 assert.equal(await gestureGuide.count(), 0);
 assert.equal(
   await page.evaluate(() => Object.keys(localStorage).some((key) => (
@@ -134,21 +136,25 @@ await page.waitForFunction(() => {
 });
 await contextButton.click();
 const contextCanvas = page.locator('canvas[aria-label$="one hour context chart"]');
-await page.getByRole("button", { name: "Zoom in chart" }).waitFor();
+await page.getByRole("button", { name: "Opening one hour chart" }).waitFor();
+await page.getByRole("button", { name: "Zoom in chart" }).waitFor({ timeout: 3_000 });
 await page.locator(".hour-range-rail").waitFor();
 await page.waitForTimeout(250);
 assert.equal(await contextCanvas.getAttribute("aria-hidden"), "false");
-assert.equal(await liveCanvas.getAttribute("aria-hidden"), "true");
 assert.ok(await contextCanvas.evaluate(hasVisibleCanvasPixels), "One-hour context chart is blank");
 assert.match(await page.locator(".context-caption").innerText(), /1H CONTEXT/);
 await page.screenshot({ path: "/tmp/tick-context.png", fullPage: true });
 await page.getByRole("button", { name: "Zoom in chart" }).click();
+await page.getByRole("button", { name: "Returning to live chart" }).waitFor();
 await page.getByRole("button", { name: "Zoom out chart" }).waitFor();
 assert.equal(await liveCanvas.getAttribute("aria-hidden"), "false");
-assert.equal(await contextCanvas.getAttribute("aria-hidden"), "true");
 
 await page.getByRole("button", { name: "Pulse" }).click();
 await page.locator(".hot-market-list").waitFor();
+await page.locator(".pulse-feature").waitFor();
+const featuredLine = page.locator(".pulse-feature-chart .pulse-feature-line");
+assert.ok((await featuredLine.getAttribute("d"))?.startsWith("M "), "Featured tape has no real path");
+assert.equal(await page.locator(".pulse-feature").count(), 1);
 const switchTarget = page.locator(".market-row").nth(1);
 const switchSymbol = await switchTarget.locator(".market-identity strong").innerText();
 const switchStartedAt = Date.now();

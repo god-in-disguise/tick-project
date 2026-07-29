@@ -24,7 +24,9 @@ type Props = {
   balances: WalletBalances | null;
   market: Market;
   settings: TradeSettings;
+  estimatedNetPnl: number | null;
   onSettings: (settings: TradeSettings) => void;
+  onTrade: () => void;
   onSignOut: () => void;
   onBalances: () => Promise<void>;
 };
@@ -41,6 +43,13 @@ export function Profile(props: Props) {
   const [historyFilter, setHistoryFilter] = useState<"all" | "wins" | "losses" | "liquidations">("all");
   const leverageOptions = [25, 50, 100, 500];
   const address = props.session?.walletAddress ?? props.balances?.address;
+  const activePosition = props.state?.positions.find(
+    (position) =>
+      position.status === "opening"
+      || position.status === "open"
+      || position.status === "closing"
+      || position.status === "unknown"
+  ) ?? null;
   const completed = props.state?.positions.filter(
     (position) => position.status === "closed" || position.status === "liquidated"
   ) ?? [];
@@ -209,6 +218,47 @@ export function Profile(props: Props) {
         </span>
         <ChevronRight size={18} />
       </button>
+
+      {activePosition ? (
+        <>
+          <div className="section-heading active-trade-heading">
+            <div>
+              <span className="live-indicator" aria-hidden="true" />
+              <strong>Active trade</strong>
+            </div>
+            <span>Live position</span>
+          </div>
+          <button className="active-trade-card" type="button" onClick={props.onTrade}>
+            <span className="active-trade-identity">
+              <small>{activePosition.status.toUpperCase()}</small>
+              <strong>{positionSymbol(activePosition.market)}</strong>
+              <em>{activePosition.leverage}x</em>
+            </span>
+            <span className={`active-trade-side ${activePosition.side}`}>
+              {activePosition.side === "long" ? "↑ LONG" : "↓ SHORT"}
+            </span>
+            <span className="active-trade-result">
+              <small>EST. NET</small>
+              <strong
+                className={
+                  typeof props.estimatedNetPnl !== "number"
+                    ? ""
+                    : props.estimatedNetPnl >= 0
+                      ? "positive"
+                      : "negative"
+                }
+              >
+                {activePosition.status === "closing"
+                  ? "Exiting"
+                  : typeof props.estimatedNetPnl === "number"
+                    ? signedMoney(props.estimatedNetPnl)
+                    : "Matching"}
+              </strong>
+            </span>
+            <ChevronRight size={18} />
+          </button>
+        </>
+      ) : null}
 
       <div className="section-heading history-heading">
         <div>
@@ -549,6 +599,11 @@ function formatDate(value: string): string {
     hour: "2-digit",
     minute: "2-digit"
   }).format(timestamp);
+}
+
+function positionSymbol(market: string): string {
+  const normalized = market.toUpperCase().split(/[/-]/)[0];
+  return normalized.replace("DEGEN", "") || market;
 }
 
 function historyStatus(

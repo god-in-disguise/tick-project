@@ -17,11 +17,19 @@ type Props = {
   observations?: MarketObservation[];
   bars?: MarketBar[];
   windowSeconds?: number;
+  windowTransitionMs?: number;
+  ariaWindowLabel?: string;
   mode?: "live" | "context";
   active?: boolean;
 };
 
 type Domain = { min: number; max: number; market: string; lastExtremeAt: number };
+type WindowAnimation = {
+  from: number;
+  to: number;
+  startedAt: number;
+  durationMs: number;
+};
 
 const WINDOW_SECONDS = 90;
 
@@ -29,19 +37,53 @@ export function MarketCanvas(props: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const propsRef = useRef(props);
   const visualPrice = useRef(props.market.price);
+  const visualWindowSeconds = useRef(props.windowSeconds ?? WINDOW_SECONDS);
+  const windowAnimation = useRef<WindowAnimation | null>(null);
   const domainRef = useRef<Domain | null>(null);
   const frameRef = useRef(0);
   propsRef.current = props;
 
   useLayoutEffect(() => {
     visualPrice.current = props.market.price;
+    visualWindowSeconds.current = props.windowSeconds ?? WINDOW_SECONDS;
+    windowAnimation.current = null;
     domainRef.current = null;
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (canvas && context) {
-      draw(context, canvas, props, props.market.price, domainRef);
+      draw(
+        context,
+        canvas,
+        props,
+        props.market.price,
+        visualWindowSeconds.current,
+        false,
+        domainRef
+      );
     }
   }, [props.market.market, props.mode]);
+
+  useEffect(() => {
+    const target = props.windowSeconds ?? WINDOW_SECONDS;
+    if (Math.abs(target - visualWindowSeconds.current) < 0.5) {
+      visualWindowSeconds.current = target;
+      windowAnimation.current = null;
+      return;
+    }
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const durationMs = reducedMotion ? 0 : Math.max(0, props.windowTransitionMs ?? 0);
+    if (durationMs === 0) {
+      visualWindowSeconds.current = target;
+      windowAnimation.current = null;
+      return;
+    }
+    windowAnimation.current = {
+      from: visualWindowSeconds.current,
+      to: target,
+      startedAt: performance.now(),
+      durationMs
+    };
+  }, [props.windowSeconds, props.windowTransitionMs]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -66,12 +108,31 @@ export function MarketCanvas(props: Props) {
         frameRef.current = requestAnimationFrame(render);
         return;
       }
+      const now = performance.now();
+      const windowMotion = windowAnimation.current;
+      if (windowMotion) {
+        const progress = Math.min(1, (now - windowMotion.startedAt) / windowMotion.durationMs);
+        visualWindowSeconds.current = windowMotion.from
+          + (windowMotion.to - windowMotion.from) * easeInOutCubic(progress);
+        if (progress >= 1) {
+          visualWindowSeconds.current = windowMotion.to;
+          windowAnimation.current = null;
+        }
+      }
       const target = current.market.price;
       visualPrice.current += (target - visualPrice.current) * 0.18;
       if (Math.abs(target - visualPrice.current) < Math.max(Math.abs(target) * 1e-10, 1e-8)) {
         visualPrice.current = target;
       }
-      draw(context, canvas, current, visualPrice.current, domainRef);
+      draw(
+        context,
+        canvas,
+        current,
+        visualPrice.current,
+        visualWindowSeconds.current,
+        windowAnimation.current !== null,
+        domainRef
+      );
       frameRef.current = requestAnimationFrame(render);
     };
     frameRef.current = requestAnimationFrame(render);
@@ -87,7 +148,9 @@ export function MarketCanvas(props: Props) {
     <canvas
       ref={canvasRef}
       className={`market-canvas market-canvas-${mode} ${props.active === false ? "" : "is-active"}`}
-      aria-label={`${props.market.symbol} ${mode === "live" ? "live price" : "one hour context"} chart`}
+      aria-label={`${props.market.symbol} ${
+        props.ariaWindowLabel ?? (mode === "live" ? "live price" : "one hour context")
+      } chart`}
       aria-hidden={props.active === false}
     />
   );
@@ -98,6 +161,8 @@ function draw(
   canvas: HTMLCanvasElement,
   props: Props,
   displayPrice: number,
+  visualWindowSeconds: number,
+  windowAnimating: boolean,
   domainRef: React.MutableRefObject<Domain | null>
 ) {
   const dpr = Math.min(window.devicePixelRatio || 1, 3);
@@ -106,7 +171,7 @@ function draw(
   if (width <= 1 || height <= 1) return;
 
   const mode = props.mode ?? "live";
-  const windowSeconds = props.windowSeconds ?? WINDOW_SECONDS;
+  const windowSeconds = visualWindowSeconds;
   const top = props.compact ? 12 : mode === "context" ? 54 : 68;
   const bottom = props.compact ? height : height - (props.entry !== null ? 124 : 62);
   const plotBottom = bottom - 29;
@@ -119,7 +184,7 @@ function draw(
     (point) => point.receivedTs >= start && Number.isFinite(point.price) && point.price > 0
   );
   const source = points.length ? points : [{ seq: 0, receivedTs: now, price: props.market.price, unchanged: true }];
-  const microBars = mode === "context" && props.bars?.length
+  const microBars = windowSeconds > WINDOW_SECONDS * 1.5 && props.bars?.length
     ? compactContextBars(props.bars, start, Math.max(54, Math.floor((right - left) / 4)))
     : buildMicroBars(observations, now, 2, windowSeconds);
   const values = source.map((point) => point.price);
@@ -130,7 +195,12 @@ function draw(
     );
   }
   const targetDomain = calculateDomain(values, props.market.price);
-  const domain = stableDomain(domainRef, `${props.market.market}:${mode}`, targetDomain);
+  const domain = stableDomain(
+    domainRef,
+    `${props.market.market}:${mode}`,
+    targetDomain,
+    windowAnimating
+  );
   const span = Math.max(domain.max - domain.min, Number.EPSILON);
   const x = (time: number) => left + clamp((time - start) / windowSeconds, 0, 1) * (right - left);
   const y = (value: number) => plotBottom - ((value - domain.min) / span) * (plotBottom - top);
@@ -355,13 +425,25 @@ function calculateDomain(values: number[], current: number) {
 function stableDomain(
   ref: React.MutableRefObject<Domain | null>,
   market: string,
-  target: { min: number; max: number }
+  target: { min: number; max: number },
+  followTarget: boolean
 ) {
   const now = performance.now();
   const current = ref.current;
   if (!current || current.market !== market) {
     ref.current = { ...target, market, lastExtremeAt: now };
     return target;
+  }
+  if (followTarget) {
+    const factor = 0.14;
+    const next = {
+      market,
+      min: current.min + (target.min - current.min) * factor,
+      max: current.max + (target.max - current.max) * factor,
+      lastExtremeAt: now
+    };
+    ref.current = next;
+    return next;
   }
   const expanded = target.min < current.min || target.max > current.max;
   const contraction = now - current.lastExtremeAt > 2_500 ? 0.018 : 0;
@@ -373,6 +455,12 @@ function stableDomain(
   };
   ref.current = next;
   return next;
+}
+
+function easeInOutCubic(value: number): number {
+  return value < 0.5
+    ? 4 * value * value * value
+    : 1 - Math.pow(-2 * value + 2, 3) / 2;
 }
 
 function overlay(
