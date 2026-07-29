@@ -192,6 +192,7 @@ assert.match(await presetSummary.innerText(), /LOSS LIMIT\s+Off/i);
 await presetSummary.click();
 await page.locator(".preset-sheet").waitFor();
 await page.waitForTimeout(250);
+await page.getByRole("button", { name: "$20", exact: true }).first().click();
 const leverageGroup = page.getByRole("group", { name: "Leverage" });
 const leverage100 = leverageGroup.getByRole("button", { name: "100x" });
 const leverage500 = leverageGroup.getByRole("button", { name: "500x" });
@@ -265,7 +266,7 @@ for (const device of iphonePortraitViewports) {
     };
   });
   const bottomGap = geometry.viewportHeight - geometry.navBottom;
-  const expectedBottomGap = device.safeBottom + 9;
+  const expectedBottomGap = Math.max(9, device.safeBottom - 10);
   assert.ok(
     Math.abs(bottomGap - expectedBottomGap) <= 2,
     `${device.name}: bottom gap ${bottomGap}, expected ${expectedBottomGap}`
