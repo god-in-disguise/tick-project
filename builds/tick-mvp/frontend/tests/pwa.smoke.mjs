@@ -78,7 +78,7 @@ const gestureGuide = page.locator(".gesture-guide");
 await gestureGuide.waitFor();
 assert.match(await gestureGuide.innerText(), /Swipe up\s+Go long/);
 assert.match(await gestureGuide.innerText(), /Swipe left\s+Next market/);
-await gestureGuide.getByRole("button", { name: "Start exploring" }).click();
+await gestureGuide.getByRole("button", { name: "GOT IT" }).click();
 assert.equal(await gestureGuide.count(), 0);
 assert.equal(
   await page.evaluate(() => Object.keys(localStorage).some((key) => (
@@ -246,6 +246,9 @@ for (const device of iphonePortraitViewports) {
   await devicePage.goto("http://127.0.0.1:5173/", { waitUntil: "domcontentloaded" });
   await authenticate(devicePage);
   await devicePage.locator(".trade-view").waitFor({ timeout: 20_000 });
+  if (await devicePage.locator(".gesture-guide").isVisible()) {
+    await devicePage.getByRole("button", { name: "GOT IT" }).click();
+  }
   await devicePage.addStyleTag({
     content: `:root { --safe-area-top: ${device.safeTop}px !important; --safe-area-bottom: ${device.safeBottom}px !important; }`
   });
@@ -262,7 +265,7 @@ for (const device of iphonePortraitViewports) {
     };
   });
   const bottomGap = geometry.viewportHeight - geometry.navBottom;
-  const expectedBottomGap = device.safeBottom + 8;
+  const expectedBottomGap = device.safeBottom + 9;
   assert.ok(
     Math.abs(bottomGap - expectedBottomGap) <= 2,
     `${device.name}: bottom gap ${bottomGap}, expected ${expectedBottomGap}`

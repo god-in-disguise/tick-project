@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   ArrowRight,
   ArrowUp,
+  Hand,
   type LucideIcon
 } from "lucide-react";
 import { useState } from "react";
@@ -28,9 +29,8 @@ export function GestureGuide({ userId }: Props) {
     <div className="gesture-guide" aria-label="Trade gesture guide">
       <section className="gesture-guide-panel">
         <header>
-          <span className="gesture-guide-kicker">THE TICK LOOP</span>
-          <strong>How TICK works</strong>
-          <p>One deliberate gesture acts on the market in front of you.</p>
+          <strong>HOW IT WORKS</strong>
+          <p>Swipe to trade. Move through live markets.</p>
         </header>
         <div className="gesture-guide-actions">
           <Gesture direction="up" Icon={ArrowUp} gesture="Swipe up" action="Go long" />
@@ -44,7 +44,7 @@ export function GestureGuide({ userId }: Props) {
           onPointerDown={(event) => event.stopPropagation()}
           onPointerUp={(event) => event.stopPropagation()}
         >
-          Start exploring
+          GOT IT
         </button>
       </section>
     </div>
@@ -66,7 +66,8 @@ function Gesture({
     <div className="gesture-guide-action">
       <span className={`gesture-motion gesture-motion-${direction}`} aria-hidden="true">
         <i />
-        <Icon />
+        <Hand className="gesture-hand" />
+        <Icon className="gesture-arrow" />
       </span>
       <span>
         <small>{gesture}</small>

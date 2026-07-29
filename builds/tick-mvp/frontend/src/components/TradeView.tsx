@@ -1,4 +1,4 @@
-import { Maximize2, Minimize2 } from "lucide-react";
+import { Maximize2, Minimize2, WalletCards } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "../api";
@@ -212,7 +212,10 @@ export function TradeView(props: Props) {
           </div>
         </div>
         <div className="balance-summary">
-          <span>AVAILABLE</span>
+          <span>
+            <WalletCards aria-hidden="true" />
+            AVAILABLE
+          </span>
           <strong>{money(props.balances?.usdc)}</strong>
           {(props.balances?.usdc ?? 0) <= 0 ? (
             <button type="button" onClick={props.onFund}>Add funds</button>

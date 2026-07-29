@@ -64,7 +64,7 @@ export function PulseFeature({ market, pulse, onOpen }: Props) {
       <div className="pulse-feature-footer">
         <TapeHeat pulse={pulse} accent={theme.accent} />
         <span className="pulse-feature-open">
-          Open tape
+          Trade this tape
           <ArrowUpRight size={15} />
         </span>
       </div>
