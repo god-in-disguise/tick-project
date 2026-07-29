@@ -88,8 +88,15 @@ class ArbitrumGasTopupExecutor:
                 broadcast_at = time.perf_counter()
                 race.wait_for_outcomes(timeout=0.02)
                 on_broadcast(tx_hash, race.payload())
-            except Exception:
+            except Exception as exc:
                 EVM_NONCES.invalidate(sender)
+                if (
+                    "nonce" in locals()
+                    and "tx_hash" in locals()
+                    and _is_nonce_too_low_error(exc)
+                    and _chain_nonce_is_past(web3, sender, nonce)
+                ):
+                    raise StaleGasTopupTransaction(tx_hash=tx_hash, nonce=nonce)
                 raise
 
         receipt = web3.eth.wait_for_transaction_receipt(
@@ -256,27 +263,54 @@ class GasFundingService:
                 "nativeEth": str(refreshed),
                 "source": "confirmed_topup",
             }
-        try:
-            result = self._executor.transfer(
-                context,
-                on_prepared=lambda tx_hash, nonce, signed_raw: self._repository.mark_signed(
+        result = None
+        for attempt in range(2):
+            try:
+                result = self._executor.transfer(
+                    context,
+                    on_prepared=lambda tx_hash, nonce, signed_raw: self._repository.mark_signed(
+                        context.topup_id,
+                        tx_hash=tx_hash,
+                        nonce=nonce,
+                        signed_raw_transaction=signed_raw,
+                    ),
+                    on_broadcast=lambda tx_hash, payload: self._repository.mark_broadcast(
+                        context.topup_id,
+                        tx_hash=tx_hash,
+                        payload=payload,
+                    ),
+                )
+                break
+            except StaleGasTopupTransaction as exc:
+                self._repository.mark_superseded(
                     context.topup_id,
-                    tx_hash=tx_hash,
-                    nonce=nonce,
-                    signed_raw_transaction=signed_raw,
-                ),
-                on_broadcast=lambda tx_hash, payload: self._repository.mark_broadcast(
+                    tx_hash=exc.tx_hash,
+                    nonce=exc.nonce,
+                )
+                current = self._executor.native_balance(wallet_address)
+                self._remember(wallet_address, current)
+                if current >= self._settings.user_gas_min_eth:
+                    return {
+                        "status": "ready",
+                        "nativeEth": str(current),
+                        "source": "recovered_topup",
+                    }
+                if attempt > 0:
+                    raise
+                context = self._repository.create_or_load(
+                    user_id=user_id,
+                    wallet_id=wallet_id,
+                    wallet_address=wallet_address,
+                    amount_native=self._settings.user_gas_target_eth - current,
+                )
+            except Exception as exc:
+                self._repository.mark_retryable_error(
                     context.topup_id,
-                    tx_hash=tx_hash,
-                    payload=payload,
-                ),
-            )
-        except Exception as exc:
-            self._repository.mark_retryable_error(
-                context.topup_id,
-                f"{type(exc).__name__}: {exc}",
-            )
-            raise
+                    f"{type(exc).__name__}: {exc}",
+                )
+                raise
+        if result is None:
+            raise GasFundingError("platform gas top-up did not produce a result")
         confirmation = {
             **result.payload,
             "blockNumber": result.block_number,
@@ -339,6 +373,24 @@ class GasFundingService:
 
 class GasFundingError(RuntimeError):
     pass
+
+
+class StaleGasTopupTransaction(GasFundingError):
+    def __init__(self, *, tx_hash: str, nonce: int) -> None:
+        super().__init__(f"gas top-up nonce {nonce} was already consumed")
+        self.tx_hash = tx_hash
+        self.nonce = nonce
+
+
+def _is_nonce_too_low_error(exc: Exception) -> bool:
+    return "nonce too low" in str(exc).lower()
+
+
+def _chain_nonce_is_past(web3: Any, sender: str, nonce: int) -> bool:
+    try:
+        return int(web3.eth.get_transaction_count(sender, "latest")) > nonce
+    except Exception:
+        return False
 
 
 def _fee_params(web3: Any) -> dict[str, int]:

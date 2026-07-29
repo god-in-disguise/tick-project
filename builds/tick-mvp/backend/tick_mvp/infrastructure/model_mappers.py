@@ -115,6 +115,7 @@ def execution_response(execution: ExecutionAttempt) -> ExecutionAttemptResponse:
         action=TradeAction(execution.action),
         status=ExecutionAttemptStatus(execution.status),
         txHash=execution.tx_hash,
+        error=execution.error,
         createdAt=execution.created_at,
         updatedAt=execution.updated_at,
     )

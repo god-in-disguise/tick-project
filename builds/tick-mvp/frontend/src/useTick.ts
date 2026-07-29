@@ -56,6 +56,7 @@ export function useTick(initialSession: Session) {
   const actionBusy = useRef(false);
   const quoteCache = useRef<Record<string, Quote>>(readQuotes());
   const shownReconciliations = useRef(new Set<string>());
+  const shownExecutionFailures = useRef(new Set<string>());
   const pendingReconciliations = useRef(new Set<string>());
   const stateInitialized = useRef(false);
   const errorTimer = useRef<number | null>(null);
@@ -168,8 +169,20 @@ export function useTick(initialSession: Session) {
         for (const reconciliation of next.reconciliations) {
           shownReconciliations.current.add(reconciliation.id);
         }
+        for (const execution of next.executionAttempts) {
+          if (execution.status === "failed") shownExecutionFailures.current.add(execution.id);
+        }
         stateInitialized.current = true;
         return;
+      }
+      const failedExecution = next.executionAttempts.find(
+        (execution) =>
+          execution.status === "failed"
+          && !shownExecutionFailures.current.has(execution.id)
+      );
+      if (failedExecution) {
+        shownExecutionFailures.current.add(failedExecution.id);
+        showError(new Error(executionFailureMessage(failedExecution.error)));
       }
       const terminal = next.positions.find(
         (position) => position.status === "closed" || position.status === "liquidated"
@@ -213,7 +226,7 @@ export function useTick(initialSession: Session) {
     } finally {
       stateBusy.current = false;
     }
-  }, [markBackgroundSuccess, showBackgroundError]);
+  }, [markBackgroundSuccess, showBackgroundError, showError]);
 
   const refreshBalances = useCallback(async () => {
     try {
@@ -695,6 +708,17 @@ function quoteMatchesSettings(
 
 function nullableNumber(value: number | null): number | null {
   return value === null ? null : Number(value);
+}
+
+function executionFailureMessage(error: string | null): string {
+  const detail = error?.toLowerCase() ?? "";
+  if (detail.includes("delegat") || detail.includes("allowance") || detail.includes("wallet")) {
+    return "Wallet setup did not complete. No position was opened.";
+  }
+  if (detail.includes("revert")) {
+    return "The venue rejected the open. No position was created.";
+  }
+  return "The trade did not open. No position was created.";
 }
 
 function readQuotes(): Record<string, Quote> {

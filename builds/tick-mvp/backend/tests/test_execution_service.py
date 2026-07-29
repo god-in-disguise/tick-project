@@ -39,8 +39,15 @@ class FakeRepository:
         assert user_id == "user_1"
         return "0x1111111111111111111111111111111111111111", "0x" + "1" * 64
 
+    def load_user_wallet_context(self, user_id: str) -> tuple[str, str, str]:
+        address, private_key = self.load_user_wallet_credentials(user_id)
+        return "wallet_1", address, private_key
+
 
 class FakeVenue:
+    def __init__(self) -> None:
+        self.preparations = 0
+
     def prepare_wallet(
         self,
         *,
@@ -49,9 +56,11 @@ class FakeVenue:
         ensure_transaction_gas=None,
     ):
         assert private_key_hex == "0x" + "1" * 64
+        self.preparations += 1
         return {
             "allowanceReady": required_collateral_usd == Decimal("10"),
             "approvalSubmitted": False,
+            "delegationReady": True,
         }
 
 
@@ -93,6 +102,44 @@ def test_execution_service_prepares_user_wallet_before_swipe() -> None:
 
     assert result["status"] == "ready"
     assert result["allowanceReady"] is True
+
+
+def test_open_worker_authoritatively_prepares_an_uncached_wallet() -> None:
+    repository = FakeRepository()
+    venue = FakeVenue()
+    service = ExecutionService(
+        settings=Settings(
+            tick_real_execution_enabled=True,
+            gas_payer_mode="platform_agent",
+        ),
+        repository=repository,
+    )
+    service._venue = venue
+    service._execute_live = lambda _context: {"status": "open"}
+
+    result = service.execute("exec_1")
+
+    assert result == {"status": "open"}
+    assert venue.preparations == 1
+
+
+def test_open_worker_uses_recent_successful_wallet_preparation() -> None:
+    repository = FakeRepository()
+    venue = FakeVenue()
+    service = ExecutionService(
+        settings=Settings(
+            tick_real_execution_enabled=True,
+            gas_payer_mode="platform_agent",
+        ),
+        repository=repository,
+    )
+    service._venue = venue
+    service._execute_live = lambda _context: {"status": "open"}
+
+    service.prepare_user_wallet("user_1", Decimal("10"))
+    service.execute("exec_1")
+
+    assert venue.preparations == 1
 
 
 def test_close_balance_waits_for_returned_collateral() -> None:

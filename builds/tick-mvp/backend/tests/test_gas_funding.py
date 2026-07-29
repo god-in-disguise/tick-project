@@ -1,7 +1,11 @@
 from decimal import Decimal
 
 from tick_mvp.domain.states import GasTopupStatus
-from tick_mvp.wallets.gas import GasFundingService, GasTopupResult
+from tick_mvp.wallets.gas import (
+    GasFundingService,
+    GasTopupResult,
+    StaleGasTopupTransaction,
+)
 from tick_mvp.wallets.gas_repository import GasTopupContext
 
 
@@ -40,6 +44,9 @@ class FakeRepository:
     def mark_retryable_error(self, topup_id: str, error: str) -> None:
         self.calls.append(("retryable", topup_id, error))
 
+    def mark_superseded(self, topup_id: str, **kwargs) -> None:
+        self.calls.append(("superseded", topup_id, kwargs))
+
 
 class FakeExecutor:
     def __init__(self, balance: Decimal) -> None:
@@ -70,6 +77,27 @@ class FakeExecutor:
 
     def close(self) -> None:
         pass
+
+
+class StaleThenSuccessfulExecutor(FakeExecutor):
+    def transfer(self, context, *, on_prepared, on_broadcast) -> GasTopupResult:
+        self.transfers += 1
+        nonce = 31 if self.transfers == 1 else 33
+        tx_hash = "0x" + ("31" if self.transfers == 1 else "33") * 32
+        on_prepared(tx_hash, nonce, "0x02cafe")
+        if self.transfers == 1:
+            raise StaleGasTopupTransaction(tx_hash=tx_hash, nonce=nonce)
+        on_broadcast(tx_hash, {"winner": "primary_rpc"})
+        return GasTopupResult(
+            status="confirmed",
+            tx_hash=tx_hash,
+            nonce=nonce,
+            block_number=124,
+            gas_used=21_000,
+            effective_gas_price=20_000_000,
+            gas_cost_native=Decimal("0.00000042"),
+            payload={},
+        )
 
 
 def test_low_user_wallet_is_topped_up_to_target() -> None:
@@ -116,3 +144,27 @@ def test_funded_user_wallet_does_not_create_topup() -> None:
     assert result["status"] == "ready"
     assert repository.calls == []
     assert executor.transfers == 0
+
+
+def test_stale_persisted_nonce_is_retired_and_resigned_once() -> None:
+    repository = FakeRepository()
+    executor = StaleThenSuccessfulExecutor(Decimal("0.0001"))
+    service = GasFundingService(repository=repository, executor=executor)
+
+    result = service.ensure_funded(
+        user_id="user_1",
+        wallet_id="wallet_1",
+        wallet_address="0x" + "12" * 20,
+    )
+
+    assert result["status"] == "funded"
+    assert executor.transfers == 2
+    assert [call[0] for call in repository.calls] == [
+        "create",
+        "signed",
+        "superseded",
+        "create",
+        "signed",
+        "broadcast",
+        "confirmed",
+    ]

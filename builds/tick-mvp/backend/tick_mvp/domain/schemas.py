@@ -168,6 +168,7 @@ class ExecutionAttemptResponse(BaseModel):
     action: TradeAction
     status: ExecutionAttemptStatus
     txHash: str | None = None
+    error: str | None = None
     createdAt: datetime
     updatedAt: datetime
 

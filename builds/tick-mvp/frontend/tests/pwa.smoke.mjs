@@ -107,6 +107,27 @@ await page.waitForTimeout(1_000);
 await page.locator(".market-context").waitFor();
 await page.locator(".tape-heat").waitFor();
 await page.screenshot({ path: "/tmp/tick-trade.png", fullPage: true });
+const liveCanvas = page.locator('canvas[aria-label$="live price chart"]');
+const contextButton = page.getByRole("button", { name: "Zoom out chart" });
+await contextButton.waitFor();
+await page.waitForFunction(() => {
+  const button = document.querySelector('button[aria-label="Zoom out chart"]');
+  return button instanceof HTMLButtonElement && !button.disabled;
+});
+await contextButton.click();
+const contextCanvas = page.locator('canvas[aria-label$="one hour context chart"]');
+await page.getByRole("button", { name: "Zoom in chart" }).waitFor();
+await page.locator(".hour-range-rail").waitFor();
+await page.waitForTimeout(250);
+assert.equal(await contextCanvas.getAttribute("aria-hidden"), "false");
+assert.equal(await liveCanvas.getAttribute("aria-hidden"), "true");
+assert.ok(await contextCanvas.evaluate(hasVisibleCanvasPixels), "One-hour context chart is blank");
+assert.match(await page.locator(".context-caption").innerText(), /1H CONTEXT/);
+await page.screenshot({ path: "/tmp/tick-context.png", fullPage: true });
+await page.getByRole("button", { name: "Zoom in chart" }).click();
+await page.getByRole("button", { name: "Zoom out chart" }).waitFor();
+assert.equal(await liveCanvas.getAttribute("aria-hidden"), "false");
+assert.equal(await contextCanvas.getAttribute("aria-hidden"), "true");
 
 await page.getByRole("button", { name: "Pulse" }).click();
 await page.locator(".hot-market-list").waitFor();

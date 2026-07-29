@@ -172,6 +172,23 @@ class GasTopupRepository:
             }
             topup.updated_at = now
 
+    def mark_superseded(self, topup_id: str, *, tx_hash: str, nonce: int) -> None:
+        now = _now()
+        with session_scope(self._session_factory) as session:
+            topup = _topup_for_update(session, topup_id)
+            _require_tx_hash(topup, tx_hash)
+            topup.status = GasTopupStatus.FAILED.value
+            topup.error = f"gas top-up nonce {nonce} was consumed by another transaction"
+            topup.payload = {
+                **(topup.payload or {}),
+                "supersededTransaction": {
+                    "txHash": tx_hash,
+                    "nonce": nonce,
+                    "detectedAt": now.isoformat(),
+                },
+            }
+            topup.updated_at = now
+
     def _context(self, topup: GasTopup, wallet_address: str) -> GasTopupContext:
         encrypted_raw = (topup.payload or {}).get("signedRawTransactionCiphertext")
         signed_raw = (

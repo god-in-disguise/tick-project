@@ -3,6 +3,7 @@ import type {
   AccountState,
   DepositAddress,
   Market,
+  MarketBar,
   MarketObservation,
   Quote,
   Session,
@@ -209,6 +210,7 @@ export const api = {
     windowSeconds = 90
   ): Promise<{
     observations: MarketObservation[];
+    bars: MarketBar[];
     sequence: number;
     feedStatus: string;
     requestedWindowSeconds: number;
@@ -218,6 +220,7 @@ export const api = {
   }> => {
     const response = await json<{
       observations: MarketObservation[];
+      bars?: MarketBar[];
       lastSeq: number;
       feedStatus: string;
       requestedWindowSeconds: number;
@@ -227,6 +230,17 @@ export const api = {
     }>(`/api/chart?market=${encodeURIComponent(market)}&windowSeconds=${windowSeconds}`);
     return {
       observations: response.observations.map(observation),
+      bars: (response.bars ?? []).map((bar) => ({
+        bucketTs: Number(bar.bucketTs),
+        open: Number(bar.open),
+        high: Number(bar.high),
+        low: Number(bar.low),
+        close: Number(bar.close),
+        sampleCount: Number(bar.sampleCount),
+        firstSeq: Number(bar.firstSeq),
+        lastSeq: Number(bar.lastSeq),
+        source: bar.source
+      })),
       sequence: Number(response.lastSeq),
       feedStatus: response.feedStatus,
       requestedWindowSeconds: Number(response.requestedWindowSeconds),

@@ -40,6 +40,7 @@ class ExecutionService:
         self._gas_funding = gas_funding or GasFundingService(self._settings)
         self._gas_accounting = gas_accounting or GasAccountingService(self._settings)
         self._balance_cache: dict[str, tuple[float, Decimal]] = {}
+        self._wallet_ready_cache: dict[str, tuple[float, Decimal]] = {}
         self._balance_lock = threading.Lock()
 
     def start(self) -> None:
@@ -101,6 +102,11 @@ class ExecutionService:
             payload=result.get("gasTransactions"),
             wallet_address=wallet_address,
         )
+        if not result.get("allowanceReady", True):
+            raise WalletNotReady("wallet collateral allowance is not ready")
+        if not result.get("delegationReady", True):
+            raise WalletNotReady("wallet trading delegation is not ready")
+        self._remember_wallet_ready(user_id, required_collateral_usd)
         return {"userId": user_id, "status": "ready", "gas": gas, **result}
 
     def execute(self, execution_attempt_id: str) -> dict[str, object]:
@@ -115,6 +121,8 @@ class ExecutionService:
                 "reason": "TICK_REAL_EXECUTION_ENABLED=false",
             }
         try:
+            if context.action == TradeAction.OPEN:
+                self._ensure_open_wallet_ready(context)
             if self._settings.gas_payer_mode.strip().lower() == "user_wallet":
                 self._ensure_execution_gas(context)
             if context.action == TradeAction.OPEN:
@@ -228,6 +236,11 @@ class ExecutionService:
             wallet_address=context.wallet_address,
         )
 
+    def _ensure_open_wallet_ready(self, context: ExecutionContext) -> None:
+        if self._wallet_is_ready(context.user_id, context.ticket_usd):
+            return
+        self.prepare_user_wallet(context.user_id, context.ticket_usd)
+
     def _require_open_balance(self, context: ExecutionContext) -> None:
         raw_balance = self._cached_balance(context.user_id)
         if raw_balance is None:
@@ -333,6 +346,21 @@ class ExecutionService:
         with self._balance_lock:
             self._balance_cache[user_id] = (time.monotonic(), balance)
 
+    def _remember_wallet_ready(self, user_id: str, collateral_usd: Decimal) -> None:
+        with self._balance_lock:
+            current = self._wallet_ready_cache.get(user_id)
+            ready_collateral = max(collateral_usd, current[1]) if current else collateral_usd
+            self._wallet_ready_cache[user_id] = (time.monotonic(), ready_collateral)
+
+    def _wallet_is_ready(self, user_id: str, collateral_usd: Decimal) -> bool:
+        with self._balance_lock:
+            cached = self._wallet_ready_cache.get(user_id)
+        return bool(
+            cached
+            and time.monotonic() - cached[0] <= self.BALANCE_CACHE_SECONDS
+            and cached[1] >= collateral_usd
+        )
+
     def _adjust_cached_balance(self, user_id: str, delta: Decimal) -> None:
         with self._balance_lock:
             cached = self._balance_cache.get(user_id)
@@ -366,6 +394,10 @@ class ExecutionService:
 
 
 class InsufficientSpendableUSDC(RuntimeError):
+    pass
+
+
+class WalletNotReady(RuntimeError):
     pass
 
 

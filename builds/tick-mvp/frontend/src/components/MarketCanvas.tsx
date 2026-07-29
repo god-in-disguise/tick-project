@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef } from "react";
 
 import { price } from "../format";
 import { buildMicroBars } from "../marketActivity";
-import type { Market, Side, Theme } from "../types";
+import type { Market, MarketBar, MarketObservation, Side, Theme } from "../types";
 
 type Props = {
   market: Market;
@@ -14,6 +14,11 @@ type Props = {
   liquidation: number | null;
   side: Side | null;
   compact?: boolean;
+  observations?: MarketObservation[];
+  bars?: MarketBar[];
+  windowSeconds?: number;
+  mode?: "live" | "context";
+  active?: boolean;
 };
 
 type Domain = { min: number; max: number; market: string; lastExtremeAt: number };
@@ -36,7 +41,7 @@ export function MarketCanvas(props: Props) {
     if (canvas && context) {
       draw(context, canvas, props, props.market.price, domainRef);
     }
-  }, [props.market.market]);
+  }, [props.market.market, props.mode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -57,6 +62,10 @@ export function MarketCanvas(props: Props) {
 
     const render = () => {
       const current = propsRef.current;
+      if (current.active === false) {
+        frameRef.current = requestAnimationFrame(render);
+        return;
+      }
       const target = current.market.price;
       visualPrice.current += (target - visualPrice.current) * 0.18;
       if (Math.abs(target - visualPrice.current) < Math.max(Math.abs(target) * 1e-10, 1e-8)) {
@@ -73,7 +82,15 @@ export function MarketCanvas(props: Props) {
     };
   }, []);
 
-  return <canvas ref={canvasRef} className="market-canvas" aria-label={`${props.market.symbol} live price chart`} />;
+  const mode = props.mode ?? "live";
+  return (
+    <canvas
+      ref={canvasRef}
+      className={`market-canvas market-canvas-${mode} ${props.active === false ? "" : "is-active"}`}
+      aria-label={`${props.market.symbol} ${mode === "live" ? "live price" : "one hour context"} chart`}
+      aria-hidden={props.active === false}
+    />
+  );
 }
 
 function draw(
@@ -88,22 +105,34 @@ function draw(
   const height = canvas.height / dpr;
   if (width <= 1 || height <= 1) return;
 
-  const top = props.compact ? 12 : 68;
+  const mode = props.mode ?? "live";
+  const windowSeconds = props.windowSeconds ?? WINDOW_SECONDS;
+  const top = props.compact ? 12 : mode === "context" ? 54 : 68;
   const bottom = props.compact ? height : height - (props.entry !== null ? 124 : 62);
   const plotBottom = bottom - 29;
   const left = 0;
   const right = width - 58;
   const now = Date.now() / 1000;
-  const start = now - WINDOW_SECONDS;
-  const points = props.market.observations.filter(
+  const start = now - windowSeconds;
+  const observations = props.observations ?? props.market.observations;
+  const points = observations.filter(
     (point) => point.receivedTs >= start && Number.isFinite(point.price) && point.price > 0
   );
   const source = points.length ? points : [{ seq: 0, receivedTs: now, price: props.market.price, unchanged: true }];
+  const microBars = mode === "context" && props.bars?.length
+    ? compactContextBars(props.bars, start, Math.max(54, Math.floor((right - left) / 4)))
+    : buildMicroBars(observations, now, 2, windowSeconds);
   const values = source.map((point) => point.price);
+  if (microBars.length) {
+    values.push(
+      Math.min(...microBars.map((bar) => bar.low)),
+      Math.max(...microBars.map((bar) => bar.high))
+    );
+  }
   const targetDomain = calculateDomain(values, props.market.price);
-  const domain = stableDomain(domainRef, props.market.market, targetDomain);
+  const domain = stableDomain(domainRef, `${props.market.market}:${mode}`, targetDomain);
   const span = Math.max(domain.max - domain.min, Number.EPSILON);
-  const x = (time: number) => left + clamp((time - start) / WINDOW_SECONDS, 0, 1) * (right - left);
+  const x = (time: number) => left + clamp((time - start) / windowSeconds, 0, 1) * (right - left);
   const y = (value: number) => plotBottom - ((value - domain.min) / span) * (plotBottom - top);
 
   context.clearRect(0, 0, width, height);
@@ -142,7 +171,6 @@ function draw(
   overlay(context, props.stopLoss, domain, y, right, "#ffc166", "SL", 3);
   overlay(context, props.liquidation, domain, y, right, "#ff6070", "LIQ", 4);
 
-  const microBars = buildMicroBars(props.market.observations, now, 2, WINDOW_SECONDS);
   drawMicrostructure(context, microBars, x, y, plotBottom, bottom, props.theme.accent);
 
   const coordinates = source.map((point) => ({ x: x(point.receivedTs), y: y(point.price) }));
@@ -249,6 +277,44 @@ function drawMicrostructure(
   context.textBaseline = "bottom";
   context.fillText("ACTIVITY", 8, bottom - 1);
   context.restore();
+}
+
+function compactContextBars(
+  bars: MarketBar[],
+  start: number,
+  limit: number
+): ReturnType<typeof buildMicroBars> {
+  const visible = bars.filter(
+    (bar) => (
+      bar.bucketTs >= start
+      && [bar.open, bar.high, bar.low, bar.close].every(
+        (value) => Number.isFinite(value) && value > 0
+      )
+    )
+  );
+  if (!visible.length) return [];
+  const groupSize = Math.max(1, Math.ceil(visible.length / limit));
+  const grouped: ReturnType<typeof buildMicroBars> = [];
+  for (let index = 0; index < visible.length; index += groupSize) {
+    const group = visible.slice(index, index + groupSize);
+    const first = group[0];
+    const last = group[group.length - 1];
+    grouped.push({
+      startTs: first.bucketTs,
+      endTs: last.bucketTs + 1,
+      open: first.open,
+      high: Math.max(...group.map((bar) => bar.high)),
+      low: Math.min(...group.map((bar) => bar.low)),
+      close: last.close,
+      updates: group.reduce((total, bar) => total + bar.sampleCount, 0),
+      changedUpdates: group.length,
+      movementPct: first.open > 0
+        ? (Math.max(...group.map((bar) => bar.high)) - Math.min(...group.map((bar) => bar.low)))
+          / first.open * 100
+        : 0
+    });
+  }
+  return grouped;
 }
 
 function drawLine(

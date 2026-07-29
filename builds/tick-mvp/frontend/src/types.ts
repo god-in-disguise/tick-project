@@ -9,6 +9,18 @@ export type MarketObservation = {
   unchanged: boolean;
 };
 
+export type MarketBar = {
+  bucketTs: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  sampleCount: number;
+  firstSeq: number;
+  lastSeq: number;
+  source: string;
+};
+
 export type Market = {
   market: string;
   symbol: string;
@@ -140,6 +152,7 @@ export type ExecutionAttempt = {
   action: "open" | "close";
   status: string;
   txHash: string | null;
+  error: string | null;
   createdAt: string;
   updatedAt: string;
 };

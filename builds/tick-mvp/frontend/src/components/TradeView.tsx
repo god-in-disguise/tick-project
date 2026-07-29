@@ -1,10 +1,14 @@
-import { useRef, useState } from "react";
+import { Maximize2, Minimize2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { api } from "../api";
 import { distance, money, percent, price, signedMoney } from "../format";
 import { themeFor } from "../theme";
 import type {
   ClosedResult,
   Market,
+  MarketBar,
+  MarketObservation,
   Position,
   Quote,
   Side,
@@ -35,10 +39,26 @@ type Props = {
 };
 
 type Cue = "LONG" | "SHORT" | "CLOSE" | "WAIT" | "LOCKED";
+type ChartMode = "live" | "context";
+type ContextSnapshot = {
+  bars: MarketBar[];
+  observations: MarketObservation[];
+  actualWindowSeconds: number;
+  partial: boolean;
+  fetchedAt: number;
+};
+
+const CONTEXT_SECONDS = 60 * 60;
+const contextCache = new Map<string, ContextSnapshot>();
 
 export function TradeView(props: Props) {
   const theme = themeFor(props.market.market);
   const [cue, setCue] = useState<Cue | null>(null);
+  const [chartMode, setChartMode] = useState<ChartMode>("live");
+  const [context, setContext] = useState<ContextSnapshot | null>(
+    () => contextCache.get(props.market.market) ?? null
+  );
+  const [contextLoading, setContextLoading] = useState(false);
   const pointer = useRef<{ id: number; x: number; y: number } | null>(null);
   const cueTimer = useRef<number | null>(null);
   const previewQuote = [props.quotes.long, props.quotes.short].find(
@@ -58,6 +78,48 @@ export function TradeView(props: Props) {
       1 + (props.position.side === "long" ? 1 : -1) * positionCost / props.position.notionalUsd
     )
     : null;
+  const contextObservations = useMemo(
+    () => contextLine(context, props.market),
+    [context, props.market.market, props.market.price, props.market.sequence]
+  );
+  const contextRange = useMemo(
+    () => hourRange(context, props.market.price),
+    [context, props.market.price]
+  );
+
+  useEffect(() => {
+    let canceled = false;
+    setChartMode("live");
+    const cached = contextCache.get(props.market.market) ?? null;
+    setContext(cached);
+
+    const load = async () => {
+      if (!cached || Date.now() - cached.fetchedAt > 30_000) setContextLoading(true);
+      try {
+        const chart = await api.chart(props.market.market, CONTEXT_SECONDS);
+        if (canceled) return;
+        const next = {
+          bars: chart.bars,
+          observations: chart.observations,
+          actualWindowSeconds: chart.actualWindowSeconds,
+          partial: chart.partial,
+          fetchedAt: Date.now()
+        };
+        contextCache.set(props.market.market, next);
+        setContext(next);
+      } catch {
+        // LIVE remains usable if context history has not finished loading.
+      } finally {
+        if (!canceled) setContextLoading(false);
+      }
+    };
+    void load();
+    const timer = window.setInterval(load, 30_000);
+    return () => {
+      canceled = true;
+      window.clearInterval(timer);
+    };
+  }, [props.market.market]);
 
   const flash = (next: Cue) => {
     setCue(next);
@@ -136,15 +198,39 @@ export function TradeView(props: Props) {
         </div>
       </header>
 
-      <section className="chart-stage">
-        <MarketContext
-          key={`context-${props.market.market}`}
-          market={props.market}
-          position={props.position}
-          quote={props.quote}
-          estimatedNetPnl={props.estimatedNetPnl}
-          theme={theme}
-        />
+      <section className={`chart-stage chart-${chartMode}`}>
+        <button
+          type="button"
+          className={`chart-mode-button ${chartMode === "context" ? "is-context" : ""}`}
+          aria-label={chartMode === "live" ? "Zoom out chart" : "Zoom in chart"}
+          disabled={chartMode === "live" && !context}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            setChartMode((current) => current === "live" ? "context" : "live");
+          }}
+        >
+          {chartMode === "live" ? <Maximize2 aria-hidden="true" /> : <Minimize2 aria-hidden="true" />}
+          <span>{chartMode === "live" ? contextLoading ? "LOADING" : "ZOOM OUT" : "ZOOM IN"}</span>
+        </button>
+        {chartMode === "live" ? (
+          <MarketContext
+            key={`context-${props.market.market}`}
+            market={props.market}
+            position={props.position}
+            quote={props.quote}
+            estimatedNetPnl={props.estimatedNetPnl}
+            theme={theme}
+          />
+        ) : context ? (
+          <>
+            <div className="context-caption">
+              <strong>1H CONTEXT</strong>
+              <span>{coverageLabel(context)} collected</span>
+            </div>
+            {contextRange ? <HourRangeRail range={contextRange} accent={theme.accent} /> : null}
+          </>
+        ) : null}
         <MarketCanvas
           key={`chart-${props.market.market}`}
           market={props.market}
@@ -155,7 +241,27 @@ export function TradeView(props: Props) {
           takeProfit={props.position?.takeProfitPrice ?? props.quote?.takeProfitPrice ?? null}
           liquidation={props.position?.liquidationPrice ?? props.quote?.liquidationPrice ?? null}
           side={props.position?.side ?? null}
+          mode="live"
+          active={chartMode === "live"}
         />
+        {context ? (
+          <MarketCanvas
+            key={`context-chart-${props.market.market}`}
+            market={props.market}
+            theme={theme}
+            entry={props.position?.entryPrice ?? null}
+            breakEven={breakEven}
+            stopLoss={props.position?.stopLossPrice ?? props.quote?.stopLossPrice ?? null}
+            takeProfit={props.position?.takeProfitPrice ?? props.quote?.takeProfitPrice ?? null}
+            liquidation={props.position?.liquidationPrice ?? props.quote?.liquidationPrice ?? null}
+            side={props.position?.side ?? null}
+            mode="context"
+            active={chartMode === "context"}
+            windowSeconds={contextWindowSeconds(context)}
+            observations={contextObservations}
+            bars={context.bars}
+          />
+        ) : null}
 
         {props.position ? (
           <div className={`pnl-panel ${executionPending ? "execution-pending" : ""}`}>
@@ -282,6 +388,114 @@ function ExecutionProgress() {
   return (
     <div className="execution-progress" aria-hidden="true">
       <i />
+    </div>
+  );
+}
+
+type HourRange = {
+  high: number;
+  low: number;
+  current: number;
+  positionPct: number;
+};
+
+function contextLine(snapshot: ContextSnapshot | null, market: Market): MarketObservation[] {
+  if (!snapshot) return [];
+  if (!snapshot.bars.length) {
+    return sampleObservations(snapshot.observations, 260);
+  }
+
+  const limit = 260;
+  const groupSize = Math.max(1, Math.ceil(snapshot.bars.length / limit));
+  const observations: MarketObservation[] = [];
+  for (let index = 0; index < snapshot.bars.length; index += groupSize) {
+    const group = snapshot.bars.slice(index, index + groupSize);
+    const last = group[group.length - 1];
+    observations.push({
+      seq: last.lastSeq,
+      receivedTs: last.bucketTs,
+      price: last.close,
+      unchanged: false
+    });
+  }
+
+  const latest = observations[observations.length - 1];
+  const now = Date.now() / 1000;
+  if (!latest || market.sequence > latest.seq || now - latest.receivedTs > 1) {
+    observations.push({
+      seq: market.sequence,
+      receivedTs: now,
+      price: market.price,
+      unchanged: latest?.price === market.price
+    });
+  }
+  return observations;
+}
+
+function sampleObservations(observations: MarketObservation[], limit: number): MarketObservation[] {
+  if (observations.length <= limit) return observations;
+  const step = Math.ceil(observations.length / limit);
+  const sampled = observations.filter((_, index) => index % step === 0);
+  const latest = observations[observations.length - 1];
+  if (sampled[sampled.length - 1]?.seq !== latest.seq) sampled.push(latest);
+  return sampled;
+}
+
+function hourRange(snapshot: ContextSnapshot | null, current: number): HourRange | null {
+  if (!snapshot) return null;
+  const highs = snapshot.bars.length
+    ? snapshot.bars.map((bar) => bar.high)
+    : snapshot.observations.map((observation) => observation.price);
+  const lows = snapshot.bars.length
+    ? snapshot.bars.map((bar) => bar.low)
+    : snapshot.observations.map((observation) => observation.price);
+  if (!highs.length || !lows.length) return null;
+
+  const high = Math.max(current, ...highs);
+  const low = Math.min(current, ...lows);
+  const span = high - low;
+  return {
+    high,
+    low,
+    current,
+    positionPct: span > 0 ? Math.max(0, Math.min(100, (current - low) / span * 100)) : 50
+  };
+}
+
+function contextWindowSeconds(snapshot: ContextSnapshot): number {
+  const barCoverage = snapshot.bars.length > 1
+    ? snapshot.bars[snapshot.bars.length - 1].bucketTs - snapshot.bars[0].bucketTs
+    : 0;
+  const coverage = barCoverage > 0 ? barCoverage : snapshot.actualWindowSeconds;
+  return Math.max(60, Math.min(CONTEXT_SECONDS, coverage + 3));
+}
+
+function coverageLabel(snapshot: ContextSnapshot): string {
+  const seconds = contextWindowSeconds(snapshot);
+  if (seconds >= 59 * 60) return "full hour";
+  if (seconds >= 120) return `${Math.floor(seconds / 60)}M`;
+  return `${Math.floor(seconds)}S`;
+}
+
+function HourRangeRail({ range, accent }: { range: HourRange; accent: string }) {
+  const markerTop = 100 - range.positionPct;
+  return (
+    <div
+      className="hour-range-rail"
+      style={{ "--range-accent": accent } as React.CSSProperties}
+      aria-label={`Current price is ${Math.round(range.positionPct)} percent through the collected range`}
+    >
+      <div className="hour-range-label hour-range-high">
+        <strong>1H HIGH</strong>
+        <span>{price(range.high, true)}</span>
+      </div>
+      <div className="hour-range-track">
+        <i style={{ top: `${markerTop}%` }} />
+      </div>
+      <div className="hour-range-label hour-range-low">
+        <strong>1H LOW</strong>
+        <span>{price(range.low, true)}</span>
+      </div>
     </div>
   );
 }
