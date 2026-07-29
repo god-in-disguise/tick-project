@@ -71,6 +71,7 @@ const desktopContext = await browser.newContext({
 const desktopPage = await desktopContext.newPage();
 await desktopPage.goto("http://127.0.0.1:5173/", { waitUntil: "domcontentloaded" });
 await desktopPage.locator(".desktop-handoff").waitFor();
+await desktopPage.locator(".landing-live-identity > span").first().waitFor({ timeout: 10_000 });
 assert.match(await desktopPage.locator(".desktop-handoff").innerText(), /CONTINUE ON IPHONE/);
 assert.equal(await desktopPage.getByRole("button", { name: "Add TICK to iPhone" }).count(), 0);
 await desktopPage.screenshot({ path: "/tmp/tick-desktop.png", fullPage: true });

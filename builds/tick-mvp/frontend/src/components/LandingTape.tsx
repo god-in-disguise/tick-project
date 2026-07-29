@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 
 import { api } from "../api";
+import { buildMicroBars, describeMarket } from "../marketActivity";
 import type { Market, MarketObservation } from "../types";
 import { themeFor } from "../theme";
 import { MarketCanvas } from "./MarketCanvas";
+import { TapeHeat } from "./TapeHeat";
 
 const WINDOW_SECONDS = 90;
 
@@ -80,44 +83,82 @@ export function LandingTape() {
   }, [selected]);
 
   const activeMarket = markets.find((market) => market.market === selected) ?? markets[0] ?? null;
+  const activeTheme = activeMarket ? themeFor(activeMarket.market) : null;
+  const pulse = activeMarket
+    ? describeMarket(
+        activeMarket,
+        buildMicroBars(activeMarket.observations, Date.now() / 1_000, 2, WINDOW_SECONDS)
+      )
+    : null;
+  const style = activeTheme
+    ? {
+        "--landing-accent": activeTheme.accent,
+        "--landing-glow": activeTheme.glow,
+        "--landing-top": activeTheme.top,
+        "--landing-bottom": activeTheme.bottom
+      } as CSSProperties
+    : undefined;
 
   return (
-    <section className="landing-live-stage" aria-label="Live market preview">
+    <section className="landing-live-stage" style={style} aria-label="Live market preview">
       <div className="landing-live-meta">
         <span><i /> LIVE TAPE</span>
+        <strong className={storyClass(pulse?.story)}>{pulse?.story ?? "CONNECTING"}</strong>
+      </div>
+
+      <div className="landing-live-identity">
         {activeMarket ? (
-          <strong>
-            {activeMarket.symbol}
-            <b>{formatPrice(activeMarket.price)}</b>
-          </strong>
+          <>
+            <span>
+              <strong>{activeMarket.symbol}</strong>
+              <small>{activeMarket.name}</small>
+            </span>
+            <span>
+              <strong>{formatPrice(activeMarket.price)}</strong>
+              <small className={activeMarket.movePct >= 0 ? "positive" : "negative"}>
+                {activeMarket.movePct >= 0 ? "+" : ""}{activeMarket.movePct.toFixed(2)}%
+              </small>
+            </span>
+          </>
         ) : (
-          <strong>CONNECTING</strong>
+          <strong>CONNECTING TO LIVE MARKETS</strong>
         )}
       </div>
-      {markets.map((market) => (
-        <MarketCanvas
-          key={market.market}
-          market={market}
-          theme={themeFor(market.market)}
-          entry={null}
-          breakEven={null}
-          stopLoss={null}
-          takeProfit={null}
-          liquidation={null}
-          side={null}
-          compact
-          active={market.market === selected}
-        />
-      ))}
+
+      <div className="landing-chart-frame">
+        {markets.map((market) => (
+          <MarketCanvas
+            key={market.market}
+            market={market}
+            theme={themeFor(market.market)}
+            entry={null}
+            breakEven={null}
+            stopLoss={null}
+            takeProfit={null}
+            liquidation={null}
+            side={null}
+            compact
+            active={market.market === selected}
+          />
+        ))}
+      </div>
+
+      {pulse && activeTheme ? (
+        <div className="landing-live-heat">
+          <TapeHeat pulse={pulse} accent={activeTheme.accent} />
+        </div>
+      ) : null}
+
       <div className="landing-market-tabs" aria-label="Preview market">
         {markets.map((market) => (
           <button
             key={market.market}
             className={market.market === selected ? "active" : ""}
+            style={{ "--tab-accent": themeFor(market.market).accent } as CSSProperties}
             type="button"
             onClick={() => setSelected(market.market)}
           >
-            <strong>{market.symbol}</strong>
+            <strong><i />{market.symbol}</strong>
             <span className={market.movePct >= 0 ? "positive" : "negative"}>
               {market.movePct >= 0 ? "+" : ""}{market.movePct.toFixed(2)}%
             </span>
@@ -126,6 +167,12 @@ export function LandingTape() {
       </div>
     </section>
   );
+}
+
+function storyClass(story: string | undefined): string {
+  if (story?.includes("LOW")) return "is-low";
+  if (story?.includes("HIGH")) return "is-high";
+  return "";
 }
 
 function updateMarketTape(

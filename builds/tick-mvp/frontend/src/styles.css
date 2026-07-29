@@ -2777,20 +2777,32 @@ button:disabled {
   position: relative;
   z-index: 1;
   width: min(100%, 1240px);
-  min-height: 260px;
-  height: min(38vh, 360px);
+  min-height: 0;
   margin: clamp(24px, 4vh, 44px) auto 0;
-  border-top: 0.5px solid var(--line);
-  border-bottom: 0.5px solid var(--line);
+  padding: clamp(16px, 3vw, 24px);
+  border: 0.5px solid rgba(229, 234, 231, 0.16);
+  border-radius: 16px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, var(--landing-top, #080a0a), var(--landing-bottom, #070808));
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.05),
+    0 20px 46px rgba(0, 0, 0, 0.28);
+}
+
+.landing-chart-frame {
+  position: relative;
+  height: clamp(210px, 31vh, 315px);
+  margin: 10px -8px 0;
   overflow: hidden;
 }
 
-.landing-live-stage .market-canvas {
+.landing-chart-frame .market-canvas {
   position: absolute;
-  inset: 35px 0 45px;
+  inset: 0;
   display: block;
   width: 100%;
-  height: calc(100% - 80px);
+  height: 100%;
   transition: none;
 }
 
@@ -2800,7 +2812,7 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 35px;
+  min-height: 22px;
   color: var(--silver);
   font-size: 9px;
   font-weight: 900;
@@ -2816,32 +2828,73 @@ button:disabled {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--orange);
-  box-shadow: 0 0 8px rgba(255, 146, 43, 0.6);
+  background: var(--landing-accent, var(--orange));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--landing-glow) 62%, transparent);
 }
 
 .landing-live-meta strong {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  color: var(--text);
+  color: color-mix(in srgb, var(--landing-accent) 72%, var(--silver-bright));
+  font-size: 9px;
+  letter-spacing: 0.02em;
 }
 
-.landing-live-meta b {
-  color: var(--silver);
+.landing-live-meta strong.is-high {
+  color: var(--green);
+}
+
+.landing-live-meta strong.is-low {
+  color: var(--red);
+}
+
+.landing-live-identity {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  margin-top: 18px;
+}
+
+.landing-live-identity > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.landing-live-identity > span:last-child {
+  align-items: flex-end;
+}
+
+.landing-live-identity strong {
+  color: var(--text);
+  font-size: clamp(25px, 4vw, 40px);
+  line-height: 1;
+  font-weight: 900;
   font-variant-numeric: tabular-nums;
 }
 
-.landing-market-tabs {
-  position: absolute;
+.landing-live-identity small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.landing-live-heat {
+  position: relative;
   z-index: 2;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  padding: 12px 2px 14px;
+  border-top: 0.5px solid rgba(229, 234, 231, 0.1);
+}
+
+.landing-market-tabs {
+  position: relative;
+  z-index: 2;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  height: 45px;
-  border-top: 0.5px solid var(--line);
+  gap: 6px;
+  height: 42px;
 }
 
 .landing-market-tabs button {
@@ -2849,23 +2902,35 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   min-width: 0;
-  padding: 0 9px;
-  border-right: 0.5px solid var(--line);
+  padding: 0 10px;
+  border: 0.5px solid rgba(229, 234, 231, 0.11);
+  border-radius: 8px;
   color: var(--muted);
-  background: rgba(12, 14, 15, 0.62);
+  background: rgba(229, 234, 231, 0.035);
   font-size: 9px;
 }
 
-.landing-market-tabs button:last-child {
-  border-right: 0;
+.landing-market-tabs button strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.landing-market-tabs button strong i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--tab-accent);
 }
 
 .landing-market-tabs button.active {
+  border-color: color-mix(in srgb, var(--tab-accent) 40%, rgba(229, 234, 231, 0.12));
   color: var(--text);
-  background: rgba(243, 243, 239, 0.065);
+  background: color-mix(in srgb, var(--tab-accent) 9%, rgba(229, 234, 231, 0.035));
+  box-shadow: inset 0 1px color-mix(in srgb, var(--tab-accent) 16%, transparent);
 }
 
-.landing-market-tabs button span {
+.landing-market-tabs button > span {
   font-size: 8px;
   font-weight: 850;
 }
