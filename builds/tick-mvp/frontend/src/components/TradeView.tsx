@@ -51,6 +51,9 @@ type ContextSnapshot = {
 
 const CONTEXT_SECONDS = 60 * 60;
 const CHART_TRANSITION_MS = 1_200;
+const DOUBLE_TAP_MS = 320;
+const TAP_MOVEMENT_PX = 12;
+const DOUBLE_TAP_DISTANCE_PX = 28;
 const contextCache = new Map<string, ContextSnapshot>();
 
 export function TradeView(props: Props) {
@@ -62,7 +65,13 @@ export function TradeView(props: Props) {
     () => contextCache.get(props.market.market) ?? null
   );
   const [contextLoading, setContextLoading] = useState(false);
-  const pointer = useRef<{ id: number; x: number; y: number } | null>(null);
+  const pointer = useRef<{
+    id: number;
+    x: number;
+    y: number;
+    chartTap: boolean;
+  } | null>(null);
+  const lastChartTap = useRef<{ at: number; x: number; y: number } | null>(null);
   const cueTimer = useRef<number | null>(null);
   const chartTransitionTimer = useRef<number | null>(null);
   const previewQuote = [props.quotes.long, props.quotes.short].find(
@@ -97,6 +106,7 @@ export function TradeView(props: Props) {
     let canceled = false;
     setChartMode("live");
     setChartTransition(null);
+    lastChartTap.current = null;
     if (chartTransitionTimer.current) window.clearTimeout(chartTransitionTimer.current);
     const cached = contextCache.get(props.market.market) ?? null;
     setContext(cached);
@@ -161,6 +171,29 @@ export function TradeView(props: Props) {
     const horizontal = Math.abs(dx);
     const vertical = Math.abs(dy);
 
+    if (
+      start.chartTap
+      && horizontal <= TAP_MOVEMENT_PX
+      && vertical <= TAP_MOVEMENT_PX
+    ) {
+      const now = performance.now();
+      const previous = lastChartTap.current;
+      const closeToPrevious = previous
+        ? Math.hypot(event.clientX - previous.x, event.clientY - previous.y)
+          <= DOUBLE_TAP_DISTANCE_PX
+        : false;
+      if (previous && now - previous.at <= DOUBLE_TAP_MS && closeToPrevious) {
+        lastChartTap.current = null;
+        navigator.vibrate?.(4);
+        toggleChartWindow();
+      } else {
+        lastChartTap.current = { at: now, x: event.clientX, y: event.clientY };
+      }
+      return;
+    }
+
+    lastChartTap.current = null;
+
     if (horizontal > 48 && horizontal > vertical * 1.15) {
       if (props.position || props.busy) return flash("LOCKED");
       navigator.vibrate?.(5);
@@ -194,7 +227,12 @@ export function TradeView(props: Props) {
     <main
       className="trade-view"
       onPointerDown={(event) => {
-        pointer.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
+        pointer.current = {
+          id: event.pointerId,
+          x: event.clientX,
+          y: event.clientY,
+          chartTap: isChartTapTarget(event.target)
+        };
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
       onPointerUp={release}
@@ -437,6 +475,14 @@ export function TradeView(props: Props) {
         </div>
       </section>
     </main>
+  );
+}
+
+function isChartTapTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element) || !target.closest(".chart-stage")) return false;
+  return !target.closest(
+    "button, .execution-dock, .pnl-panel, .result-pop, .funding-prompt, "
+      + ".gesture-guide, .error-toast"
   );
 }
 

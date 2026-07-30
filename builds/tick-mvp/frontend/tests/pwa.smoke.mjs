@@ -171,6 +171,15 @@ await page.getByRole("button", { name: "Zoom in chart" }).click();
 await page.getByRole("button", { name: "Returning to live chart" }).waitFor();
 await page.getByRole("button", { name: "Zoom out chart" }).waitFor();
 assert.equal(await liveCanvas.getAttribute("aria-hidden"), "false");
+const chartStage = page.locator(".chart-stage");
+await chartStage.dblclick({ position: { x: 180, y: 280 } });
+await page.getByRole("button", { name: "Opening one hour chart" }).waitFor();
+await page.getByRole("button", { name: "Zoom in chart" }).waitFor({ timeout: 3_000 });
+assert.equal(await contextCanvas.getAttribute("aria-hidden"), "false");
+await chartStage.dblclick({ position: { x: 180, y: 280 } });
+await page.getByRole("button", { name: "Returning to live chart" }).waitFor();
+await page.getByRole("button", { name: "Zoom out chart" }).waitFor();
+assert.equal(await liveCanvas.getAttribute("aria-hidden"), "false");
 
 await page.getByRole("button", { name: "Pulse" }).click();
 await page.locator(".hot-market-list").waitFor();
