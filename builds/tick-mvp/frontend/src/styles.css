@@ -186,7 +186,9 @@ button:disabled {
   --swipe-x: 0px;
   --swipe-y: 0px;
   --swipe-progress: 0;
+  --swipe-page-progress: 0;
   --swipe-scale: 1;
+  --swipe-settle-ms: 220ms;
   position: relative;
   width: 100%;
   height: 100%;
@@ -230,6 +232,10 @@ button:disabled {
   visibility: visible;
 }
 
+.trade-view[data-swipe-axis="horizontal"] .market-swipe-preview.is-active {
+  opacity: calc(0.82 + var(--swipe-page-progress) * 0.18);
+}
+
 .market-swipe-preview .market-canvas,
 .market-swipe-preview.is-active .market-canvas {
   opacity: 1;
@@ -248,11 +254,15 @@ button:disabled {
 
 .trade-view.is-swipe-settling .trade-scene,
 .trade-view.is-swipe-settling .market-swipe-preview {
-  transition: transform 280ms cubic-bezier(0.2, 0.82, 0.24, 1);
+  transition: transform var(--swipe-settle-ms) cubic-bezier(0.2, 0.82, 0.24, 1);
 }
 
 .trade-view[data-swipe-axis="vertical"] .trade-scene {
   box-shadow: 0 18px 48px rgba(0, 0, 0, calc(var(--swipe-progress) * 0.42));
+}
+
+.trade-view[data-swipe-axis="horizontal"] .trade-scene {
+  box-shadow: 0 0 42px rgba(0, 0, 0, calc(0.18 + var(--swipe-page-progress) * 0.28));
 }
 
 .swipe-action-layer {

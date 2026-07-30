@@ -163,11 +163,17 @@ await page.waitForTimeout(320);
 assert.equal(await page.locator(".swipe-action-content").count(), 0);
 await page.mouse.move(gestureStart.x, gestureStart.y);
 await page.mouse.down();
-await page.mouse.move(gestureStart.x, gestureStart.y - 112, { steps: 7 });
+await page.mouse.move(gestureStart.x, gestureStart.y - 120, { steps: 7 });
 await page.locator(".swipe-action-layer.is-armed").waitFor();
 assert.match(
   await page.locator(".swipe-action-layer.is-armed").innerText(),
   /RELEASE TO\s+(LONG|ADD FUNDS)/
+);
+await page.mouse.move(gestureStart.x, gestureStart.y - 100, { steps: 3 });
+assert.equal(
+  await page.locator(".swipe-action-layer.is-armed").count(),
+  1,
+  "A small reversal should not chatter across the vertical arm threshold"
 );
 await page.mouse.move(gestureStart.x, gestureStart.y - 40, { steps: 5 });
 assert.equal(await page.locator(".swipe-action-layer.is-armed").count(), 0);

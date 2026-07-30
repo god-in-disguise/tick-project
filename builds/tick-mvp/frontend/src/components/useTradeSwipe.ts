@@ -34,7 +34,13 @@ type Pointer = {
   axis: Axis | null;
   samples: Sample[];
 };
-type Motion = { x: number; y: number; progress: number; scale: number };
+type Motion = {
+  x: number;
+  y: number;
+  progress: number;
+  pageProgress: number;
+  scale: number;
+};
 
 const AXIS_LOCK_PX = 12;
 const AXIS_DOMINANCE = 1.12;
@@ -44,8 +50,11 @@ const DOUBLE_TAP_DISTANCE_PX = 28;
 const HORIZONTAL_COMMIT_RATIO = 0.27;
 const HORIZONTAL_FLING_PX_PER_SECOND = 800;
 const HORIZONTAL_MIN_FLING_DISTANCE_PX = 32;
-const HORIZONTAL_SETTLE_MS = 280;
+const HORIZONTAL_PROJECTION_SECONDS = 0.16;
+const HORIZONTAL_MIN_SETTLE_MS = 170;
+const HORIZONTAL_MAX_SETTLE_MS = 300;
 const VERTICAL_SETTLE_MS = 220;
+const VERTICAL_DISARM_RATIO = 0.78;
 
 export function useTradeSwipe(options: Options): {
   rootRef: RefObject<HTMLElement | null>;
@@ -63,10 +72,17 @@ export function useTradeSwipe(options: Options): {
   const actionRef = useRef<SwipeAction | null>(null);
   const previewOffsetRef = useRef<-1 | 1 | null>(null);
   const lastChartTap = useRef<{ at: number; x: number; y: number } | null>(null);
-  const motion = useRef<Motion>({ x: 0, y: 0, progress: 0, scale: 1 });
+  const motion = useRef<Motion>({
+    x: 0,
+    y: 0,
+    progress: 0,
+    pageProgress: 0,
+    scale: 1
+  });
   const motionFrame = useRef<number | null>(null);
   const settleTimer = useRef<number | null>(null);
   const settling = useRef(false);
+  const verticalArmed = useRef(false);
   const [previewOffset, setPreviewOffsetState] = useState<-1 | 1 | null>(null);
   const [action, setActionState] = useState<SwipeAction | null>(null);
 
@@ -100,6 +116,7 @@ export function useTradeSwipe(options: Options): {
     root.style.setProperty("--swipe-x", `${motion.current.x}px`);
     root.style.setProperty("--swipe-y", `${motion.current.y}px`);
     root.style.setProperty("--swipe-progress", String(motion.current.progress));
+    root.style.setProperty("--swipe-page-progress", String(motion.current.pageProgress));
     root.style.setProperty("--swipe-scale", String(motion.current.scale));
   };
 
@@ -135,8 +152,10 @@ export function useTradeSwipe(options: Options): {
     const root = rootRef.current;
     clearSettleTimer();
     settling.current = true;
+    verticalArmed.current = false;
     root?.classList.add("is-swipe-settling");
-    updateMotion({ x: 0, y: 0, progress: 0, scale: 1 }, true);
+    root?.style.setProperty("--swipe-settle-ms", `${durationMs}ms`);
+    updateMotion({ x: 0, y: 0, progress: 0, pageProgress: 0, scale: 1 }, true);
     settleTimer.current = window.setTimeout(finishReset, durationMs);
   };
 
@@ -147,7 +166,8 @@ export function useTradeSwipe(options: Options): {
       motionFrame.current = null;
     }
     pointer.current = null;
-    motion.current = { x: 0, y: 0, progress: 0, scale: 1 };
+    verticalArmed.current = false;
+    motion.current = { x: 0, y: 0, progress: 0, pageProgress: 0, scale: 1 };
     applyMotion();
     finishReset();
   };
@@ -166,6 +186,7 @@ export function useTradeSwipe(options: Options): {
 
   const onPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (settling.current || isGestureExcludedTarget(event.target)) return;
+    verticalArmed.current = false;
     pointer.current = {
       id: event.pointerId,
       startX: event.clientX,
@@ -209,23 +230,32 @@ export function useTradeSwipe(options: Options): {
       setPreviewOffset(blocked ? null : offset);
       setAction(null);
       const visibleX = blocked ? rubberBand(dx, 42) : dx;
-      updateMotion({ x: visibleX, y: 0, progress: 0, scale: 1 });
+      const width = rootRef.current?.clientWidth ?? window.innerWidth;
+      const pageProgress = blocked
+        ? 0
+        : clamp(horizontal / (width * HORIZONTAL_COMMIT_RATIO), 0, 1);
+      updateMotion({ x: visibleX, y: 0, progress: 0, pageProgress, scale: 1 });
       return;
     }
 
     setPreviewOffset(null);
     const threshold = verticalThreshold(rootRef.current);
     const progress = clamp(vertical / threshold, 0, 1);
-    const armed = progress >= 1;
+    if (!verticalArmed.current && progress >= 1) {
+      verticalArmed.current = true;
+    } else if (verticalArmed.current && progress < VERTICAL_DISARM_RATIO) {
+      verticalArmed.current = false;
+    }
     const direction = dy < 0 ? "up" : "down";
     const side: Side = direction === "up" ? "long" : "short";
-    const nextAction = verticalAction(options, side, direction, armed);
+    const nextAction = verticalAction(options, side, direction, verticalArmed.current);
     setAction(nextAction);
     const visibleY = Math.sign(dy) * resistedVerticalTravel(vertical, rootRef.current);
     updateMotion({
       x: 0,
       y: visibleY,
       progress,
+      pageProgress: 0,
       scale: 1 - progress * 0.006
     });
   };
@@ -248,19 +278,27 @@ export function useTradeSwipe(options: Options): {
     if (current.axis === "horizontal") {
       if (options.positionSide || options.busy) {
         options.onCue("LOCKED");
-        reset(HORIZONTAL_SETTLE_MS);
+        reset(horizontalResetDuration(horizontal, widthFor(rootRef.current)));
         return;
       }
       const velocity = pointerVelocity(current);
       const direction = dx < 0 ? 1 : -1;
-      const width = rootRef.current?.clientWidth ?? window.innerWidth;
+      const width = widthFor(rootRef.current);
       const sameDirectionFling = Math.sign(velocity.x) === Math.sign(dx)
         && Math.abs(velocity.x) >= HORIZONTAL_FLING_PX_PER_SECOND
         && horizontal >= HORIZONTAL_MIN_FLING_DISTANCE_PX;
-      if (horizontal >= width * HORIZONTAL_COMMIT_RATIO || sameDirectionFling) {
-        settleHorizontal(direction as -1 | 1, width);
+      const projectedX = dx + velocity.x * HORIZONTAL_PROJECTION_SECONDS;
+      const projectedCommit = Math.sign(projectedX) === Math.sign(dx)
+        && horizontal >= HORIZONTAL_MIN_FLING_DISTANCE_PX
+        && Math.abs(projectedX) >= width * HORIZONTAL_COMMIT_RATIO;
+      if (
+        horizontal >= width * HORIZONTAL_COMMIT_RATIO
+        || sameDirectionFling
+        || projectedCommit
+      ) {
+        settleHorizontal(direction as -1 | 1, width, dx, velocity.x);
       } else {
-        reset(HORIZONTAL_SETTLE_MS);
+        reset(horizontalResetDuration(horizontal, width));
       }
       return;
     }
@@ -300,22 +338,42 @@ export function useTradeSwipe(options: Options): {
     }
   };
 
-  const settleHorizontal = (offset: -1 | 1, width: number) => {
+  const settleHorizontal = (
+    offset: -1 | 1,
+    width: number,
+    currentX: number,
+    velocityX: number
+  ) => {
     const root = rootRef.current;
     clearSettleTimer();
     settling.current = true;
     setPreviewOffset(offset);
+    const targetX = -offset * width;
+    const durationMs = horizontalCommitDuration(currentX, targetX, width, velocityX);
     root?.classList.add("is-swipe-settling");
-    updateMotion({ x: -offset * width, y: 0, progress: 0, scale: 1 }, true);
+    root?.style.setProperty("--swipe-settle-ms", `${durationMs}ms`);
+    updateMotion({
+      x: targetX,
+      y: 0,
+      progress: 0,
+      pageProgress: 1,
+      scale: 1
+    }, true);
     haptic(4);
     settleTimer.current = window.setTimeout(() => {
       options.onShift(offset);
       requestAnimationFrame(() => {
-        motion.current = { x: 0, y: 0, progress: 0, scale: 1 };
+        motion.current = {
+          x: 0,
+          y: 0,
+          progress: 0,
+          pageProgress: 0,
+          scale: 1
+        };
         applyMotion();
         finishReset();
       });
-    }, HORIZONTAL_SETTLE_MS);
+    }, durationMs);
   };
 
   const executeAction = (completedAction: SwipeAction) => {
@@ -406,6 +464,33 @@ function resistedVerticalTravel(distance: number, root: HTMLElement | null): num
 
 function rubberBand(distance: number, cap: number): number {
   return Math.sign(distance) * cap * (1 - Math.exp(-Math.abs(distance) / cap));
+}
+
+function widthFor(root: HTMLElement | null): number {
+  return root?.clientWidth ?? window.innerWidth;
+}
+
+function horizontalResetDuration(distance: number, width: number): number {
+  const ratio = clamp(distance / Math.max(width, 1), 0, 1);
+  return Math.round(170 + ratio * 90);
+}
+
+function horizontalCommitDuration(
+  currentX: number,
+  targetX: number,
+  width: number,
+  velocityX: number
+): number {
+  const remainingRatio = clamp(Math.abs(targetX - currentX) / Math.max(width, 1), 0, 1);
+  const movingTowardTarget = Math.sign(velocityX) === Math.sign(targetX - currentX);
+  const velocityReduction = movingTowardTarget
+    ? clamp(Math.abs(velocityX) / 2_000, 0, 1) * 65
+    : 0;
+  return Math.round(clamp(
+    175 + remainingRatio * 115 - velocityReduction,
+    HORIZONTAL_MIN_SETTLE_MS,
+    HORIZONTAL_MAX_SETTLE_MS
+  ));
 }
 
 function haptic(duration: number) {
