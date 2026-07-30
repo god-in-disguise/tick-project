@@ -1,39 +1,100 @@
-# TICK Overview
+# TICK Product And Platform Overview
 
-Status: private alpha, July 2026.
+TICK is a market discovery and trading platform built around a simple idea:
+show people what is moving, explain the market state visually, and make a
+high-quality trade easy to execute.
 
-TICK is a mobile-first market discovery and trading product. It ranks markets
-that are moving, presents one market at a time, and lets a user open or close a
-leveraged position with a gesture. The interface stays simple while the backend
-handles wallets, quotes, execution, venue events, accounting, and recovery.
+The mobile product presents one market at a time instead of starting with a
+pair list or terminal. Underneath it, TICK is building a shared discovery
+engine, risk and cost model, execution router, position system, and accounting
+layer. The same infrastructure can later power a professional web product and
+partner API.
 
-The current product is live on Arbitrum with gTrade/Gains as its first
-execution venue. It also has a fully isolated demo mode that uses the same live
-market feed and delayed fill model without sending blockchain transactions.
+The current V1 uses gTrade/Gains on Arbitrum as its first live execution rail.
+The product and backend are designed around normalized trading primitives so
+that gTrade remains one adapter rather than becoming TICK's product model.
+Additional venues will be introduced market by market after their pricing,
+cost, execution, event, and recovery paths are measured.
 
-## Commercial Summary
+This document describes both the long-term product and the current V1
+implementation. V1-specific details are labelled so they are not mistaken for
+the limits of the wider platform.
+
+## Product Thesis
 
 Most trading apps begin with a pair list or a professional terminal. TICK begins
 with the question: **what is moving now?**
 
-Pulse ranks active markets. TICK turns the selected market into a focused
-mobile trading loop. Me holds the user's balance, risk preset, history, and
-account controls.
+People should be able to understand a market's speed, direction, range,
+participation, cost, and risk without reading six indicators. TICK converts
+that information into live visual context, plain-language market states, and a
+small number of trade terms.
 
-The product is intended for people who want a clearer way to participate in
-short-term market movement without learning a full derivatives terminal. It
-does not predict direction or promise profit. It helps users find activity,
-understand the trade terms, execute, and see the result after costs.
+The initial consumer loop is:
 
-Potential revenue sources are:
+```text
+discover movement
+→ understand the current market shape
+→ choose direction and risk
+→ execute through the best available route
+→ watch net exposure and risk
+→ close and understand the result
+```
 
-- a disclosed execution or routing fee;
-- venue fee-sharing agreements;
-- a paid TICK Pro subscription;
-- partner integrations using the TICK execution and discovery API;
-- sponsored campaigns or points programs that do not alter execution truth.
+Extreme leverage can make the loop visually immediate, but it is one
+experimental configuration rather than the product definition. TICK should
+select and explain leverage in relation to volatility, route cost, liquidation
+distance, execution time, and the user's risk preset. Many useful trades will
+belong at 25x, 50x, or 100x. Lower leverage and larger collateral can produce a
+cleaner result than a small 500x position when fees and liquidation risk are
+considered.
 
-No broad public launch or stable revenue model is active yet.
+The app does not need to tell a user which direction to choose. It should make
+the market's observed behavior legible enough that the user can make a better
+decision.
+
+## Reusable Product Blurb
+
+TICK turns market discovery into a live feed. It scans supported markets,
+explains what is happening in plain visual language, and lets a user move from
+discovery to a live position without building an order ticket. The product
+keeps price, risk, cost, execution state, and net result visible throughout the
+trade.
+
+V1 executes through gTrade/Gains on Arbitrum. TICK's engine and trading domain
+are venue-agnostic, allowing future markets to use different execution rails
+while the user keeps one product flow. Over time, the same engine will power a
+broader mobile market feed, TICK Pro on the web, and partner integrations.
+
+## Commercial Direction
+
+TICK's first wedge is a retail mobile experience for short-duration crypto
+trading. The wider opportunity is a cross-market discovery and execution layer:
+
+- **TICK mobile:** a focused consumer experience for discovery, execution, and
+  position watching;
+- **TICK Engine:** market interpretation, tradeability, route quality, and
+  availability;
+- **TICK Router:** venue selection based on cost, latency, liquidity,
+  capabilities, and health;
+- **TICK Pro:** a data-rich web surface for experienced traders;
+- **TICK API:** normalized discovery and execution primitives for partners.
+
+This creates a path from an approachable retail product to infrastructure that
+can support crypto, indices, commodities, FX, equities, and other markets when
+data, venue access, and regulation allow.
+
+Commercial models already under consideration in the project research are:
+
+- trading fee share;
+- routing rebates or spread economics;
+- TICK Pro subscriptions for advanced data, alerts, and analytics;
+- VIP fee tiers;
+- partner or builder integrations;
+- sponsored competitions and creator/referral programs.
+
+The current V1 is focused on proving retention, execution quality, and market
+discovery before selecting a final revenue mix.
 
 ## Product Surfaces
 
@@ -41,15 +102,16 @@ No broad public launch or stable revenue model is active yet.
 
 Pulse is the discovery screen.
 
-- Ranks the currently supported markets by observed activity.
+- Ranks supported markets by observed activity and execution context.
 - Shows price, recent movement, market character, and short live history.
 - Uses plain-language states such as `SURGING`, `DUMPING`, `SWINGING`,
   `NEAR 90s HIGH`, and `NEAR 90s LOW`.
 - Opens a selected market in TICK.
 
-The current scanner is useful product instrumentation, not a proven alpha
-signal. The planned TICK Engine will evaluate every signal against later
-movement and route cost before stronger claims are made.
+Pulse is intended to replace the static watchlist with a live map of where
+short-term attention may be worthwhile. Ranking does not choose long or short.
+It answers whether something meaningful is happening and whether the available
+route can support a trade.
 
 ### TICK
 
@@ -78,6 +140,75 @@ Me is the account surface.
 - Switches between the Live and Demo trading profiles.
 - Resets a demo season after confirmation.
 - Provides account and sign-out controls.
+
+## TICK Engine
+
+TICK Engine is the shared interpretation layer behind Pulse, the trade screen,
+notifications, Pro, and the future API.
+
+It turns raw market and route data into six primitives:
+
+| Primitive | Product question |
+| --- | --- |
+| `ACTIVE` | Is movement unusual for this market relative to its own recent behavior? |
+| `SHAPE` | Is price surging, dumping, swinging, breaking out, reversing, or quiet? |
+| `PARTICIPATION` | Is the move supported by elevated activity, volume, open interest, or other available participation data? |
+| `CONTEXT` | Where is price inside its short and wider ranges? |
+| `TRADEABLE` | Is the movement large and clean enough relative to cost, spread, liquidity, and execution latency? |
+| `AVAILABLE` | Can this user, preset, wallet, market, and venue route execute now? |
+
+The first regime model separates two common short-horizon situations:
+
+- **Directional:** momentum, continuation, breakout, and impulse behavior.
+- **Oscillating:** range-bound movement, repeated reversals, and short-term
+  mean reversion.
+
+These regimes should change how the interface explains the market. A
+directional tape may emphasize impulse, range break, and acceleration. An
+oscillating tape may emphasize swing size, recent extremes, and reversal
+frequency. Neither state is an instruction to buy or sell.
+
+The engine should combine:
+
+- normalized price and timestamp data;
+- realized volatility over several windows;
+- range position and breakout behavior;
+- update cadence and price-change activity;
+- real volume and open interest where licensed and available;
+- spread, price impact, fees, funding, and expected slippage;
+- measured open and close latency;
+- venue and market health;
+- user balance, limits, preset, and regional availability.
+
+Discovery data can come from broader and richer sources than the execution
+venue. Final quote, liquidation, stop, fill, and PnL truth must use the chosen
+route's own rules and price inputs.
+
+Every engine version should be shadow-scored against what happened after the
+signal at 10 seconds, 30 seconds, 60 seconds, and five minutes. Evaluation
+should measure continuation, reversal, favorable and adverse excursion, regime
+lifetime, route cost, and whether the opportunity survived execution latency.
+This turns Pulse from an attractive volatility list into an evidence-based
+trading tool.
+
+## Current V1
+
+The current implementation proves the complete mobile loop with one live rail:
+
+- gTrade/Gains execution on Arbitrum;
+- invite-code accounts and platform-created wallets;
+- USDC deposits and withdrawals;
+- platform-paid ETH gas with USDC accounting;
+- real market quotes, venue-native stop loss and take profit;
+- durable open and close jobs;
+- execution-event tracking and final wallet reconciliation;
+- a shared market feed, 90-second tape, and one-hour context;
+- isolated Live and Demo profiles.
+
+gTrade is the V1 rail because it provides live markets, high leverage,
+delegated execution, user-owned positions, and observable onchain settlement.
+Its fee model and two-transaction oracle flow are specific to this adapter.
+They should not determine how another venue is represented inside TICK.
 
 ## User Actions
 
@@ -292,7 +423,7 @@ contract details.
 
 ## Venue Abstraction
 
-The consumer app works with:
+The consumer app and core domain work with:
 
 - market availability;
 - collateral and notional;
@@ -303,77 +434,108 @@ The consumer app works with:
 - position and settlement state.
 
 Venue-specific contract calls, indices, decimals, events, and recovery rules
-remain inside adapters. gTrade is the only active live venue. Aark requires a
-working partner authorization path before it can become a seamless route.
+remain inside adapters.
+
+The V1 route is gTrade. Future adapters can represent faster order books,
+lower-fee perps, higher-leverage engines, or cross-asset venues without
+changing the user's basic flow. Each route must expose the same normalized
+capabilities:
+
+```text
+markets
+leverage and collateral limits
+all-in opening and closing cost
+quote freshness and slippage
+open and close lifecycle
+position, stop, take profit, and liquidation state
+realized result and reconciliation
+health, latency, and recovery status
+reward or points eligibility when known
+```
+
+The router should consider eligibility, availability, venue health, all-in
+cost, liquidity, leverage fit, measured latency, and reconciliation quality.
+Reward programs are secondary to execution quality.
+
+Users of the main mobile product should not need to choose a venue for every
+trade. TICK can select the route that fits the market and preset. TICK Pro can
+later expose venue and route comparison for users who want direct control.
+
+gTrade is the only active live venue today. Aark has been researched and
+canary-tested, but seamless opening requires a working partner authorization
+path. Other venue research remains in the repository and is not presented as a
+production integration.
 
 ## Points Program
 
-Points are planned, not shipped.
+TICK plans to have its own points program. The earning rules, accounting model,
+and benefits have not been defined yet.
 
-The first useful version can award separate Live and Demo points for:
+Because TICK is venue-agnostic, it can also track whether an eligible route has
+an active venue points or rewards program. Users may then receive the available
+venue benefit when that route is already suitable for the trade. TICK should
+not promise token value or select worse execution only to chase rewards.
 
-- completing explainable trades;
-- using risk controls;
-- maintaining a positive season result;
-- participating in time-limited Demo competitions;
-- reporting reproducible product issues.
+## Current V1 Boundaries
 
-Reset count and season history are already recorded. Points should not reward
-raw leverage, liquidation, or meaningless volume because those incentives
-would conflict with user outcomes and produce easy abuse.
+These are boundaries of the present build rather than the intended product:
 
-## Current Limits
+- access is invite-only;
+- gTrade is the only active live route;
+- accounts use platform-created wallets with environment-managed encryption;
+- one position and one command can be active per user;
+- execution uses market orders and full closes;
+- partial close and position resize are not exposed;
+- scanner labels describe observed conditions and are still being calibrated;
+- available cost and leverage follow gTrade's market rules;
+- execution time includes Arbitrum and gTrade oracle latency;
+- operator tooling, policy controls, security hardening, and jurisdiction rules
+  remain roadmap work.
 
-- Private invite-only alpha.
-- Platform custody with environment-managed encryption.
-- One active position and one command in flight per user.
-- One active live venue.
-- Market orders and full closes only.
-- No partial close or position resize.
-- Scanner labels are observational and not validated trading signals.
-- gTrade fees can be large relative to small collateral at extreme leverage.
-- Execution time depends on external RPC, sequencer, oracle, and venue systems.
-- Regulatory, jurisdiction, derivatives, and custody requirements are not
-  complete for a public launch.
-- Production operator tooling, automated incident controls, and security review
-  need further work.
+The narrow V1 lets the team measure one complete route before expanding the
+market universe and routing system.
 
 ## Roadmap
 
-### 1. Private Alpha
+### 1. Complete The Mobile V1
 
 - Run repeated Live and Demo cycles with teammates.
 - Track execution latency, failures, liquidations, PnL differences, and resets.
 - Improve the gesture, chart context transition, and mobile state presentation.
+- Refine presets so amount, leverage, cost, and risk fit each market.
+- Make the market's current shape and context easier to read without turning
+  the phone into a professional terminal.
 - Add operator views for every intent, transaction, event, and reconciliation.
 
-### 2. TICK Engine
+### 2. Calibrate TICK Engine
 
 - Centralize cross-market activity scoring.
 - Distinguish directional and oscillating market regimes.
-- Add participation, range context, cost coverage, and route availability.
+- Add participation, range context, tradeability, and route availability.
 - Shadow-score signals against 10-second, 30-second, 60-second, and five-minute
   outcomes.
-- Use evidence to decide which labels deserve product prominence.
+- Use the measured outcomes to improve ranking, labels, notifications, and
+  suggested market configuration.
 
-### 3. Safer External Beta
+### 3. Add Venue Routing
 
-- Upgrade key storage and operational access controls.
-- Add jurisdiction and eligibility controls.
-- Add global, venue, market, and user kill switches.
-- Formalize limits, disclosures, incident recovery, and reconciliation alerts.
-- Certify reconnect, restart, duplicate request, ambiguous transaction, stop,
-  and liquidation behavior under failure injection.
+- Certify a second live adapter using measured cost, fill speed, event accuracy,
+  and recovery.
+- Route each market through the best eligible venue instead of treating one
+  protocol as the product.
+- Track route-specific fees, leverage, liquidity, availability, and rewards.
+- Keep the mobile experience stable while adapters change underneath it.
 
-### 4. Multi-Venue And Cross-Asset
+### 4. Expand Markets And Data
 
-- Add a second venue only after its quote, execution, event, cost, and recovery
-  behavior passes canary certification.
-- Route by asset availability, cost, liquidity, leverage, latency, and health.
-- Expand discovery toward crypto, indices, commodities, FX, and equities where
-  data, venue support, and regulation allow.
+- Add richer discovery inputs such as real volume, open interest, funding,
+  spread, depth, and liquidation activity where reliable sources are available.
+- Separate broad discovery data from route-specific execution truth.
+- Expand from crypto toward indices, commodities, FX, and equities where
+  market data, venue support, and regulation allow.
+- Build alerts around observed market events rather than directional advice.
 
-### 5. TICK Pro Web
+### 5. Launch TICK Pro Web
 
 TICK Pro will expose more of the same engine rather than becoming a separate
 trading backend.
@@ -391,16 +553,69 @@ Planned Pro controls include:
 The consumer PWA remains the focused mobile product. Pro web serves traders who
 want more control and makes the shared execution infrastructure inspectable.
 
-## Product Standard
+### 6. Platform And Distribution
 
-TICK is ready for controlled teammate and investor demonstrations. It is not
-ready for unrestricted public money.
+- Upgrade custody and operational key controls.
+- Add regional eligibility, risk policy, disclosures, and incident controls.
+- Expose a versioned partner API after the internal primitives stabilize.
+- Let partners consume normalized market discovery, quotes, execution state,
+  positions, and reconciliation without integrating each venue themselves.
+- Support TICK's own points program and eligible venue programs once their
+  rules and user benefits are defined.
 
-The product is successful when it can repeatedly:
+## Long-Term Product Standard
 
-1. identify an active and executable market;
-2. show the real terms before the gesture;
-3. create or close exposure without duplicate actions;
-4. display honest position state while execution is pending;
-5. explain the final result through market PnL, venue costs, gas, and wallet
-   reconciliation.
+TICK should make trading easier to understand while improving the quality of
+the decision and execution.
+
+The platform should be able to:
+
+1. scan a broad market universe and find meaningful activity;
+2. describe whether a market is directional, oscillating, breaking, reversing,
+   active, or quiet;
+3. distinguish an interesting chart from a tradeable opportunity;
+4. choose an eligible venue using cost, liquidity, latency, reliability, and
+   market coverage;
+5. match amount and leverage to volatility, route economics, and user risk
+   instead of treating maximum leverage as the default;
+6. show the important context and terms without requiring terminal expertise;
+7. execute through a durable, recoverable state machine;
+8. show estimated and final net outcomes after venue cost and gas;
+9. learn from later market behavior and real fills so discovery improves over
+   time.
+
+The intended product family is:
+
+```text
+TICK mobile
+Simple discovery, execution, position watching, and account management.
+
+TICK Engine
+Shared market interpretation, tradeability, availability, and route scoring.
+
+TICK Router
+Venue-agnostic quote, execution, position, and reconciliation infrastructure.
+
+TICK Pro web
+The same engine with professional data and controls exposed.
+
+TICK API
+Normalized discovery and execution capabilities for partner products.
+```
+
+The core message is:
+
+> Find the market moving now. Understand the move. Trade it through the route
+> that fits.
+
+## Repository Sources
+
+This overview consolidates decisions and verified implementation details from:
+
+- [`tick_real_build_spec.md`](tick_real_build_spec.md);
+- [`tick_product_infra.md`](tick_product_infra.md);
+- [`market_research.md`](market_research.md);
+- [`flow_tech_doc.md`](flow_tech_doc.md);
+- [`tick-engine.md`](../research/market/day-trading/tick-engine.md);
+- [`builds/tick-mvp/README.md`](../builds/tick-mvp/README.md);
+- [`research/venues/README.md`](../research/venues/README.md).

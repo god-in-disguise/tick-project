@@ -10,7 +10,8 @@ This folder contains the source-of-truth thinking for TICK:
 
 Use `tick_real_build_spec.md` as the current source of truth before changing `builds/tick-mvp/` architecture. Older concept, market, and kill-memo docs are supporting context and may describe earlier assumptions that the real-build spec has since superseded.
 
-For a concise current product, technical, commercial, and roadmap summary, use
+For the current product, technical, commercial, marketing, and roadmap source,
+use
 [`tick_overview.md`](tick_overview.md).
 
 ## Product TODOs
