@@ -1,4 +1,14 @@
-import { ArrowDown, ArrowUp, Plus, Share, Smartphone } from "lucide-react";
+import {
+  Activity,
+  ArrowDown,
+  ArrowRight,
+  ArrowUp,
+  ChartNoAxesCombined,
+  CircleDollarSign,
+  Plus,
+  Share,
+  Smartphone
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -38,24 +48,33 @@ export function InstallLanding() {
       <div className="landing-noise" aria-hidden="true" />
       <header className="landing-header">
         <TickWordmark />
-        <span>PRIVATE BETA</span>
+        <span className="landing-beta-status"><i /> PRIVATE BETA</span>
       </header>
       <div className="landing-hero">
         <section className="landing-copy">
-          <span>THE MARKET MOVING NOW</span>
+          <span>LIVE MARKETS · ONE MOBILE LOOP</span>
           <h1>Catch what is moving now.</h1>
           <p>
-            TICK turns live volatility into one focused mobile loop: discover an active
-            market, understand the terms, and open or close in one gesture.
+            TICK finds active markets, shows the real terms, and turns opening or
+            closing a position into one deliberate gesture.
           </p>
+          <div className="landing-signal-row" aria-label="TICK product principles">
+            <span><Activity aria-hidden="true" />Live movement</span>
+            <span><ChartNoAxesCombined aria-hidden="true" />Real positions</span>
+            <span><CircleDollarSign aria-hidden="true" />Net results</span>
+          </div>
           <a className="landing-learn-more" href="#how-tick-works">
-            Explore TICK
+            See the loop
             <ArrowDown size={14} />
           </a>
         </section>
         <InstallAction desktop={desktop} install={install} />
       </div>
       <LandingTape />
+      <div className="landing-live-foot">
+        <span>REAL MARKET DATA</span>
+        <span>PRICE · ACTIVITY · RANGE</span>
+      </div>
 
       <section
         id="how-tick-works"
@@ -64,55 +83,65 @@ export function InstallLanding() {
       >
         <div className="landing-section-heading">
           <span>THE TICK LOOP</span>
-          <h2 id="landing-product-title">From movement to a position in seconds.</h2>
-          <p>TICK surfaces activity, not direction. The user still decides long or short.</p>
+          <h2 id="landing-product-title">One market. One decision.</h2>
+          <p>
+            TICK compresses discovery, execution, and the result without choosing a
+            direction for the user.
+          </p>
         </div>
         <div className="landing-product-steps">
           <article>
-            <span>01 · PULSE</span>
-            <h3>Find active markets</h3>
-            <p>
-              Markets are ranked by live movement, execution cost, freshness, and route
-              quality, not by a static watchlist.
-            </p>
+            <div className="landing-step-index"><span>01</span><Activity aria-hidden="true" /></div>
+            <div>
+              <span>PULSE</span>
+              <h3>Find active markets</h3>
+              <p>See where movement is happening instead of searching a static pair list.</p>
+            </div>
           </article>
           <article>
-            <span>02 · TICK</span>
-            <h3>Act with one gesture</h3>
-            <p>
-              One chart and one visible preset. Swipe up to go long, down to go short,
-              and close without building an order ticket.
-            </p>
+            <div className="landing-step-index"><span>02</span><ArrowUp aria-hidden="true" /></div>
+            <div>
+              <span>TICK</span>
+              <h3>Act with one gesture</h3>
+              <p>Swipe up to go long, down to go short, and use the same direction to close.</p>
+            </div>
           </article>
           <article>
-            <span>03 · RESULT</span>
-            <h3>See the real outcome</h3>
-            <p>
-              Estimated PnL starts after costs. Opening, live exposure, closing, and the
-              final wallet result remain separate and explicit.
-            </p>
+            <div className="landing-step-index"><span>03</span><CircleDollarSign aria-hidden="true" /></div>
+            <div>
+              <span>RESULT</span>
+              <h3>See the net outcome</h3>
+              <p>Fees are not hidden. Estimated and final wallet results remain distinct.</p>
+            </div>
           </article>
         </div>
       </section>
 
       <section className="landing-principle" aria-labelledby="landing-principle-title">
         <div>
-          <span>BUILT FOR REAL EXECUTION</span>
+          <span>EXECUTION IS A STATE</span>
           <h2 id="landing-principle-title">
-            Simpler trading without hiding the machinery.
+            Fast feedback without fake certainty.
           </h2>
         </div>
         <div className="landing-principle-copy">
           <p>
-            TICK normalizes venue differences into the terms that matter on a phone:
-            available markets, leverage, estimated cost, opening and closing time, and
-            the realized result.
+            A transaction request is not the same as an open position. TICK keeps the
+            execution lifecycle visible while the market remains live.
           </p>
+          <div className="landing-state-rail" aria-label="Execution states">
+            <span><i />OPENING</span>
+            <ArrowRight aria-hidden="true" />
+            <span><i />LIVE</span>
+            <ArrowRight aria-hidden="true" />
+            <span><i />CLOSING</span>
+            <ArrowRight aria-hidden="true" />
+            <span><i />RESULT</span>
+          </div>
           <div className="landing-facts" aria-label="Product capabilities">
-            <span>LIVE MARKET DATA</span>
-            <span>REAL POSITIONS</span>
-            <span>NET RESULTS</span>
-            <span>MULTI-VENUE CORE</span>
+            <span>USER-OWNED POSITION</span>
+            <span>VENUE EXECUTION</span>
+            <span>FEE-AWARE PNL</span>
           </div>
         </div>
       </section>
@@ -120,7 +149,7 @@ export function InstallLanding() {
       <footer className="landing-beta">
         <div>
           <span>PRIVATE BETA · IPHONE FIRST</span>
-          <strong>Live markets. Real execution. Invite-only access.</strong>
+          <strong>Install TICK, enter an invite code, and open the live app.</strong>
         </div>
         <TickWordmark className="landing-footer-mark" />
       </footer>
@@ -173,9 +202,10 @@ function InstallAction({
         <>
           <button type="button" onClick={() => void install()}>
             <Smartphone size={19} />
-            Add TICK to iPhone
+            <span>Add TICK to iPhone</span>
+            <ArrowRight size={17} />
           </button>
-          <small>The trading app opens from your Home Screen.</small>
+          <small>Installs as a full-screen iPhone app. Invite code required.</small>
         </>
       )}
     </div>
