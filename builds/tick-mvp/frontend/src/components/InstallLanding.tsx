@@ -7,7 +7,8 @@ import {
   CircleDollarSign,
   Plus,
   Share,
-  Smartphone
+  Smartphone,
+  WalletCards
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
@@ -88,7 +89,10 @@ export function InstallLanding() {
         </div>
         <div className="landing-product-steps">
           <article>
-            <div className="landing-step-index"><span>01</span><Activity aria-hidden="true" /></div>
+            <div className="landing-step-index">
+              <span>01</span>
+              <LandingPulseMark />
+            </div>
             <div>
               <span>PULSE</span>
               <h3>Find active markets</h3>
@@ -99,7 +103,10 @@ export function InstallLanding() {
             </div>
           </article>
           <article>
-            <div className="landing-step-index"><span>02</span><ArrowUp aria-hidden="true" /></div>
+            <div className="landing-step-index">
+              <span>02</span>
+              <LandingTickMark />
+            </div>
             <div>
               <span>TICK</span>
               <h3>Act with one gesture</h3>
@@ -110,7 +117,10 @@ export function InstallLanding() {
             </div>
           </article>
           <article>
-            <div className="landing-step-index"><span>03</span><CircleDollarSign aria-hidden="true" /></div>
+            <div className="landing-step-index">
+              <span>03</span>
+              <WalletCards className="landing-result-mark" aria-hidden="true" />
+            </div>
             <div>
               <span>RESULT</span>
               <h3>See the real outcome</h3>
@@ -175,6 +185,27 @@ export function InstallLanding() {
         </div>
       ) : null}
     </main>
+  );
+}
+
+function LandingPulseMark() {
+  return (
+    <svg
+      className="landing-pulse-mark"
+      viewBox="0 0 32 20"
+      fill="none"
+      aria-hidden="true"
+    >
+      <path d="M1 12.5h5l3-8 5 14 4-10 3 4.5h10" />
+    </svg>
+  );
+}
+
+function LandingTickMark() {
+  return (
+    <span className="landing-tick-mark" aria-hidden="true">
+      <i />
+    </span>
   );
 }
 
