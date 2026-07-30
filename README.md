@@ -23,10 +23,19 @@ New production work should happen in `builds/tick-mvp/`. Pull proven pieces out 
 
 Current production-shaped status:
 
-- `builds/tick-mvp/backend` runs with Docker Compose, Postgres, Redis, an ARQ worker, and venue-events process. The MVP shares one live market feed inside the API process.
-- Auth/session, platform wallet creation, deposit address, quote, open intent, close intent, idempotency, and withdrawal contracts are wired.
-- Live gTrade execution has not yet been extracted into the new backend; the local MVP remains the live execution reference.
-- The first frontend target is PWA for fast sharing, but the UX should follow the local Expo canary.
+- `builds/tick-mvp/backend` is deployed with Docker Compose, Postgres, Redis,
+  ARQ workers, a shared market feed, and a venue-events process.
+- Invite sessions, encrypted platform wallets, USDC deposit/withdrawal, durable
+  intents, delegated gTrade execution, reconciliation, and gas accounting are
+  live in the production-shaped backend.
+- The Vercel PWA preserves the local mobile loop and includes isolated Live and
+  Demo profiles. Demo seasons start at `$1,000`, use real market prices with
+  delayed simulated fills, and keep an audit record for every reset.
+- gTrade/Gains on Arbitrum is the only active live route. Other venues remain
+  research or canary integrations until their execution path is certified.
+
+See [`project_overview/tick_overview.md`](project_overview/tick_overview.md) for
+the current product, technical, commercial, and roadmap summary.
 
 ## Current Work Order
 

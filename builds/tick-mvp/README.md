@@ -18,7 +18,7 @@ The backend is one codebase with multiple process roles:
 
 - `api` - FastAPI HTTP API and client event stream.
 - `worker` - durable execution jobs and reconciliation.
-- shared API market feed - price ingestion and scanner data for the current MVP.
+- `market-feed` - shared price ingestion, retained bars, and scanner data.
 - `venue-events` - direct venue event listener and state observations.
 
 Avoid microservices until the state model is stable.
@@ -32,7 +32,7 @@ The PWA is a distribution choice for the first deployable MVP. The product refer
 - one live venue at first;
 - one active position per user;
 - one in-flight command per user;
-- native venue stop required for real-money opening;
+- optional stop and take-profit orders must be placed at the venue;
 - open/close are idempotent;
 - final PnL must reconcile;
 - chart must use truthful market data only.
@@ -41,9 +41,8 @@ The PWA is a distribution choice for the first deployable MVP. The product refer
 
 ## Current Implementation Status
 
-- Backend runs with Docker Compose, Postgres, Redis, an ARQ worker, and a
-  venue-events process. The current MVP keeps one shared live feed in the API
-  process instead of running a placeholder feed container.
+- Backend runs with Docker Compose, Postgres, Redis, an ARQ worker, a shared
+  market-feed process, and a venue-events process.
 - Real delegated gTrade open/close execution is extracted and live-tested.
   The user wallet owns collateral and the position; TICK's platform agent pays
   Arbitrum gas.
