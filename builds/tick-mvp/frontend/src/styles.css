@@ -3402,14 +3402,38 @@ button:disabled {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--silver);
+  box-shadow: 0 0 8px color-mix(in srgb, currentColor 42%, transparent);
 }
 
-.landing-state-rail span:nth-of-type(2) i {
+.landing-state-rail .state-opening {
+  color: #f0b15f;
+}
+
+.landing-state-rail .state-opening i {
+  background: #f0b15f;
+}
+
+.landing-state-rail .state-live {
+  color: var(--green);
+}
+
+.landing-state-rail .state-live i {
   background: var(--green);
 }
 
-.landing-state-rail span:last-of-type i {
+.landing-state-rail .state-closing {
+  color: #aeb7c6;
+}
+
+.landing-state-rail .state-closing i {
+  background: #aeb7c6;
+}
+
+.landing-state-rail .state-result {
+  color: var(--text);
+}
+
+.landing-state-rail .state-result i {
   background: var(--text);
 }
 
@@ -3422,27 +3446,23 @@ button:disabled {
 .landing-facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 18px;
+  gap: 8px 0;
 }
 
 .landing-facts span {
   position: relative;
-  padding-left: 12px;
+  padding: 0 12px;
   color: var(--silver);
   font-size: 9px;
   font-weight: 900;
 }
 
-.landing-facts span::before {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--silver);
-  content: "";
-  transform: translateY(-50%);
+.landing-facts span:first-child {
+  padding-left: 0;
+}
+
+.landing-facts span + span {
+  border-left: 0.5px solid var(--line);
 }
 
 .landing-beta {

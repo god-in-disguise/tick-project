@@ -26,7 +26,10 @@ assert.match(await page.locator("h1").innerText(), /Catch what is moving now/);
 await page.locator(".tick-wordmark").first().waitFor();
 await page.locator(".landing-live-stage").waitFor();
 assert.equal(await page.locator(".landing-signal-row > span").count(), 3);
-assert.match(await page.locator(".landing-product").innerText(), /One market\. One decision\./);
+assert.match(
+  await page.locator(".landing-product").innerText(),
+  /From movement to a position in seconds\./
+);
 assert.equal(await page.locator(".landing-state-rail > span").count(), 4);
 await page.waitForTimeout(1_000);
 const landing = page.locator(".install-landing");

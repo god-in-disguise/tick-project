@@ -83,11 +83,8 @@ export function InstallLanding() {
       >
         <div className="landing-section-heading">
           <span>THE TICK LOOP</span>
-          <h2 id="landing-product-title">One market. One decision.</h2>
-          <p>
-            TICK compresses discovery, execution, and the result without choosing a
-            direction for the user.
-          </p>
+          <h2 id="landing-product-title">From movement to a position in seconds.</h2>
+          <p>TICK surfaces activity, not direction. The user still decides long or short.</p>
         </div>
         <div className="landing-product-steps">
           <article>
@@ -95,7 +92,10 @@ export function InstallLanding() {
             <div>
               <span>PULSE</span>
               <h3>Find active markets</h3>
-              <p>See where movement is happening instead of searching a static pair list.</p>
+              <p>
+                Markets are ranked by live movement, execution cost, freshness, and
+                route quality, not by a static watchlist.
+              </p>
             </div>
           </article>
           <article>
@@ -103,15 +103,21 @@ export function InstallLanding() {
             <div>
               <span>TICK</span>
               <h3>Act with one gesture</h3>
-              <p>Swipe up to go long, down to go short, and use the same direction to close.</p>
+              <p>
+                One chart and one visible preset. Swipe up to go long, down to go
+                short, and close without building an order ticket.
+              </p>
             </div>
           </article>
           <article>
             <div className="landing-step-index"><span>03</span><CircleDollarSign aria-hidden="true" /></div>
             <div>
               <span>RESULT</span>
-              <h3>See the net outcome</h3>
-              <p>Fees are not hidden. Estimated and final wallet results remain distinct.</p>
+              <h3>See the real outcome</h3>
+              <p>
+                Estimated PnL starts after costs. Opening, live exposure, closing, and
+                the final wallet result remain separate and explicit.
+              </p>
             </div>
           </article>
         </div>
@@ -130,13 +136,13 @@ export function InstallLanding() {
             execution lifecycle visible while the market remains live.
           </p>
           <div className="landing-state-rail" aria-label="Execution states">
-            <span><i />OPENING</span>
+            <span className="state-opening"><i />OPENING</span>
             <ArrowRight aria-hidden="true" />
-            <span><i />LIVE</span>
+            <span className="state-live"><i />LIVE</span>
             <ArrowRight aria-hidden="true" />
-            <span><i />CLOSING</span>
+            <span className="state-closing"><i />CLOSING</span>
             <ArrowRight aria-hidden="true" />
-            <span><i />RESULT</span>
+            <span className="state-result"><i />RESULT</span>
           </div>
           <div className="landing-facts" aria-label="Product capabilities">
             <span>USER-OWNED POSITION</span>
