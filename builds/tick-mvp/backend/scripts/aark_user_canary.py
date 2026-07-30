@@ -20,18 +20,21 @@ if str(ROOT) not in sys.path:
 
 from eth_account import Account
 
-from tick_mvp.core.config import get_settings
+from tick_mvp.core.config import Settings, get_settings
 from tick_mvp.domain.states import TradeSide
 from tick_mvp.infrastructure.custody import PrivateKeyCipher
 from tick_mvp.infrastructure.database import create_session_factory, session_scope
 from tick_mvp.infrastructure.models import User, WalletAccount
+from tick_mvp.venues.aark.api import AarkApiClient
 from tick_mvp.venues.aark.pricing import estimate_open
 from tick_mvp.venues.aark.public import AarkPublicClient
 from tick_mvp.venues.aark.signing import (
     MillisecondNonce,
     address,
     session_private_key,
+    sign_close_eip191,
     sign_open,
+    sign_open_eip191,
 )
 from tick_mvp.venues.aark.wallet import AarkWalletExecutor
 
@@ -141,7 +144,8 @@ def main() -> None:
             delegate_key = session_private_key(private_key)
             nonce = MillisecondNonce().next()
             amount_in = int(args.margin_usd * Decimal(10**18))
-            signature = sign_open(
+            signature = _open_signature(
+                args.signature_scheme,
                 delegate_key,
                 chain_id=settings.arb_chain_id,
                 user=account.address,
@@ -156,7 +160,6 @@ def main() -> None:
             output["openRequest"] = {
                 "url": f"{settings.aark_api_url.rstrip('/')}/oct/moon/open",
                 "headers": {
-                    "version": settings.aark_frontend_version,
                     "signature": signature,
                 },
                 "body": {
@@ -173,6 +176,8 @@ def main() -> None:
                     "mode": settings.aark_mode,
                 },
             }
+            if args.signature_scheme == "live_eip712":
+                output["openRequest"]["headers"]["version"] = settings.aark_frontend_version
             if args.request_base64_only:
                 encoded = base64.b64encode(
                     json.dumps(output["openRequest"], separators=(",", ":")).encode()
@@ -259,14 +264,27 @@ def main() -> None:
                     or position.get("index")
                 )
                 close_started = time.monotonic()
-                close_result = executor.close_position(
-                    private_key_hex=private_key,
-                    market=market,
-                    side=args.side,
-                    venue_position_id=venue_position_id,
-                )
+                if args.signature_scheme == "documented_eip191":
+                    close_result = _documented_close(
+                        settings=settings,
+                        public=public,
+                        private_key=private_key,
+                        user=account.address,
+                        venue_position_id=venue_position_id,
+                    )
+                else:
+                    close_result = executor.close_position(
+                        private_key_hex=private_key,
+                        market=market,
+                        side=args.side,
+                        venue_position_id=venue_position_id,
+                    )
                 output["closeVisibleMs"] = elapsed_ms(close_started)
-                output["close"] = _close_result(close_result)
+                output["close"] = (
+                    close_result
+                    if isinstance(close_result, dict)
+                    else _close_result(close_result)
+                )
 
         if args.action == "withdraw" or (args.action == "roundtrip" and args.withdraw_after):
             withdraw_started = time.monotonic()
@@ -290,6 +308,9 @@ def main() -> None:
 
 
 def load_private_key(user_email: str, encryption_key: str) -> str:
+    canary_private_key = os.getenv("AARK_CANARY_PRIVATE_KEY")
+    if canary_private_key:
+        return canary_private_key
     session_factory = create_session_factory()
     with session_scope(session_factory) as session:
         row = (
@@ -357,6 +378,71 @@ def elapsed_ms(started: float) -> float:
     return round((time.monotonic() - started) * 1000, 1)
 
 
+def _open_signature(
+    scheme: str,
+    private_key: str,
+    **terms: Any,
+) -> str:
+    if scheme == "documented_eip191":
+        terms.pop("chain_id")
+        return sign_open_eip191(private_key, **terms)
+    return sign_open(private_key, **terms)
+
+
+def _documented_close(
+    *,
+    settings: Settings,
+    public: AarkPublicClient,
+    private_key: str,
+    user: str,
+    venue_position_id: str,
+) -> dict[str, Any]:
+    delegate_key = session_private_key(private_key)
+    nonce = MillisecondNonce().next()
+    moon_index = int(venue_position_id)
+    signature = sign_close_eip191(
+        delegate_key,
+        user=user,
+        moon_index=moon_index,
+        nonce=nonce,
+    )
+    api = AarkApiClient(settings)
+    try:
+        response = api.post(
+            "/oct/moon/close",
+            body={
+                "chainId": settings.arb_chain_id,
+                "user": user,
+                "delegatee": address(delegate_key),
+                "moonIndex": moon_index,
+                "nonce": nonce,
+                "mode": settings.aark_mode,
+            },
+            headers={"signature": signature},
+            include_frontend_version=False,
+        )
+        deadline = time.monotonic() + settings.aark_close_wait_seconds
+        while time.monotonic() < deadline:
+            if not any(
+                str(row.get("moonIndex") or row.get("index")) == venue_position_id
+                for row in public.positions(user)
+            ):
+                return {
+                    "status": "closed",
+                    "signatureScheme": "documented_eip191",
+                    "venuePositionId": venue_position_id,
+                    "request": response,
+                    "venueBalanceUsd": str(public.account_balance_usd(user)),
+                    "history": public.trade_history(user)[:3],
+                }
+            time.sleep(settings.aark_rest_poll_seconds)
+        raise RuntimeError(
+            f"documented EIP-191 close was accepted but position {venue_position_id} remained open"
+        )
+    finally:
+        api.close()
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Aark self-serve live canary.")
     parser.add_argument(
@@ -372,6 +458,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hold-seconds", type=float, default=1.0)
     parser.add_argument("--withdraw-after", action="store_true")
     parser.add_argument("--request-base64-only", action="store_true")
+    parser.add_argument(
+        "--signature-scheme",
+        choices=("live_eip712", "documented_eip191"),
+        default="live_eip712",
+    )
     return parser.parse_args()
 
 

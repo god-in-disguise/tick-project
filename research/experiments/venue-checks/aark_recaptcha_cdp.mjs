@@ -128,14 +128,16 @@ async function main() {
       );
       const submitted = await command("Runtime.evaluate", {
         expression: `(async () => {
+          const headers = {
+            "content-type": "application/json",
+            "signature": ${JSON.stringify(request.headers.signature)},
+            "recaptcha-response": ${JSON.stringify(token)}
+          };
+          const version = ${JSON.stringify(request.headers.version ?? null)};
+          if (version) headers.version = version;
           const response = await fetch(${JSON.stringify(request.url)}, {
             method: "POST",
-            headers: {
-              "content-type": "application/json",
-              "version": ${JSON.stringify(request.headers.version)},
-              "signature": ${JSON.stringify(request.headers.signature)},
-              "recaptcha-response": ${JSON.stringify(token)}
-            },
+            headers,
             body: JSON.stringify(${JSON.stringify(request.body)})
           });
           let body;

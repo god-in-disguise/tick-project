@@ -5,8 +5,10 @@ import threading
 import time
 from typing import Any
 
+from eth_abi import encode as abi_encode
 from eth_account import Account
 from eth_account.messages import encode_defunct
+from eth_utils import keccak
 
 
 SECP256K1_ORDER = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
@@ -72,8 +74,8 @@ def sign_open(
     is_long: bool,
     nonce: int,
 ) -> str:
-    # Aark's current production frontend uses EIP-712 here. Its public
-    # integration example still describes an older EIP-191 payload.
+    # Aark's current production frontend uses EIP-712 here. Its July 2026
+    # EIP-191 integration example was rejected by the live API in our canary.
     return _typed_signature(
         private_key,
         chain_id=chain_id,
@@ -101,6 +103,49 @@ def sign_open(
     )
 
 
+def sign_open_eip191(
+    private_key: str,
+    *,
+    user: str,
+    market_id: int,
+    amount_in: int,
+    leverage: int,
+    credit_to_use: int,
+    take_profit: int,
+    is_long: bool,
+    nonce: int,
+) -> str:
+    digest = keccak(
+        abi_encode(
+            [
+                "address",
+                "uint32",
+                "uint256",
+                "uint256",
+                "uint256",
+                "uint256",
+                "bool",
+                "uint256",
+            ],
+            [
+                user,
+                market_id,
+                amount_in,
+                leverage,
+                credit_to_use,
+                take_profit,
+                is_long,
+                nonce,
+            ],
+        )
+    )
+    signed = Account.sign_message(
+        encode_defunct(primitive=digest),
+        private_key=private_key,
+    )
+    return f"0x{signed.signature.hex()}"
+
+
 def sign_close(
     private_key: str,
     *,
@@ -120,6 +165,26 @@ def sign_close(
         ],
         values={"user": user, "moonIndex": moon_index, "nonce": nonce},
     )
+
+
+def sign_close_eip191(
+    private_key: str,
+    *,
+    user: str,
+    moon_index: int,
+    nonce: int,
+) -> str:
+    digest = keccak(
+        abi_encode(
+            ["address", "uint32", "uint256"],
+            [user, moon_index, nonce],
+        )
+    )
+    signed = Account.sign_message(
+        encode_defunct(primitive=digest),
+        private_key=private_key,
+    )
+    return f"0x{signed.signature.hex()}"
 
 
 def sign_withdraw(

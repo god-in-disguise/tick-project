@@ -1,13 +1,21 @@
 from decimal import Decimal
 
 import pytest
+from eth_abi import encode as abi_encode
 from eth_account import Account
-from eth_account.messages import encode_typed_data
+from eth_account.messages import encode_defunct, encode_typed_data
+from eth_utils import keccak
 
 from tick_mvp.domain.states import TradeSide
 from tick_mvp.venues.aark.pricing import estimate_open
 from tick_mvp.venues.aark.public import AarkError, AarkMarket
-from tick_mvp.venues.aark.signing import address, session_private_key, sign_open
+from tick_mvp.venues.aark.signing import (
+    address,
+    session_private_key,
+    sign_close_eip191,
+    sign_open,
+    sign_open_eip191,
+)
 
 
 def _market() -> AarkMarket:
@@ -148,5 +156,81 @@ def test_open_signature_recovers_registered_delegate() -> None:
     )
 
     recovered = Account.recover_message(message, signature=signature)
+
+    assert recovered == address(delegate_private_key)
+
+
+def test_documented_eip191_open_signature_recovers_registered_delegate() -> None:
+    wallet_private_key = "0x" + "11" * 32
+    delegate_private_key = session_private_key(wallet_private_key)
+    user = Account.from_key(wallet_private_key).address
+    nonce = 1_785_228_885_000
+    values = [
+        user,
+        2,
+        10 * 10**18,
+        500,
+        0,
+        100,
+        True,
+        nonce,
+    ]
+    digest = keccak(
+        abi_encode(
+            [
+                "address",
+                "uint32",
+                "uint256",
+                "uint256",
+                "uint256",
+                "uint256",
+                "bool",
+                "uint256",
+            ],
+            values,
+        )
+    )
+    signature = sign_open_eip191(
+        delegate_private_key,
+        user=user,
+        market_id=2,
+        amount_in=10 * 10**18,
+        leverage=500,
+        credit_to_use=0,
+        take_profit=100,
+        is_long=True,
+        nonce=nonce,
+    )
+
+    recovered = Account.recover_message(
+        encode_defunct(primitive=digest),
+        signature=signature,
+    )
+
+    assert recovered == address(delegate_private_key)
+
+
+def test_documented_eip191_close_signature_recovers_registered_delegate() -> None:
+    wallet_private_key = "0x" + "11" * 32
+    delegate_private_key = session_private_key(wallet_private_key)
+    user = Account.from_key(wallet_private_key).address
+    nonce = 1_785_228_885_100
+    digest = keccak(
+        abi_encode(
+            ["address", "uint32", "uint256"],
+            [user, 390168, nonce],
+        )
+    )
+    signature = sign_close_eip191(
+        delegate_private_key,
+        user=user,
+        moon_index=390168,
+        nonce=nonce,
+    )
+
+    recovered = Account.recover_message(
+        encode_defunct(primitive=digest),
+        signature=signature,
+    )
 
     assert recovered == address(delegate_private_key)

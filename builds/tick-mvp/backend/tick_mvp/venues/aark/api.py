@@ -23,17 +23,20 @@ class AarkApiClient:
         *,
         body: dict[str, Any],
         headers: dict[str, str],
+        include_frontend_version: bool = True,
     ) -> dict[str, Any]:
         url = f"{self._settings.aark_api_url.rstrip('/')}{path}"
+        request_headers = {
+            "content-type": "application/json",
+            "user-agent": "tick-mvp/0.2",
+            **headers,
+        }
+        if include_frontend_version:
+            request_headers["version"] = self._settings.aark_frontend_version
         response = self._session.post(
             url,
             json=body,
-            headers={
-                "content-type": "application/json",
-                "user-agent": "tick-mvp/0.2",
-                "version": self._settings.aark_frontend_version,
-                **headers,
-            },
+            headers=request_headers,
             timeout=15,
         )
         try:
