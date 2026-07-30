@@ -171,15 +171,48 @@ or risk state but must not be turned into direction signals.
 
 ## Workflow Proxies
 
+### C - Interactive Brokers and Fidelity
+
+- [IBKR Market Scanners](https://www.interactivebrokers.com/en/?f=%2Fen%2Fsoftware%2Fpdfhighlights%2FPDF-marketscanners.php)
+- [IBKR: Mean Reversion](https://www.interactivebrokers.com/campus/glossary-terms/mean-reversion-statistical/)
+- [Fidelity: Momentum](https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/momentum)
+- [Fidelity: Range Trading](https://www.fidelity.com/learning-center/trading-investing/trading/range-trading)
+
+These establish common scanner fields and the operational distinction between
+momentum and range-based workflows. They describe tools and concepts rather
+than proving strategy profitability.
+
 ### C - TradingView
 
 - [Multi-Timeframe Analysis](https://www.tradingview.com/support/solutions/43000591555-leveraging-multi-timeframe-analysis/)
 - [Watchlist Alerts](https://www.tradingview.com/support/solutions/43000739708-watchlist-alerts-your-trading-edge/)
 - [Multi-Condition Alerts](https://www.tradingview.com/support/solutions/43000761492-multi-condition-alerts/)
+- [Crypto Coins Screener](https://www.tradingview.com/support/solutions/43000718742-crypto-coins-screener-discover-hidden-gems/)
+- [Stock Screener](https://www.tradingview.com/support/solutions/43000718866-tradingview-stock-screener-trade-smarter-not-harder/)
 
 Supports the workflow pattern of scanning many symbols, orienting with wider
 context, and receiving condition-based alerts. It does not prove TICK's exact
 windows or UI.
+
+## Intraday Regimes
+
+### B - Gao, Han, Li and Zhou
+
+[Market Intraday Momentum](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2440866)
+
+Documents an intraday momentum relationship in actively traded ETFs that is
+stronger during high-volume and high-volatility conditions. Its half-hour
+horizon does not establish continuation at TICK's 10-60 second horizon.
+
+### B - Wen, Bouri, Xu and Zhao
+
+[Intraday Return Predictability in Cryptocurrency Markets: Momentum, Reversal,
+or Both](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4080253)
+
+Finds both momentum and reversal in Bitcoin, with behavior changing around
+jumps, liquidity, macro announcements, and broader market regimes. Supports
+classifying observed behavior and testing exact horizons rather than assuming
+that a large move will continue.
 
 ### C - Bybit
 

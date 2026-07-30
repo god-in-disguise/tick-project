@@ -68,6 +68,9 @@ advice or guaranteed edge.
   compress and the information budget for each stage.
 - [`cross-asset-model.md`](cross-asset-model.md) - normalized market,
   availability, volatility, cost, and route primitives.
+- [`tick-engine.md`](tick-engine.md) - the normalized discovery engine,
+  directional and oscillating market shapes, temporal fit, consumer language,
+  and shadow-validation requirements.
 - [`tick-product-implications.md`](tick-product-implications.md) - product calls
   that follow from the evidence while preserving TICK's current philosophy.
 - [`current-mvp-readiness.md`](current-mvp-readiness.md) - code-grounded audit
