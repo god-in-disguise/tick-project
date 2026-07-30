@@ -18,9 +18,13 @@ import type {
 import { GestureGuide } from "./GestureGuide";
 import { MarketCanvas } from "./MarketCanvas";
 import { MarketContext } from "./MarketContext";
+import { MarketSwipePreview } from "./MarketSwipePreview";
+import { useTradeSwipe } from "./useTradeSwipe";
+import type { SwipeAction, SwipeCue } from "./useTradeSwipe";
 
 type Props = {
   userId: string;
+  markets: Market[];
   market: Market;
   position: Position | null;
   quote: Quote | null;
@@ -38,7 +42,7 @@ type Props = {
   onFund: () => void;
 };
 
-type Cue = "LONG" | "SHORT" | "CLOSE" | "WAIT" | "LOCKED";
+type Cue = SwipeCue;
 type ChartMode = "live" | "context";
 type ChartTransition = "expanding" | "collapsing";
 type ContextSnapshot = {
@@ -51,9 +55,6 @@ type ContextSnapshot = {
 
 const CONTEXT_SECONDS = 60 * 60;
 const CHART_TRANSITION_MS = 1_200;
-const DOUBLE_TAP_MS = 320;
-const TAP_MOVEMENT_PX = 12;
-const DOUBLE_TAP_DISTANCE_PX = 28;
 const contextCache = new Map<string, ContextSnapshot>();
 
 export function TradeView(props: Props) {
@@ -65,13 +66,6 @@ export function TradeView(props: Props) {
     () => contextCache.get(props.market.market) ?? null
   );
   const [contextLoading, setContextLoading] = useState(false);
-  const pointer = useRef<{
-    id: number;
-    x: number;
-    y: number;
-    chartTap: boolean;
-  } | null>(null);
-  const lastChartTap = useRef<{ at: number; x: number; y: number } | null>(null);
   const cueTimer = useRef<number | null>(null);
   const chartTransitionTimer = useRef<number | null>(null);
   const previewQuote = [props.quotes.long, props.quotes.short].find(
@@ -106,7 +100,6 @@ export function TradeView(props: Props) {
     let canceled = false;
     setChartMode("live");
     setChartTransition(null);
-    lastChartTap.current = null;
     if (chartTransitionTimer.current) window.clearTimeout(chartTransitionTimer.current);
     const cached = contextCache.get(props.market.market) ?? null;
     setContext(cached);
@@ -162,84 +155,47 @@ export function TradeView(props: Props) {
     navigator.vibrate?.(next === "WAIT" || next === "LOCKED" ? 14 : 8);
   };
 
-  const release = (event: React.PointerEvent<HTMLElement>) => {
-    const start = pointer.current;
-    pointer.current = null;
-    if (!start || start.id !== event.pointerId) return;
-    const dx = event.clientX - start.x;
-    const dy = event.clientY - start.y;
-    const horizontal = Math.abs(dx);
-    const vertical = Math.abs(dy);
-
-    if (
-      start.chartTap
-      && horizontal <= TAP_MOVEMENT_PX
-      && vertical <= TAP_MOVEMENT_PX
-    ) {
-      const now = performance.now();
-      const previous = lastChartTap.current;
-      const closeToPrevious = previous
-        ? Math.hypot(event.clientX - previous.x, event.clientY - previous.y)
-          <= DOUBLE_TAP_DISTANCE_PX
-        : false;
-      if (previous && now - previous.at <= DOUBLE_TAP_MS && closeToPrevious) {
-        lastChartTap.current = null;
-        navigator.vibrate?.(4);
-        toggleChartWindow();
-      } else {
-        lastChartTap.current = { at: now, x: event.clientX, y: event.clientY };
-      }
-      return;
-    }
-
-    lastChartTap.current = null;
-
-    if (horizontal > 48 && horizontal > vertical * 1.15) {
-      if (props.position || props.busy) return flash("LOCKED");
-      navigator.vibrate?.(5);
-      if (dx < 0) {
-        props.onShift(1);
-      } else {
-        props.onShift(-1);
-      }
-      return;
-    }
-
-    if (vertical <= 54 || vertical <= horizontal * 1.12) return;
-    if (props.busy) return flash("WAIT");
-    const side: Side = dy < 0 ? "long" : "short";
-    if (props.position) {
-      if (props.position.side !== side) return flash("LOCKED");
-      flash("CLOSE");
-      props.onClose();
-      return;
-    }
-    if (needsFunding) {
-      flash("WAIT");
-      props.onFund();
-      return;
-    }
-    flash(side === "long" ? "LONG" : "SHORT");
-    props.onOpen(side);
-  };
+  const swipe = useTradeSwipe({
+    marketId: props.market.market,
+    positionSide: props.position?.side ?? null,
+    busy: props.busy,
+    needsFunding,
+    onOpen: props.onOpen,
+    onClose: props.onClose,
+    onShift: props.onShift,
+    onFund: props.onFund,
+    onCue: flash,
+    onChartDoubleTap: toggleChartWindow
+  });
+  const previousMarket = adjacentMarket(props.markets, props.market.market, -1);
+  const nextMarket = adjacentMarket(props.markets, props.market.market, 1);
 
   return (
     <main
+      ref={swipe.rootRef}
       className="trade-view"
-      onPointerDown={(event) => {
-        pointer.current = {
-          id: event.pointerId,
-          x: event.clientX,
-          y: event.clientY,
-          chartTap: isChartTapTarget(event.target)
-        };
-        event.currentTarget.setPointerCapture(event.pointerId);
-      }}
-      onPointerUp={release}
-      onPointerCancel={() => {
-        pointer.current = null;
-      }}
+      {...swipe.handlers}
     >
+      <SwipeActionLayer action={swipe.action} />
+      {previousMarket ? (
+        <MarketSwipePreview
+          market={previousMarket}
+          offset={-1}
+          active={swipe.previewOffset === -1}
+          available={available}
+          settings={props.settings}
+        />
+      ) : null}
+      {nextMarket ? (
+        <MarketSwipePreview
+          market={nextMarket}
+          offset={1}
+          active={swipe.previewOffset === 1}
+          available={available}
+          settings={props.settings}
+        />
+      ) : null}
+      <div className="trade-scene">
       <header className="trade-header">
         <div className="market-heading">
           <div className="market-name">
@@ -474,16 +430,45 @@ export function TradeView(props: Props) {
           ) : null}
         </div>
       </section>
+      </div>
     </main>
   );
 }
 
-function isChartTapTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof Element) || !target.closest(".chart-stage")) return false;
-  return !target.closest(
-    "button, .execution-dock, .pnl-panel, .result-pop, .funding-prompt, "
-      + ".gesture-guide, .error-toast"
+function SwipeActionLayer({ action }: { action: SwipeAction | null }) {
+  if (!action) return <div className="swipe-action-layer" aria-hidden="true" />;
+  const prefix = action.label === "WAIT"
+    ? "EXECUTION BUSY"
+    : action.label === "POSITION LOCKED"
+      ? "POSITION OPEN"
+      : action.armed
+        ? "RELEASE TO"
+        : "PULL TO";
+
+  return (
+    <div
+      className={[
+        "swipe-action-layer",
+        `swipe-action-${action.direction}`,
+        action.armed ? "is-armed" : "",
+        action.blocked ? "is-blocked" : ""
+      ].filter(Boolean).join(" ")}
+      aria-hidden="true"
+    >
+      <div className="swipe-action-content">
+        <span>{prefix}</span>
+        <strong>{action.label}</strong>
+        <div className="swipe-action-progress"><i /></div>
+      </div>
+    </div>
   );
+}
+
+function adjacentMarket(markets: Market[], currentMarket: string, offset: -1 | 1): Market | null {
+  if (markets.length < 2) return null;
+  const currentIndex = markets.findIndex((market) => market.market === currentMarket);
+  if (currentIndex < 0) return null;
+  return markets[(currentIndex + offset + markets.length) % markets.length] ?? null;
 }
 
 function Term({

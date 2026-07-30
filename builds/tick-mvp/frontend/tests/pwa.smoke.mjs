@@ -139,13 +139,77 @@ await page.waitForTimeout(1_000);
 await page.locator(".market-context").waitFor();
 await page.locator(".tape-heat").waitFor();
 await page.screenshot({ path: "/tmp/tick-trade.png", fullPage: true });
+const tradeView = page.locator(".trade-view");
+const tradeBox = await tradeView.boundingBox();
+assert.ok(tradeBox, "Trade view has no gesture bounds");
+const gestureStart = {
+  x: tradeBox.x + tradeBox.width * 0.5,
+  y: tradeBox.y + tradeBox.height * 0.52
+};
+await page.mouse.move(gestureStart.x, gestureStart.y);
+await page.mouse.down();
+await page.mouse.move(gestureStart.x, gestureStart.y - 64, { steps: 5 });
+const pullAction = page.locator(".swipe-action-layer.swipe-action-up");
+await pullAction.waitFor();
+assert.match(await pullAction.innerText(), /PULL TO\s+(LONG|ADD FUNDS)/);
+await page.screenshot({ path: "/tmp/tick-swipe-arm.png" });
+assert.notEqual(
+  await tradeView.evaluate((element) => element.style.getPropertyValue("--swipe-y")),
+  "0px",
+  "Vertical gesture did not track the pointer"
+);
+await page.mouse.up();
+await page.waitForTimeout(320);
+assert.equal(await page.locator(".swipe-action-content").count(), 0);
+await page.mouse.move(gestureStart.x, gestureStart.y);
+await page.mouse.down();
+await page.mouse.move(gestureStart.x, gestureStart.y - 112, { steps: 7 });
+await page.locator(".swipe-action-layer.is-armed").waitFor();
+assert.match(
+  await page.locator(".swipe-action-layer.is-armed").innerText(),
+  /RELEASE TO\s+(LONG|ADD FUNDS)/
+);
+await page.mouse.move(gestureStart.x, gestureStart.y - 40, { steps: 5 });
+assert.equal(await page.locator(".swipe-action-layer.is-armed").count(), 0);
+assert.match(await page.locator(".swipe-action-layer.swipe-action-up").innerText(), /PULL TO/);
+await page.mouse.up();
+await page.waitForTimeout(320);
+assert.equal(await page.locator(".swipe-action-content").count(), 0);
+
+const originalMarket = await page.locator(".trade-scene .market-name-row strong").innerText();
+await page.mouse.move(gestureStart.x, gestureStart.y);
+await page.mouse.down();
+await page.mouse.move(gestureStart.x - 24, gestureStart.y, { steps: 5 });
+await page.locator(".market-swipe-preview.is-active").waitFor();
+await page.screenshot({ path: "/tmp/tick-swipe-market.png" });
+assert.ok(
+  Number.parseFloat(await tradeView.evaluate(
+    (element) => element.style.getPropertyValue("--swipe-x")
+  )) < 0,
+  "Horizontal market scene did not follow the pointer"
+);
+await page.mouse.up();
+await page.waitForTimeout(380);
+assert.equal(
+  await page.locator(".trade-scene .market-name-row strong").innerText(),
+  originalMarket,
+  "Canceled horizontal gesture changed market"
+);
+const nextMarket = await page.locator(".market-swipe-preview").nth(1).locator(".market-name-row strong").innerText();
+await page.mouse.move(gestureStart.x, gestureStart.y);
+await page.mouse.down();
+await page.mouse.move(gestureStart.x - 150, gestureStart.y, { steps: 8 });
+await page.mouse.up();
+await page.locator(".trade-scene .market-name-row strong", { hasText: nextMarket }).waitFor();
+await page.waitForFunction(() => !document.querySelector(".market-swipe-preview.is-active"));
+assert.equal(await page.locator(".market-swipe-preview.is-active").count(), 0);
 const balanceButton = page.getByRole("button", { name: /Available balance/ });
 await balanceButton.click();
 await page.getByRole("heading", { name: "Deposit USDC" }).waitFor();
 await page.getByRole("button", { name: "Close wallet" }).click();
 await page.getByRole("button", { name: "TICK" }).click();
 await page.locator(".trade-view").waitFor();
-const liveCanvas = page.locator('canvas[aria-label$="live price chart"]');
+const liveCanvas = page.locator('.trade-scene canvas[aria-label$="live price chart"]');
 const contextButton = page.getByRole("button", { name: "Zoom out chart" });
 await contextButton.waitFor();
 await page.waitForFunction(() => {
@@ -171,7 +235,7 @@ await page.getByRole("button", { name: "Zoom in chart" }).click();
 await page.getByRole("button", { name: "Returning to live chart" }).waitFor();
 await page.getByRole("button", { name: "Zoom out chart" }).waitFor();
 assert.equal(await liveCanvas.getAttribute("aria-hidden"), "false");
-const chartStage = page.locator(".chart-stage");
+const chartStage = page.locator(".trade-scene .chart-stage");
 await chartStage.dblclick({ position: { x: 180, y: 280 } });
 await page.getByRole("button", { name: "Opening one hour chart" }).waitFor();
 await page.getByRole("button", { name: "Zoom in chart" }).waitFor({ timeout: 3_000 });
@@ -193,7 +257,7 @@ const switchStartedAt = Date.now();
 await switchTarget.click();
 await page.locator(".market-name-row strong", { hasText: switchSymbol }).waitFor();
 assert.ok(Date.now() - switchStartedAt < 1_000, "Market switch waited for a chart request");
-await page.locator(`canvas[aria-label="${switchSymbol} live price chart"]`).waitFor();
+await page.locator(`.trade-scene canvas[aria-label="${switchSymbol} live price chart"]`).waitFor();
 
 await page.getByRole("button", { name: "Pulse" }).click();
 await page.locator(".hot-market-list").waitFor();

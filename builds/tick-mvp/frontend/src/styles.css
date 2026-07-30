@@ -183,17 +183,156 @@ button:disabled {
 }
 
 .trade-view {
-  display: grid;
-  grid-template-rows: 116px minmax(0, 1fr);
+  --swipe-x: 0px;
+  --swipe-y: 0px;
+  --swipe-progress: 0;
+  --swipe-scale: 1;
+  position: relative;
   width: 100%;
   height: 100%;
   min-height: 0;
   min-width: 0;
-  padding-bottom: var(--nav-reserved);
   background: var(--background);
   overflow: hidden;
   touch-action: none;
   user-select: none;
+}
+
+.trade-scene,
+.market-swipe-preview {
+  position: absolute;
+  inset: 0 0 var(--nav-reserved);
+  display: grid;
+  grid-template-rows: 116px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--background);
+  will-change: transform;
+}
+
+.trade-scene {
+  z-index: 2;
+  transform:
+    translate3d(var(--swipe-x), var(--swipe-y), 0)
+    scale(var(--swipe-scale));
+  transform-origin: center;
+}
+
+.market-swipe-preview {
+  z-index: 1;
+  visibility: hidden;
+  transform: translate3d(calc(var(--swipe-x) + var(--preview-origin)), 0, 0);
+  pointer-events: none;
+}
+
+.market-swipe-preview.is-active {
+  visibility: visible;
+}
+
+.market-swipe-preview .market-canvas,
+.market-swipe-preview.is-active .market-canvas {
+  opacity: 1;
+  clip-path: inset(0);
+  transform: scaleX(1);
+  transition: none;
+}
+
+.market-swipe-preview .preview-balance {
+  pointer-events: none;
+}
+
+.market-swipe-preview .preview-execution-dock {
+  pointer-events: none;
+}
+
+.trade-view.is-swipe-settling .trade-scene,
+.trade-view.is-swipe-settling .market-swipe-preview {
+  transition: transform 280ms cubic-bezier(0.2, 0.82, 0.24, 1);
+}
+
+.trade-view[data-swipe-axis="vertical"] .trade-scene {
+  box-shadow: 0 18px 48px rgba(0, 0, 0, calc(var(--swipe-progress) * 0.42));
+}
+
+.swipe-action-layer {
+  position: absolute;
+  z-index: 0;
+  inset: 0 0 var(--nav-reserved);
+  overflow: hidden;
+  color: var(--silver);
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      rgba(226, 252, 239, calc(var(--swipe-progress) * 0.055)),
+      transparent 42%
+    ),
+    #050606;
+  pointer-events: none;
+}
+
+.swipe-action-content {
+  position: absolute;
+  left: 50%;
+  display: flex;
+  width: min(240px, 64vw);
+  flex-direction: column;
+  align-items: center;
+  opacity: clamp(0, calc(var(--swipe-progress) * 1.35), 1);
+  transform: translateX(-50%);
+}
+
+.swipe-action-up .swipe-action-content {
+  bottom: 12px;
+}
+
+.swipe-action-down .swipe-action-content {
+  top: 12px;
+}
+
+.swipe-action-content span {
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 10px;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+}
+
+.swipe-action-content strong {
+  margin-top: 1px;
+  color: var(--silver);
+  font-size: 18px;
+  line-height: 22px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.swipe-action-layer.is-armed .swipe-action-content strong {
+  color: var(--silver-bright);
+}
+
+.swipe-action-layer.is-blocked .swipe-action-content {
+  opacity: calc(var(--swipe-progress) * 0.58);
+}
+
+.swipe-action-progress {
+  position: relative;
+  width: 132px;
+  height: 2px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.swipe-action-progress i {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.42), var(--silver-bright));
+  box-shadow: 0 0 10px rgba(226, 252, 239, 0.22);
+  transform: scaleX(var(--swipe-progress));
+  transform-origin: left;
 }
 
 .trade-header {
@@ -565,9 +704,11 @@ button:disabled {
   .context-caption,
   .hour-range-rail,
   .gesture-motion i,
-  .bottom-nav-lens {
+  .bottom-nav-lens,
+  .trade-view.is-swipe-settling .trade-scene,
+  .trade-view.is-swipe-settling .market-swipe-preview {
     animation: none;
-    transition-duration: 0ms;
+    transition-duration: 80ms;
   }
 }
 
@@ -3852,7 +3993,8 @@ button:disabled {
 }
 
 @media (max-height: 700px) {
-  .trade-view {
+  .trade-scene,
+  .market-swipe-preview {
     grid-template-rows: 94px minmax(0, 1fr);
   }
 

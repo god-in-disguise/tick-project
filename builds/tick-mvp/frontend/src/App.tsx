@@ -86,6 +86,7 @@ function TickApp({
         {tab === "trade" ? (
           <TradeView
             userId={session.userId}
+            markets={tick.markets}
             market={tick.activeMarket}
             position={tick.activePosition}
             quote={tick.activeQuote}
