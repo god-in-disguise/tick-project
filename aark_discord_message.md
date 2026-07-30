@@ -1,9 +1,20 @@
-# Aark Integration Message
+# Aark Integration Follow-up
 
-Hey Aark team, we are building TICK: a mobile-first volatility discovery and trading app. Users move through the markets with the most interesting price action and can open or close a high-leverage position in seconds through a simple mobile interface.
+Thanks for the updated integration guide. It answered the broad access question:
+we can use the self-serve REST/WebSocket flow, per-user delegate signatures,
+and a fresh browser `TRADE` token from the TICK PWA. We have confirmed the
+published production site key issues a token from
+`https://tick-project.vercel.app`.
 
-We completed a live integration test with Aark. Depositing USDC, delegated execution, opening a BTC 500x position, closing it, reconciling the result, and withdrawing all worked.
+We have one implementation detail to confirm before the next funded canary. The
+guide currently documents EIP-191 signatures for Moon open and close, while the
+current `app.aark.digital` production bundle (`v3.4.26`) uses EIP-712
+`MoonOrder` and `MoonCloseOrder`. Our successful live canary also used the
+EIP-712 format.
 
-The remaining issue is seamless order authorization. A trade opened successfully with a valid `TRADE` reCAPTCHA token from `app.aark.digital`, but TICK needs to generate authorization from our own PWA without sending users to the Aark interface.
+Which signing format should a new integration treat as canonical going forward?
+Could you also share the staging reCAPTCHA site key mentioned in the guide?
 
-Could you provide partner/integrator authentication, or authorize our staging and production domains for the required reCAPTCHA flow? Who is the best person on the team to discuss the B2B integration with?
+We do not need partner authentication for the first browser-based integration.
+If we later move opens fully server-side, we will send a partner signing address
+for registration separately.

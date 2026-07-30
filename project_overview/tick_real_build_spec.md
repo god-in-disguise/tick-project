@@ -73,7 +73,7 @@ These decisions override the older two-venue-start and Ostium-first language in 
 | --- | --- |
 | First live MVP venue | gTrade/Gains on Arbitrum. One live venue only until the full lifecycle is explainable. |
 | Venue abstraction | Mandatory. Product primitives are fees, open/close latency, market availability, leverage availability, health, cost, and reconciliation quality. Do not leak gTrade-specific concepts into product surfaces. |
-| Other venues | Keep Aark, Aster, Lighter, Pacifica, GMTrade, and Ostium as research, probes, or shadow quote/health collectors. Aark passed a live delegated round trip but remains disabled until partner authentication or TICK-domain reCAPTCHA authorization exists. Do not route consumer live flow to these venues yet. |
+| Other venues | Keep Aark, Aster, Lighter, Pacifica, GMTrade, and Ostium as research, probes, or shadow quote/health collectors. Aark passed a live delegated round trip and its published production challenge key issues tokens from the TICK PWA. Keep it disabled until a TICK-origin open succeeds and Aark resolves the documented EIP-191 versus live EIP-712 signing mismatch. Do not route consumer live flow to these venues yet. |
 | 500x | Internal engineering/demo mode only. It catches attention, but it is not the private-beta default. |
 | External leverage default | 25x normal, 50x when economics and activity allow, 100x advanced/gated. |
 | PnL display | Show estimated net result if closed now, not gross mark movement. |

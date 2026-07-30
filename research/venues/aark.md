@@ -1,6 +1,6 @@
 # Aark
 
-Snapshot: 2026-07-28.
+Snapshot: 2026-07-30.
 
 Status: live tested with the TICK funded development wallet on Arbitrum.
 
@@ -10,12 +10,19 @@ Aark's Moon execution path works and is attractive for small, high-leverage
 TICK tickets. TICK completed a real deposit, delegated BTC 500x open, close,
 accounting reconciliation, and full withdrawal.
 
-Aark is not enabled as a product route yet. Every open currently requires a
-valid reCAPTCHA Enterprise `TRADE` token. A token issued from the visible
-production Aark origin worked, while headless tokens were rejected with the
-generic Aark error `9999`. TICK needs Aark partner authentication or explicit
-authorization for TICK's staging and production PWA domains before the flow can
-be seamless.
+Aark is not enabled as a product route yet. Its current integration guide now
+documents a self-serve browser path: every open carries the user's signed order
+plus a fresh reCAPTCHA Enterprise `TRADE` token. On 2026-07-30, Aark's published
+production site key successfully issued a token from TICK's production PWA
+origin, `https://tick-project.vercel.app`. That proves TICK can run the browser
+challenge without redirecting users to Aark.
+
+The remaining authorization check is one controlled open using a token issued
+from the TICK origin. Earlier localhost/headless tokens reached Aark but were
+rejected with the generic error `9999`; only the token generated on
+`app.aark.digital` has completed a live order so far. Partner authentication is
+therefore an optional server-to-server path, not a prerequisite for building
+the connector.
 
 ## Live Canary
 
@@ -86,6 +93,12 @@ close type:       MoonCloseOrder
 event transport: Socket.IO at wss://ws-api.aark.digital, path /ws/
 ```
 
+Aark's integration guide updated in July 2026 instead documents EIP-191
+signatures for open and close. The current `app.aark.digital` production bundle
+still uses EIP-712 `MoonOrder` and `MoonCloseOrder`, matching TICK's successful
+live canary and current connector. Ask Aark which format is canonical for new
+integrators before enabling production routing.
+
 ## Product Fit
 
 Strengths:
@@ -98,10 +111,10 @@ Strengths:
 
 Risks:
 
-- Aark open authorization is not currently available to an independent TICK
-  backend without a valid browser reCAPTCHA token.
-- Public integration documentation is behind the live frontend in important
-  places; the current app uses EIP-712 for open and close.
+- Browser opens depend on a fresh reCAPTCHA token. Backend-only opening requires
+  an Aark-registered partner signing address.
+- The new integration guide and current production frontend disagree on open
+  and close signature format: documented EIP-191 versus live EIP-712.
 - The venue uses a hybrid API/relayer path, so TICK depends on Aark's backend
   availability and authorization policy.
 - Aark does not provide the venue-native stop-loss behavior currently required
@@ -111,13 +124,15 @@ Risks:
 
 ## Activation Gate
 
-Do not add Aark to `ENABLED_VENUES` until Aark provides one of:
+Do not add Aark to `ENABLED_VENUES` until:
 
-1. Partner/integrator server authentication; or
-2. Authorization for TICK staging and production domains to generate accepted
-   `TRADE` reCAPTCHA tokens.
+1. A controlled open succeeds with a fresh `TRADE` token issued from the TICK
+   production origin.
+2. Aark confirms whether new integrations should use the documented EIP-191
+   order signatures or the EIP-712 format used by its current production app.
+3. TICK obtains Aark's staging reCAPTCHA key for non-production testing.
 
-After authorization, run at least 20 controlled cycles and measure:
+After those checks, run at least 20 controlled cycles and measure:
 
 ```text
 gesture_to_request_ack_ms
@@ -135,4 +150,3 @@ withdrawal_latency_ms
 - Discord: `https://discord.gg/aarkdigital`
 - Telegram: `https://t.me/official_aark`
 - X: `https://x.com/Aark_Digital`
-

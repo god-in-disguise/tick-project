@@ -17,11 +17,11 @@ Every venue page is dated because fees, leverage, APIs, rewards, and access rule
 
 ## Working Matrix
 
-Snapshot: 2026-07-26.
+Snapshot: 2026-07-30.
 
 | Venue | Evidence | Best TICK use | Execution model | Useful leverage | Baseline trading cost | Rewards | Current view |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| [Aark](aark.md) | Live tested | Small-ticket high-leverage crypto | Gasless API/relayer with per-user delegated signer and venue balance | BTC 500x/750x/1000x in current live config | 1 bp open fee plus $0.60 execution fee in the live canary; losing close charged no trading fee | Existing AARK/VIP programs; not a routing reason | Full round trip works; keep disabled until Aark grants partner auth or authorizes TICK PWA reCAPTCHA |
+| [Aark](aark.md) | Live tested | Small-ticket high-leverage crypto | Gasless API/relayer with per-user delegated signer and venue balance | BTC 500x/750x/1000x in current live config | 1 bp open fee plus $0.60 execution fee in the live canary; losing close charged no trading fee | Existing AARK/VIP programs; not a routing reason | Full round trip works; TICK origin can issue the documented challenge token, but one origin-valid open and signature-format confirmation remain |
 | [GMTrade](gmtrade.md) | Live tested | High-leverage crypto and cross-asset feed | Solana order transaction followed by keeper/oracle execution; pool based | Live BTC 500x, ETH ~294x, SOL 250x; 54 markets at 100x+ | Crypto/stock/commodity: 1.0-1.2 bps per fill | GT points explicitly qualify users for its TGE | Public keeper path too slow; viable only with private/order-keeper lane |
 | [Perpl](perpl.md) | Documented | Farming/upside research venue | Fully on-chain CLOB perps on Monad | Unknown from current docs | Unknown from current docs | Likely early-stage upside; exact points/builder program needs confirmation | Likely what partner meant by "Purple"; worth contacting, not accepted as execution rail yet |
 | [Pacifica](pacifica.md) | Public measured | Fast crypto execution | Hybrid off-chain CLOB on Solana; signed REST/WS | BTC/ETH 50x, SOL 20x | Tier-1 taker 4 bps per fill | 10M points weekly; builder program | Best next live crypto test |
@@ -35,7 +35,7 @@ Costs above are venue schedules, not all-in TICK costs. Spread, slippage, fundin
 ## Current Test Order
 
 1. Harden the gTrade live route inside `builds/tick-mvp/`: quote truth, native stop, direct events, reducer, reconciliation, and deterministic transaction recovery.
-2. Ask Aark for partner authentication or authorization of TICK's PWA domains. Keep its proven connector disabled until that access exists.
+2. Run one controlled Aark open with a token issued on the TICK production PWA. Ask Aark only to confirm EIP-191 versus the live app's EIP-712 signature format and provide the staging site key. Partner authentication is optional unless TICK chooses backend-only opens.
 3. Keep the current private/provider Arbitrum RPC as default write path until a benchmark beats it by p95; direct sequencer remains a measured fallback candidate.
 4. Ask Kairos whether public intake is allowlisted or requires an integrator setup before spending more time on Timeboost.
 5. Lighter signed latency/cost probe if API-key execution remains acceptable.

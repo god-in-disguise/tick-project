@@ -5,7 +5,8 @@ const CHROME =
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const DEBUG_PORT = 9223;
 const SITE_KEY = "6LdHPmYsAAAAABliA8ARgLuSI8rlBWkZeqxXSKNP";
-const PAGE_URL = "https://app.aark.digital";
+const PAGE_URL =
+  process.env.AARK_RECAPTCHA_PAGE_URL ?? "https://app.aark.digital";
 const HEADLESS = process.env.AARK_CHROME_HEADLESS !== "0";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -96,7 +97,9 @@ async function main() {
         returnByValue: true,
       });
       if (ready?.result?.value) break;
-      if (attempt === 39) throw new Error("reCAPTCHA did not load on app.aark.digital");
+      if (attempt === 39) {
+        throw new Error(`reCAPTCHA did not load on ${PAGE_URL}`);
+      }
       await sleep(500);
     }
 
