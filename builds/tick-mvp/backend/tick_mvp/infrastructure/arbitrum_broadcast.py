@@ -17,7 +17,24 @@ _URL_PATTERN = re.compile(r"https?://[^\s)]+")
 
 
 class BroadcastError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        outcomes: dict[str, "RouteOutcome"] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.outcomes = dict(outcomes or {})
+
+    def all_routes_report_nonce_too_low(self) -> bool:
+        routes = (ROUTE_PRIMARY, ROUTE_SEQUENCER)
+        outcomes = [self.outcomes.get(route) for route in routes]
+        return all(
+            outcome is not None
+            and outcome.status == "error"
+            and "nonce too low" in (outcome.error or "").lower()
+            for outcome in outcomes
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +150,10 @@ class DualBroadcaster:
             f"{route}={outcome.error_type}: {outcome.error}"
             for route, outcome in sorted(race._outcomes.items())
         )
-        raise BroadcastError(f"all Arbitrum write routes failed ({errors or 'unknown errors'})")
+        raise BroadcastError(
+            f"all Arbitrum write routes failed ({errors or 'unknown errors'})",
+            outcomes=dict(race._outcomes),
+        )
 
 
 def _run_route(

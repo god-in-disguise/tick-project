@@ -10,6 +10,12 @@ from eth_abi import encode
 from tick_mvp.core.config import Settings
 from tick_mvp.domain.states import PositionStatus
 from tick_mvp.infrastructure.evm_nonce import EVM_NONCES
+from tick_mvp.venues.gtrade.broadcast import (
+    ROUTE_PRIMARY,
+    ROUTE_SEQUENCER,
+    BroadcastError,
+    RouteOutcome,
+)
 from tick_mvp.venues.gtrade.events import GTradeEventStream
 from tick_mvp.venues.gtrade.onchain_events import (
     MARKET_EXECUTED_DATA_TYPES,
@@ -441,6 +447,8 @@ def test_prepared_delegated_wallet_does_not_request_user_gas(monkeypatch) -> Non
     monkeypatch.setattr(wallet, "_current_delegate", lambda _trader: OWNER_B)
     monkeypatch.setattr(wallet, "_usdc_allowance", lambda _web3, _address: Decimal("100"))
     monkeypatch.setattr(wallet, "_usdc_balance", lambda _web3, _address: Decimal("42.76"))
+    warmed_nonces: list[str] = []
+    monkeypatch.setattr(wallet, "_warm_nonce", lambda address: warmed_nonces.append(address))
 
     result = wallet.prepare_wallet(
         "0x" + "1" * 64,
@@ -452,6 +460,89 @@ def test_prepared_delegated_wallet_does_not_request_user_gas(monkeypatch) -> Non
     assert result["allowanceReady"] is True
     assert result["gasTransactions"] == []
     assert gas_requests == []
+    assert warmed_nonces == [OWNER_B]
+
+
+def test_stale_platform_nonce_is_refreshed_and_retried_once(monkeypatch) -> None:
+    EVM_NONCES.invalidate(OWNER_A)
+    EVM_NONCES.observe(OWNER_A, 70)
+    prepared: list[tuple[str, int]] = []
+
+    class Account:
+        def sign_transaction(self, tx):
+            return SimpleNamespace(raw_transaction=f"raw-{tx['nonce']}".encode())
+
+    class Function:
+        def build_transaction(self, tx):
+            return dict(tx)
+
+    class Race:
+        winner = ROUTE_PRIMARY
+
+        def wait_for_outcomes(self, timeout):
+            assert timeout == 0.02
+
+        def payload(self):
+            return {"winner": self.winner}
+
+    class Broadcaster:
+        def __init__(self):
+            self.nonces: list[int] = []
+
+        def broadcast(self, *, raw_transaction, **_kwargs):
+            nonce = int(raw_transaction.decode().removeprefix("raw-"))
+            self.nonces.append(nonce)
+            if len(self.nonces) == 1:
+                outcomes = {
+                    ROUTE_PRIMARY: RouteOutcome(
+                        route=ROUTE_PRIMARY,
+                        status="error",
+                        elapsed_ms=1,
+                        error="nonce too low: tx: 71 state: 73",
+                    ),
+                    ROUTE_SEQUENCER: RouteOutcome(
+                        route=ROUTE_SEQUENCER,
+                        status="error",
+                        elapsed_ms=1,
+                        error="nonce too low: tx: 71 state: 73",
+                    ),
+                }
+                raise BroadcastError("all routes failed", outcomes=outcomes)
+            return Race()
+
+    web3 = SimpleNamespace(
+        eth=SimpleNamespace(
+            get_transaction_count=lambda _address, _state: 73,
+            wait_for_transaction_receipt=lambda _hash, **_kwargs: SimpleNamespace(
+                status=1,
+                blockNumber=123,
+                gasUsed=456,
+                effectiveGasPrice=20,
+            ),
+        )
+    )
+    wallet = GTradeWalletExecutor(Settings())
+    broadcaster = Broadcaster()
+    monkeypatch.setattr(wallet, "_web3", lambda: web3)
+    monkeypatch.setattr(wallet, "_sequencer", lambda: object())
+    monkeypatch.setattr(wallet, "_fee_params", lambda _web3: {})
+    wallet._broadcaster = broadcaster
+
+    result = wallet._send(
+        Account(),
+        OWNER_A,
+        Function(),
+        label="open",
+        gas=100,
+        on_transaction_prepared=lambda tx_hash, nonce: prepared.append((tx_hash, nonce)),
+    )
+
+    assert broadcaster.nonces == [71, 73]
+    assert [nonce for _tx_hash, nonce in prepared] == [71, 73]
+    assert result.nonce == 73
+    assert result.payload["initialNonce"] == 71
+    assert result.payload["timingMs"]["staleNonceRetries"] == 1
+    EVM_NONCES.invalidate(OWNER_A)
 
 
 def test_terminal_event_distinguishes_stop_loss_from_liquidation() -> None:

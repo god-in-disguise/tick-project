@@ -17,7 +17,7 @@ from tick_mvp.core.config import Settings
 from tick_mvp.domain.states import TradeSide
 from tick_mvp.infrastructure.evm_nonce import EVM_NONCES
 from tick_mvp.venues.base import TransactionPreparedHandler, VenueCloseResult, VenueOpenResult, VenueTxResult
-from tick_mvp.venues.gtrade.broadcast import DualBroadcaster
+from tick_mvp.venues.gtrade.broadcast import BroadcastError, DualBroadcaster
 from tick_mvp.venues.gtrade.constants import ERC20_ABI, MAX_UINT256, TRADING_ABI, ZERO_ADDRESS
 from tick_mvp.venues.gtrade.events import GTradeEventStream
 from tick_mvp.venues.gtrade.public import GTradeError, GTradePair, GTradePublicClient
@@ -101,7 +101,7 @@ class GTradeWalletExecutor:
         self._events.track_owner(address)
         self._events.start()
         agent_address = self.execution_agent_address()
-        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="gtrade-wallet-warm") as executor:
+        with ThreadPoolExecutor(max_workers=4, thread_name_prefix="gtrade-wallet-warm") as executor:
             allowance_future = executor.submit(self._usdc_allowance, web3, address)
             balance_future = executor.submit(self._usdc_balance, web3, address)
             delegate_future = (
@@ -109,9 +109,16 @@ class GTradeWalletExecutor:
                 if agent_address is not None
                 else None
             )
+            agent_nonce_future = (
+                executor.submit(self._warm_nonce, agent_address)
+                if agent_address is not None
+                else None
+            )
             allowance = allowance_future.result()
             collateral_balance = balance_future.result()
             current_delegate = delegate_future.result() if delegate_future else None
+            if agent_nonce_future is not None:
+                agent_nonce_future.result()
 
         delegate_ready = agent_address is None or current_delegate == agent_address
         approval_required = (
@@ -678,39 +685,61 @@ class GTradeWalletExecutor:
     ) -> VenueTxResult:
         web3 = self._web3()
         started = time.perf_counter()
+        stale_nonce_retries = 0
+        initial_nonce: int | None = None
         with self._wallet_lock(address):
             lock_acquired_at = time.perf_counter()
-            nonce, fee_params = prepared or self._prepare_tx_params(web3, address)
-            tx = fn.build_transaction(
-                {
-                    "from": address,
-                    "chainId": self._settings.arb_chain_id,
-                    "nonce": nonce,
-                    "gas": int(Decimal(gas) * Decimal("1.25")),
-                    **fee_params,
-                }
-            )
-            built_at = time.perf_counter()
-            signed = account.sign_transaction(tx)
-            raw_tx = getattr(signed, "raw_transaction", None) or signed.rawTransaction
-            _, Web3 = _web3_imports()
-            precomputed_tx_hash = Web3.keccak(raw_tx).hex()
-            signed_at = time.perf_counter()
-            if on_transaction_prepared is not None:
-                on_transaction_prepared(precomputed_tx_hash, int(tx["nonce"]))
-            persisted_at = time.perf_counter()
-            try:
-                race = self._broadcaster.broadcast(
-                    raw_transaction=raw_tx,
-                    expected_tx_hash=precomputed_tx_hash,
-                    primary_web3=web3,
-                    sequencer_web3=self._sequencer(),
+            while True:
+                nonce, fee_params = prepared or self._prepare_tx_params(web3, address)
+                prepared = None
+                if initial_nonce is None:
+                    initial_nonce = nonce
+                tx = fn.build_transaction(
+                    {
+                        "from": address,
+                        "chainId": self._settings.arb_chain_id,
+                        "nonce": nonce,
+                        "gas": int(Decimal(gas) * Decimal("1.25")),
+                        **fee_params,
+                    }
                 )
-            except Exception:
-                self._invalidate_nonce(address)
-                self._invalidate_fee_cache()
-                raise
-            broadcast_at = time.perf_counter()
+                built_at = time.perf_counter()
+                signed = account.sign_transaction(tx)
+                raw_tx = getattr(signed, "raw_transaction", None) or signed.rawTransaction
+                _, Web3 = _web3_imports()
+                precomputed_tx_hash = Web3.keccak(raw_tx).hex()
+                signed_at = time.perf_counter()
+                if on_transaction_prepared is not None:
+                    on_transaction_prepared(precomputed_tx_hash, int(tx["nonce"]))
+                persisted_at = time.perf_counter()
+                try:
+                    race = self._broadcaster.broadcast(
+                        raw_transaction=raw_tx,
+                        expected_tx_hash=precomputed_tx_hash,
+                        primary_web3=web3,
+                        sequencer_web3=self._sequencer(),
+                    )
+                except BroadcastError as exc:
+                    self._invalidate_nonce(address)
+                    self._invalidate_fee_cache()
+                    if stale_nonce_retries == 0 and exc.all_routes_report_nonce_too_low():
+                        stale_nonce_retries = 1
+                        refreshed_nonce = EVM_NONCES.warm(web3, _checksum(address))
+                        LOGGER.warning(
+                            "Retrying stale Arbitrum nonce label=%s sender=%s staleNonce=%s refreshedNonce=%s",
+                            label,
+                            _checksum(address),
+                            nonce,
+                            refreshed_nonce,
+                        )
+                        continue
+                    raise
+                except Exception:
+                    self._invalidate_nonce(address)
+                    self._invalidate_fee_cache()
+                    raise
+                broadcast_at = time.perf_counter()
+                break
         receipt = web3.eth.wait_for_transaction_receipt(
             precomputed_tx_hash,
             timeout=90,
@@ -741,7 +770,9 @@ class GTradeWalletExecutor:
                     "broadcastToResponse": _elapsed_ms(persisted_at, broadcast_at),
                     "receipt": _elapsed_ms(broadcast_at, receipt_at),
                     "total": _elapsed_ms(started, receipt_at),
+                    "staleNonceRetries": stale_nonce_retries,
                 },
+                "initialNonce": initial_nonce,
             },
         )
 
@@ -759,8 +790,8 @@ class GTradeWalletExecutor:
     def _next_nonce(self, web3: Any, address: str) -> int:
         return EVM_NONCES.reserve(web3, _checksum(address))
 
-    def _warm_nonce(self, address: str) -> None:
-        EVM_NONCES.warm(self._web3(), _checksum(address))
+    def _warm_nonce(self, address: str) -> int:
+        return EVM_NONCES.warm(self._web3(), _checksum(address))
 
     def _invalidate_nonce(self, address: str) -> None:
         EVM_NONCES.invalidate(_checksum(address))

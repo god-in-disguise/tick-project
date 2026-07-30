@@ -124,3 +124,26 @@ def test_all_routes_fail_when_hash_is_not_observed() -> None:
             )
     finally:
         broadcaster.close()
+
+
+def test_all_route_nonce_rejection_is_structured_for_safe_recovery() -> None:
+    nonce_error = RuntimeError("nonce too low: tx: 71 state: 73")
+    primary = FakeWeb3(
+        lambda _raw: (_ for _ in ()).throw(nonce_error),
+        transaction=LookupError("not found"),
+    )
+    sequencer = FakeWeb3(lambda _raw: (_ for _ in ()).throw(nonce_error))
+    broadcaster = DualBroadcaster()
+
+    try:
+        with pytest.raises(BroadcastError) as raised:
+            broadcaster.broadcast(
+                raw_transaction=RAW_TRANSACTION,
+                expected_tx_hash=TX_HASH,
+                primary_web3=primary,
+                sequencer_web3=sequencer,
+            )
+
+        assert raised.value.all_routes_report_nonce_too_low() is True
+    finally:
+        broadcaster.close()

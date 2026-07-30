@@ -151,16 +151,21 @@ class ExecutionRepository:
         now = _now()
         with session_scope(self._session_factory) as session:
             execution = _execution(session, context.execution_id)
+            prepared_transaction = {
+                "txHash": tx_hash,
+                "nonce": nonce,
+                "preparedAt": now.isoformat(),
+            }
+            payload = execution.payload or {}
+            prepared_transactions = list(payload.get("preparedTransactions") or [])
+            prepared_transactions.append(prepared_transaction)
             execution.status = ExecutionAttemptStatus.BROADCAST_PENDING.value
             execution.tx_hash = tx_hash
             execution.nonce = nonce
             execution.payload = {
-                **(execution.payload or {}),
-                "preparedTransaction": {
-                    "txHash": tx_hash,
-                    "nonce": nonce,
-                    "preparedAt": now.isoformat(),
-                },
+                **payload,
+                "preparedTransaction": prepared_transaction,
+                "preparedTransactions": prepared_transactions,
             }
             execution.updated_at = now
 
