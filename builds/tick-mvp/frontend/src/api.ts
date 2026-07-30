@@ -1,12 +1,15 @@
 import type {
   AcceptedTrade,
   AccountState,
+  DemoReset,
   DepositAddress,
   Market,
   MarketBar,
   MarketObservation,
   Quote,
   Session,
+  TradingMode,
+  TradingProfile,
   Side,
   WalletBalances,
   Withdrawal
@@ -129,7 +132,22 @@ export const api = {
       body: JSON.stringify({ accessCode })
     }).then(persistSession),
 
-  me: () => json<{ user: Session["user"]; wallet: Session["wallet"] }>("/api/me"),
+  me: () => json<{
+    user: Session["user"];
+    wallet: Session["wallet"];
+    tradingProfile: TradingProfile;
+  }>("/api/me"),
+
+  switchTradingMode: (mode: TradingMode) =>
+    json<TradingProfile>("/api/trading-profile/mode", {
+      method: "POST",
+      body: JSON.stringify({ mode })
+    }),
+
+  resetDemo: () =>
+    json<DemoReset>("/api/trading-profile/demo/reset", {
+      method: "POST"
+    }),
 
   state: () => json<AccountState>("/api/state", undefined, 6_000),
 

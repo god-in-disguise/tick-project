@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from tick_mvp.core.config import get_settings
@@ -28,6 +29,7 @@ async def startup(ctx: dict) -> None:
     )
     service.start()
     ctx["execution_service"] = service
+    ctx["demo_monitor_task"] = asyncio.create_task(_run_demo_monitor(service))
     ctx["withdrawal_service"] = WithdrawalService(
         gas_funding=gas_funding,
         gas_accounting=gas_accounting,
@@ -36,6 +38,13 @@ async def startup(ctx: dict) -> None:
 
 
 async def shutdown(ctx: dict) -> None:
+    monitor_task: asyncio.Task | None = ctx.get("demo_monitor_task")
+    if monitor_task is not None:
+        monitor_task.cancel()
+        try:
+            await monitor_task
+        except asyncio.CancelledError:
+            pass
     service: ExecutionService | None = ctx.get("execution_service")
     if service is not None:
         service.stop()
@@ -43,6 +52,12 @@ async def shutdown(ctx: dict) -> None:
     if withdrawal_service is not None:
         withdrawal_service.stop()
     logging.getLogger("tick.worker").info("ARQ worker stopped")
+
+
+async def _run_demo_monitor(service: ExecutionService) -> None:
+    while True:
+        await asyncio.to_thread(service.check_demo_positions)
+        await asyncio.sleep(0.20)
 
 
 class WorkerSettings:

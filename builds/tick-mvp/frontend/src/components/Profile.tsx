@@ -7,6 +7,7 @@ import {
   History,
   LogOut,
   RefreshCw,
+  RotateCcw,
   Settings2,
   X
 } from "lucide-react";
@@ -16,7 +17,14 @@ import { QRCodeSVG } from "qrcode.react";
 
 import { api, idempotencyKey } from "../api";
 import { money, shortAddress, signedMoney } from "../format";
-import type { AccountState, Market, Session, TradeSettings, WalletBalances } from "../types";
+import type {
+  AccountState,
+  Market,
+  Session,
+  TradeSettings,
+  TradingMode,
+  WalletBalances
+} from "../types";
 
 type Props = {
   session: Session | null;
@@ -31,6 +39,9 @@ type Props = {
   onTrade: () => void;
   onSignOut: () => void;
   onBalances: () => Promise<void>;
+  profileBusy: boolean;
+  onTradingMode: (mode: TradingMode) => Promise<void>;
+  onResetDemo: () => Promise<void>;
 };
 
 export function Profile(props: Props) {
@@ -75,6 +86,8 @@ export function Profile(props: Props) {
   const winRate = settled.length ? Math.round(wins / settled.length * 100) : 0;
   const displayName = props.session?.user?.displayName || "TICK trader";
   const available = props.balances?.spendableUsdc ?? props.balances?.usdc ?? 0;
+  const profile = props.state?.tradingProfile;
+  const demoMode = profile?.mode === "demo";
   const filteredHistory = useMemo(
     () => history.filter(({ position, reconciliation }) => {
       const pnl = reconciliation?.walletDeltaUsd;
@@ -161,7 +174,7 @@ export function Profile(props: Props) {
 
       <section className="wallet-summary">
         <div className="wallet-summary-heading">
-          <span>Available to trade</span>
+          <span>{demoMode ? "Demo balance" : "Available to trade"}</span>
           <button
             type="button"
             onClick={() => void refreshBalance()}
@@ -173,34 +186,43 @@ export function Profile(props: Props) {
           </button>
         </div>
         <strong>{money(available)}</strong>
-        <div className="wallet-actions">
-          <button
-            className="primary"
-            type="button"
-            onClick={() => setWalletAction("deposit")}
-          >
-            <ArrowDownToLine size={16} />
-            Deposit
-          </button>
-          <button
-            type="button"
-            disabled={available <= 0}
-            onClick={() => setWalletAction("withdraw")}
-          >
-            <ArrowUpFromLine size={16} />
-            Withdraw
-          </button>
-        </div>
-        <button
-          className="wallet-detail-button"
-          type="button"
-          onClick={copyAddress}
-          title="Copy deposit address"
-        >
-          <span>Wallet &amp; network</span>
-          <strong>Arbitrum · {shortAddress(address)}</strong>
-          {addressCopied ? <Check size={13} /> : <Copy size={13} />}
-        </button>
+        {demoMode ? (
+          <div className="demo-season-summary">
+            <span>Season {profile?.season ?? 1}</span>
+            <strong>Started at {money(profile?.startingBalanceUsd ?? 1000)}</strong>
+          </div>
+        ) : (
+          <>
+            <div className="wallet-actions">
+              <button
+                className="primary"
+                type="button"
+                onClick={() => setWalletAction("deposit")}
+              >
+                <ArrowDownToLine size={16} />
+                Deposit
+              </button>
+              <button
+                type="button"
+                disabled={available <= 0}
+                onClick={() => setWalletAction("withdraw")}
+              >
+                <ArrowUpFromLine size={16} />
+                Withdraw
+              </button>
+            </div>
+            <button
+              className="wallet-detail-button"
+              type="button"
+              onClick={copyAddress}
+              title="Copy deposit address"
+            >
+              <span>Wallet &amp; network</span>
+              <strong>Arbitrum · {shortAddress(address)}</strong>
+              {addressCopied ? <Check size={13} /> : <Copy size={13} />}
+            </button>
+          </>
+        )}
       </section>
 
       <div className="section-heading preset-heading">
@@ -320,6 +342,39 @@ export function Profile(props: Props) {
         <div><span>Execution</span><strong>Best available route</strong></div>
         <div><span>Account</span><strong>Invite protected</strong></div>
         <div><span>Email</span><strong>Not linked</strong></div>
+      </section>
+      <section className="trading-mode-setting">
+        <div>
+          <strong>Trading mode</strong>
+          <span>Live funds and demo score stay separate.</span>
+        </div>
+        <div className="trading-mode-control" role="group" aria-label="Trading mode">
+          {(["live", "demo"] as const).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={profile?.mode === mode ? "active" : ""}
+              disabled={props.profileBusy}
+              onClick={() => void props.onTradingMode(mode)}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+        {demoMode ? (
+          <button
+            className="reset-demo-button"
+            type="button"
+            disabled={props.profileBusy || Boolean(activePosition)}
+            onClick={() => {
+              if (!window.confirm("Reset this demo season and start again at $1,000?")) return;
+              void props.onResetDemo();
+            }}
+          >
+            <RotateCcw size={15} />
+            Reset demo season
+          </button>
+        ) : null}
       </section>
       <button className="sign-out-button" type="button" onClick={props.onSignOut}>
         <LogOut size={16} />

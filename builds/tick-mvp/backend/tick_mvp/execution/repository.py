@@ -9,7 +9,7 @@ from sqlalchemy import func
 
 from tick_mvp.core.config import Settings, get_settings
 from tick_mvp.domain.accounting import net_wallet_delta
-from tick_mvp.domain.states import ExecutionAttemptStatus, PositionStatus, ReconciliationStatus, TradeAction, TradeIntentStatus, TradeSide
+from tick_mvp.domain.states import ExecutionAttemptStatus, PositionStatus, ReconciliationStatus, TradeAction, TradeIntentStatus, TradeSide, TradingMode
 from tick_mvp.infrastructure.custody import PrivateKeyCipher
 from tick_mvp.infrastructure.database import create_session_factory, session_scope
 from tick_mvp.infrastructure.memory_store import StoreNotFound
@@ -20,6 +20,7 @@ from tick_mvp.infrastructure.models import (
     Quote,
     Reconciliation,
     TradeIntent,
+    TradingProfile,
     WalletAccount,
 )
 from tick_mvp.venues.base import VenueCloseResult, VenueOpenResult
@@ -33,9 +34,9 @@ class ExecutionContext:
     action: TradeAction
     market: str
     side: TradeSide
-    wallet_id: str
-    wallet_address: str
-    private_key_hex: str
+    wallet_id: str | None
+    wallet_address: str | None
+    private_key_hex: str | None
     quote_id: str | None
     position_id: str | None
     ticket_usd: Decimal
@@ -46,7 +47,33 @@ class ExecutionContext:
     liquidation_price: Decimal | None
     venue_position_id: str | None
     quote_payload: dict[str, Any]
+    trading_mode: TradingMode = TradingMode.LIVE
+    profile_season: int = 1
+    max_loss_usd: Decimal | None = None
+    take_profit_usd: Decimal | None = None
+    entry_price: Decimal | None = None
+    open_cost_usd: Decimal = Decimal(0)
     account_balance_before_open_usd: Decimal | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DemoPositionSnapshot:
+    position_id: str
+    user_id: str
+    profile_season: int
+    venue: str
+    market: str
+    side: TradeSide
+    ticket_usd: Decimal
+    leverage: Decimal
+    notional_usd: Decimal
+    entry_price: Decimal
+    stop_loss_price: Decimal | None
+    take_profit_price: Decimal | None
+    liquidation_price: Decimal | None
+    max_loss_usd: Decimal | None
+    take_profit_usd: Decimal | None
+    open_cost_usd: Decimal
 
 
 class ExecutionRepository:
@@ -62,10 +89,11 @@ class ExecutionRepository:
             intent = session.get(TradeIntent, execution.trade_intent_id)
             if intent is None:
                 raise StoreNotFound("trade intent not found")
-            wallet = session.get(WalletAccount, intent.wallet_id)
-            if wallet is None:
+            trading_mode = TradingMode(execution.trading_mode)
+            wallet = session.get(WalletAccount, intent.wallet_id) if intent.wallet_id else None
+            if trading_mode == TradingMode.LIVE and wallet is None:
                 raise StoreNotFound("wallet not found")
-            private_key = self._decrypt_wallet_key(wallet)
+            private_key = self._decrypt_wallet_key(wallet) if wallet else None
             quote = session.get(Quote, intent.quote_id) if intent.quote_id else None
             position = session.get(Position, intent.position_id) if intent.position_id else None
             if intent.action == TradeAction.OPEN.value:
@@ -76,6 +104,10 @@ class ExecutionRepository:
                 ticket_usd = Decimal(quote.ticket_usd)
                 leverage = Decimal(quote.leverage)
                 notional_usd = Decimal(quote.notional_usd)
+                max_loss_usd = Decimal(quote.max_loss_usd) if quote.max_loss_usd is not None else None
+                take_profit_usd = Decimal(quote.take_profit_usd) if quote.take_profit_usd is not None else None
+                entry_price = None
+                open_cost_usd = Decimal(quote.estimated_open_cost_usd)
                 stop_loss_price = Decimal(quote.stop_loss_price) if quote.stop_loss_price is not None else None
                 take_profit_price = Decimal(quote.take_profit_price) if quote.take_profit_price is not None else None
                 liquidation_price = Decimal(quote.liquidation_price) if quote.liquidation_price is not None else None
@@ -90,6 +122,13 @@ class ExecutionRepository:
                 ticket_usd = Decimal(position.ticket_usd)
                 leverage = Decimal(position.leverage)
                 notional_usd = Decimal(position.notional_usd)
+                max_loss_usd = Decimal(quote.max_loss_usd) if quote and quote.max_loss_usd is not None else None
+                take_profit_usd = Decimal(quote.take_profit_usd) if quote and quote.take_profit_usd is not None else None
+                entry_price = Decimal(position.entry_price) if position.entry_price is not None else None
+                open_cost_usd = Decimal(
+                    (position.payload or {}).get("openCostUsd")
+                    or (quote.estimated_open_cost_usd if quote else 0)
+                )
                 stop_loss_price = Decimal(position.stop_loss_price) if position.stop_loss_price is not None else None
                 take_profit_price = Decimal(position.take_profit_price) if position.take_profit_price is not None else None
                 liquidation_price = Decimal(position.liquidation_price) if position.liquidation_price is not None else None
@@ -102,17 +141,23 @@ class ExecutionRepository:
                 execution_id=execution.id,
                 intent_id=intent.id,
                 user_id=execution.user_id,
+                trading_mode=trading_mode,
+                profile_season=execution.profile_season,
                 action=TradeAction(intent.action),
                 market=market,
                 side=side,
-                wallet_id=wallet.id,
-                wallet_address=wallet.address,
+                wallet_id=wallet.id if wallet else None,
+                wallet_address=wallet.address if wallet else None,
                 private_key_hex=private_key,
                 quote_id=intent.quote_id,
                 position_id=position_id,
                 ticket_usd=ticket_usd,
                 leverage=leverage,
                 notional_usd=notional_usd,
+                max_loss_usd=max_loss_usd,
+                take_profit_usd=take_profit_usd,
+                entry_price=entry_price,
+                open_cost_usd=open_cost_usd,
                 stop_loss_price=stop_loss_price,
                 take_profit_price=take_profit_price,
                 liquidation_price=liquidation_price,
@@ -124,6 +169,348 @@ class ExecutionRepository:
                     else None
                 ),
             )
+
+    def mark_demo_open(
+        self,
+        context: ExecutionContext,
+        *,
+        entry_price: Decimal,
+        liquidation_price: Decimal | None,
+        stop_loss_price: Decimal | None,
+        take_profit_price: Decimal | None,
+        open_cost_usd: Decimal,
+        close_cost_usd: Decimal,
+        quote_payload: dict[str, Any],
+        delay_ms: int,
+    ) -> None:
+        now = _now()
+        with session_scope(self._session_factory) as session:
+            profile = _demo_profile(session, context, for_update=True)
+            execution = _execution(session, context.execution_id)
+            position = _position(session, context.position_id)
+            intent = _intent(session, context.intent_id)
+            available = Decimal(profile.balance_usd or 0)
+            if available < context.ticket_usd:
+                raise ValueError(f"insufficient demo balance: {available:.2f} available")
+            profile.balance_usd = available - context.ticket_usd
+            profile.updated_at = now
+            execution.status = ExecutionAttemptStatus.VENUE_EXECUTED.value
+            execution.payload = {
+                **(execution.payload or {}),
+                "simulation": {
+                    "delayMs": delay_ms,
+                    "filledAt": now.isoformat(),
+                    "source": "live_venue_quote",
+                },
+            }
+            execution.updated_at = now
+            position.status = PositionStatus.OPEN.value
+            position.venue_position_id = f"demo:{position.id}"
+            position.entry_price = entry_price
+            position.liquidation_price = liquidation_price
+            position.stop_loss_price = stop_loss_price
+            position.take_profit_price = take_profit_price
+            position.opened_at = now
+            position.payload = {
+                **(position.payload or {}),
+                "simulation": True,
+                "openCostUsd": str(open_cost_usd),
+                "estimatedCloseCostUsd": str(close_cost_usd),
+                "accountBalanceBeforeOpenUsd": str(available),
+                "accountBalanceAfterOpenUsd": str(profile.balance_usd),
+                "fillQuote": quote_payload,
+            }
+            position.updated_at = now
+            intent.status = TradeIntentStatus.CONSUMED.value
+            intent.updated_at = now
+            session.add(
+                LedgerEvent(
+                    id=_id("ledger"),
+                    user_id=context.user_id,
+                    trading_mode=TradingMode.DEMO.value,
+                    profile_season=context.profile_season,
+                    position_id=position.id,
+                    event_type="demo_collateral_locked",
+                    asset="USDC",
+                    amount=-context.ticket_usd,
+                    source="demo_engine",
+                    execution_attempt_id=execution.id,
+                    payload={},
+                    created_at=now,
+                )
+            )
+
+    def mark_demo_close(
+        self,
+        context: ExecutionContext,
+        *,
+        exit_price: Decimal,
+        gross_pnl_usd: Decimal,
+        open_cost_usd: Decimal,
+        close_cost_usd: Decimal,
+        returned_usd: Decimal,
+        reason: str,
+        quote_payload: dict[str, Any],
+        delay_ms: int,
+    ) -> Decimal:
+        now = _now()
+        net_pnl = returned_usd - context.ticket_usd
+        with session_scope(self._session_factory) as session:
+            profile = _demo_profile(session, context, for_update=True)
+            execution = _execution(session, context.execution_id)
+            position = _position(session, context.position_id)
+            intent = _intent(session, context.intent_id)
+            balance_before = Decimal(profile.balance_usd or 0)
+            profile.balance_usd = balance_before + returned_usd
+            profile.updated_at = now
+            execution.status = ExecutionAttemptStatus.VENUE_EXECUTED.value
+            execution.payload = {
+                **(execution.payload or {}),
+                "simulation": {
+                    "delayMs": delay_ms,
+                    "filledAt": now.isoformat(),
+                    "source": "live_venue_quote",
+                },
+            }
+            execution.updated_at = now
+            position.status = (
+                PositionStatus.LIQUIDATED.value
+                if reason == "liquidation"
+                else PositionStatus.CLOSED.value
+            )
+            position.closed_at = now
+            position.payload = {
+                **(position.payload or {}),
+                "terminalReason": reason,
+                "exitPrice": str(exit_price),
+                "grossPricePnlUsd": str(gross_pnl_usd),
+                "openCostUsd": str(open_cost_usd),
+                "closeCostUsd": str(close_cost_usd),
+                "returnedUsd": str(returned_usd),
+                "accountBalanceAfterCloseUsd": str(profile.balance_usd),
+                "closeFillQuote": quote_payload,
+            }
+            position.updated_at = now
+            intent.status = TradeIntentStatus.CONSUMED.value
+            intent.updated_at = now
+            reconciliation = (
+                session.query(Reconciliation)
+                .filter(Reconciliation.position_id == position.id)
+                .order_by(Reconciliation.created_at.desc())
+                .first()
+            )
+            if reconciliation is not None:
+                reconciliation.status = ReconciliationStatus.WALLET_RECONCILED.value
+                reconciliation.venue_realized_pnl_usd = net_pnl
+                reconciliation.wallet_delta_usd = net_pnl
+                reconciliation.difference_usd = Decimal(0)
+                reconciliation.payload = {
+                    **(reconciliation.payload or {}),
+                    "source": "demo_engine",
+                    "grossPricePnlUsd": str(gross_pnl_usd),
+                    "openCostUsd": str(open_cost_usd),
+                    "closeCostUsd": str(close_cost_usd),
+                    "returnedUsd": str(returned_usd),
+                }
+                reconciliation.updated_at = now
+            session.add(
+                LedgerEvent(
+                    id=_id("ledger"),
+                    user_id=context.user_id,
+                    trading_mode=TradingMode.DEMO.value,
+                    profile_season=context.profile_season,
+                    position_id=position.id,
+                    event_type="demo_position_settled",
+                    asset="USDC",
+                    amount=returned_usd,
+                    source="demo_engine",
+                    execution_attempt_id=execution.id,
+                    payload={"netPnlUsd": str(net_pnl)},
+                    created_at=now,
+                )
+            )
+        return net_pnl
+
+    def open_demo_positions(self) -> list[DemoPositionSnapshot]:
+        with session_scope(self._session_factory) as session:
+            positions = (
+                session.query(Position)
+                .filter(
+                    Position.trading_mode == TradingMode.DEMO.value,
+                    Position.status == PositionStatus.OPEN.value,
+                )
+                .all()
+            )
+            snapshots: list[DemoPositionSnapshot] = []
+            for position in positions:
+                if position.entry_price is None:
+                    continue
+                quote = session.get(Quote, position.quote_id) if position.quote_id else None
+                snapshots.append(
+                    DemoPositionSnapshot(
+                        position_id=position.id,
+                        user_id=position.user_id,
+                        profile_season=position.profile_season,
+                        venue=position.venue,
+                        market=position.market,
+                        side=TradeSide(position.side),
+                        ticket_usd=Decimal(position.ticket_usd),
+                        leverage=Decimal(position.leverage),
+                        notional_usd=Decimal(position.notional_usd),
+                        entry_price=Decimal(position.entry_price),
+                        stop_loss_price=(
+                            Decimal(position.stop_loss_price)
+                            if position.stop_loss_price is not None
+                            else None
+                        ),
+                        take_profit_price=(
+                            Decimal(position.take_profit_price)
+                            if position.take_profit_price is not None
+                            else None
+                        ),
+                        liquidation_price=(
+                            Decimal(position.liquidation_price)
+                            if position.liquidation_price is not None
+                            else None
+                        ),
+                        max_loss_usd=(
+                            Decimal(quote.max_loss_usd)
+                            if quote and quote.max_loss_usd is not None
+                            else None
+                        ),
+                        take_profit_usd=(
+                            Decimal(quote.take_profit_usd)
+                            if quote and quote.take_profit_usd is not None
+                            else None
+                        ),
+                        open_cost_usd=Decimal(
+                            (position.payload or {}).get("openCostUsd")
+                            or (quote.estimated_open_cost_usd if quote else 0)
+                        ),
+                    )
+                )
+            return snapshots
+
+    def settle_demo_terminal(
+        self,
+        snapshot: DemoPositionSnapshot,
+        *,
+        exit_price: Decimal,
+        gross_pnl_usd: Decimal,
+        close_cost_usd: Decimal,
+        returned_usd: Decimal,
+        reason: str,
+        quote_payload: dict[str, Any],
+    ) -> bool:
+        now = _now()
+        net_pnl = returned_usd - snapshot.ticket_usd
+        with session_scope(self._session_factory) as session:
+            position = (
+                session.query(Position)
+                .filter(Position.id == snapshot.position_id)
+                .with_for_update()
+                .one_or_none()
+            )
+            if position is None or position.status != PositionStatus.OPEN.value:
+                return False
+            profile = (
+                session.query(TradingProfile)
+                .filter(
+                    TradingProfile.user_id == snapshot.user_id,
+                    TradingProfile.mode == TradingMode.DEMO.value,
+                    TradingProfile.current_season == snapshot.profile_season,
+                )
+                .with_for_update()
+                .one_or_none()
+            )
+            if profile is None:
+                return False
+            intent = TradeIntent(
+                id=_id("intent"),
+                user_id=snapshot.user_id,
+                trading_mode=TradingMode.DEMO.value,
+                profile_season=snapshot.profile_season,
+                idempotency_key=f"demo-terminal:{position.id}:{reason}",
+                request_hash=f"demo-terminal:{position.id}:{reason}",
+                action=TradeAction.CLOSE.value,
+                status=TradeIntentStatus.CONSUMED.value,
+                quote_id=position.quote_id,
+                position_id=position.id,
+                wallet_id=None,
+                market=position.market,
+                side=position.side,
+                payload={"trigger": reason},
+                created_at=now,
+                updated_at=now,
+            )
+            execution = ExecutionAttempt(
+                id=_id("exec"),
+                trade_intent_id=intent.id,
+                user_id=snapshot.user_id,
+                trading_mode=TradingMode.DEMO.value,
+                profile_season=snapshot.profile_season,
+                venue=position.venue,
+                action=TradeAction.CLOSE.value,
+                status=ExecutionAttemptStatus.VENUE_EXECUTED.value,
+                gas_charge_asset=None,
+                payload={"simulation": {"source": "demo_risk_monitor", "trigger": reason}},
+                created_at=now,
+                updated_at=now,
+            )
+            profile.balance_usd = Decimal(profile.balance_usd or 0) + returned_usd
+            profile.updated_at = now
+            position.status = (
+                PositionStatus.LIQUIDATED.value
+                if reason == "liquidation"
+                else PositionStatus.CLOSED.value
+            )
+            position.close_intent_id = intent.id
+            position.closed_at = now
+            position.updated_at = now
+            position.payload = {
+                **(position.payload or {}),
+                "terminalReason": reason,
+                "exitPrice": str(exit_price),
+                "grossPricePnlUsd": str(gross_pnl_usd),
+                "closeCostUsd": str(close_cost_usd),
+                "returnedUsd": str(returned_usd),
+                "accountBalanceAfterCloseUsd": str(profile.balance_usd),
+                "closeFillQuote": quote_payload,
+            }
+            reconciliation = Reconciliation(
+                id=_id("recon"),
+                position_id=position.id,
+                status=ReconciliationStatus.WALLET_RECONCILED.value,
+                venue_realized_pnl_usd=net_pnl,
+                wallet_delta_usd=net_pnl,
+                difference_usd=Decimal(0),
+                payload={
+                    "source": "demo_risk_monitor",
+                    "terminalReason": reason,
+                    "grossPricePnlUsd": str(gross_pnl_usd),
+                    "openCostUsd": str(snapshot.open_cost_usd),
+                    "closeCostUsd": str(close_cost_usd),
+                    "returnedUsd": str(returned_usd),
+                },
+                created_at=now,
+                updated_at=now,
+            )
+            ledger = LedgerEvent(
+                id=_id("ledger"),
+                user_id=snapshot.user_id,
+                trading_mode=TradingMode.DEMO.value,
+                profile_season=snapshot.profile_season,
+                position_id=position.id,
+                event_type="demo_position_settled",
+                asset="USDC",
+                amount=returned_usd,
+                source="demo_risk_monitor",
+                execution_attempt_id=execution.id,
+                payload={"netPnlUsd": str(net_pnl), "terminalReason": reason},
+                created_at=now,
+            )
+            session.add_all([intent, execution, reconciliation, ledger])
+            return True
 
     def load_user_wallet_credentials(self, user_id: str) -> tuple[str, str]:
         _, address, private_key = self.load_user_wallet_context(user_id)
@@ -359,6 +746,26 @@ def _net_wallet_delta(
         account_balance_after_usd,
         Decimal(gas_ledger_total or 0),
     )
+
+
+def _demo_profile(session, context: ExecutionContext, *, for_update: bool) -> TradingProfile:
+    query = session.query(TradingProfile).filter(
+        TradingProfile.user_id == context.user_id,
+        TradingProfile.mode == TradingMode.DEMO.value,
+        TradingProfile.current_season == context.profile_season,
+    )
+    if for_update:
+        query = query.with_for_update()
+    profile = query.one_or_none()
+    if profile is None:
+        raise StoreNotFound("demo profile season is no longer active")
+    return profile
+
+
+def _id(prefix: str) -> str:
+    from uuid import uuid4
+
+    return f"{prefix}_{uuid4().hex}"
 
 
 def _execution(session, execution_id: str) -> ExecutionAttempt:

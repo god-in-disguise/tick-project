@@ -82,6 +82,11 @@ function TickApp({
 
   return (
     <div className="app-shell">
+      {tick.state?.tradingProfile?.mode === "demo" ? (
+        <div className="demo-mode-badge">
+          DEMO · SEASON {tick.state.tradingProfile.season}
+        </div>
+      ) : null}
       <div className="app-content">
         {tab === "trade" ? (
           <TradeView
@@ -119,6 +124,9 @@ function TickApp({
             onTrade={() => setTab("trade")}
             onSignOut={onSignOut}
             onBalances={tick.refreshBalances}
+            profileBusy={tick.profileBusy}
+            onTradingMode={tick.switchTradingMode}
+            onResetDemo={tick.resetDemo}
           />
         ) : null}
       </div>

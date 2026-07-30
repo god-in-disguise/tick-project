@@ -43,7 +43,7 @@ def test_postgres_open_close_persists_fk_order() -> None:
                 user_id=user_id,
                 chain_id=42161,
                 address=f"0x{suffix[:40].ljust(40, '0')}",
-                wallet_type="platform",
+                wallet_type="platform_custody",
                 status="active",
                 custody_provider="test",
                 custody_key_ref=f"test:{wallet_id}",
@@ -251,7 +251,6 @@ def test_postgres_gas_topup_persists_exact_signed_transaction() -> None:
     )
     assert recovered.tx_hash == tx_hash
     assert recovered.signed_raw_transaction == "0x02beef"
-
     repository.mark_broadcast(
         context.topup_id,
         tx_hash=tx_hash,
@@ -268,6 +267,124 @@ def test_postgres_gas_topup_persists_exact_signed_transaction() -> None:
         assert topup.status == "confirmed"
         assert topup.gas_cost_native == Decimal("0.00000042")
 
+
+def test_demo_profile_isolated_and_reset_is_audited() -> None:
+    database_url = os.getenv("TICK_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("TICK_TEST_DATABASE_URL is not configured")
+
+    sqlalchemy = pytest.importorskip("sqlalchemy")
+    from tick_mvp.domain.states import TradingMode
+    from tick_mvp.execution.repository import ExecutionRepository
+    from tick_mvp.infrastructure.database import create_session_factory, run_sql_migrations
+    from tick_mvp.infrastructure.models import DemoProfileReset, User, WalletAccount
+    from tick_mvp.infrastructure.sqlalchemy_store import SQLAlchemyStore, StoreConflict
+
+    run_sql_migrations(database_url)
+    engine = sqlalchemy.create_engine(_sqlalchemy_url(database_url), pool_pre_ping=True)
+    session_factory = create_session_factory(engine)
+    suffix = uuid.uuid4().hex
+    user_id = f"user_demo_{suffix}"
+
+    with session_factory() as session:
+        session.add(
+            User(
+                id=user_id,
+                email=f"{suffix}-demo@test.tick.local",
+                display_name="Demo Test",
+                avatar_url=None,
+                status="active",
+            )
+        )
+        session.add(
+            WalletAccount(
+                id=f"wallet_demo_{suffix}",
+                user_id=user_id,
+                chain_id=42161,
+                address=f"0x{suffix[:40].ljust(40, '0')}",
+                wallet_type="platform_custody",
+                status="active",
+                custody_provider="test",
+                custody_key_ref=f"test:demo:{suffix}",
+                encrypted_private_key=None,
+                gas_wallet=False,
+                payload={},
+            )
+        )
+        session.commit()
+
+    store = SQLAlchemyStore(default_venue="gtrade", session_factory=session_factory)
+    profile = store.switch_trading_mode(user_id, TradingMode.DEMO)
+    assert profile.balanceUsd == Decimal("1000")
+
+    quote = store.create_quote(
+        user_id,
+        QuoteRequest(market="BTCDEGEN/USD", side="long", ticketUsd="10", leverage="100"),
+    )
+    opened = store.accept_open(
+        user_id,
+        OpenRequest(quoteId=quote.quoteId, idempotencyKey=f"demo-open-{suffix}"),
+    )
+    assert opened.position.tradingMode == TradingMode.DEMO
+    with pytest.raises(StoreConflict):
+        store.switch_trading_mode(user_id, TradingMode.LIVE)
+
+    repository = ExecutionRepository(session_factory=session_factory)
+    open_context = repository.load(opened.executionAttempt.id)
+    repository.mark_demo_open(
+        open_context,
+        entry_price=Decimal("100"),
+        liquidation_price=Decimal("99"),
+        stop_loss_price=None,
+        take_profit_price=None,
+        open_cost_usd=Decimal("0.20"),
+        close_cost_usd=Decimal("0.20"),
+        quote_payload={"price": "100"},
+        delay_ms=1200,
+    )
+    assert store.demo_balances(user_id).spendableUsdc == Decimal("990")
+
+    closed = store.accept_close(
+        user_id,
+        CloseRequest(positionId=opened.position.id, idempotencyKey=f"demo-close-{suffix}"),
+    )
+    close_context = repository.load(closed.executionAttempt.id)
+    pnl = repository.mark_demo_close(
+        close_context,
+        exit_price=Decimal("100.10"),
+        gross_pnl_usd=Decimal("1"),
+        open_cost_usd=Decimal("0.20"),
+        close_cost_usd=Decimal("0.20"),
+        returned_usd=Decimal("10.60"),
+        reason="manual_close",
+        quote_payload={"price": "100.10"},
+        delay_ms=1000,
+    )
+    assert pnl == Decimal("0.60")
+    assert store.demo_balances(user_id).spendableUsdc == Decimal("1000.60")
+    assert len(store.state(user_id).positions) == 1
+
+    reset = store.reset_demo_profile(user_id)
+    assert reset.endedSeason == 1
+    assert reset.endingBalanceUsd == Decimal("1000.60")
+    assert reset.realizedPnlUsd == Decimal("0.60")
+    assert reset.profile.season == 2
+    assert reset.profile.balanceUsd == Decimal("1000")
+    assert store.state(user_id).positions == []
+
+    with session_factory() as session:
+        audit = (
+            session.query(DemoProfileReset)
+            .filter(DemoProfileReset.user_id == user_id)
+            .one()
+        )
+        assert audit.ended_season == 1
+        assert audit.ending_balance_usd == Decimal("1000.60")
+
+    store.switch_trading_mode(user_id, TradingMode.LIVE)
+    live_state = store.state(user_id)
+    assert live_state.positions == []
+    assert live_state.reconciliations == []
 
 def _sqlalchemy_url(database_url: str) -> str:
     if database_url.startswith("postgresql://"):

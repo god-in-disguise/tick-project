@@ -11,6 +11,11 @@ class TradeSide(StrEnum):
     SHORT = "short"
 
 
+class TradingMode(StrEnum):
+    LIVE = "live"
+    DEMO = "demo"
+
+
 class UserStatus(StrEnum):
     ACTIVE = "active"
     DISABLED = "disabled"

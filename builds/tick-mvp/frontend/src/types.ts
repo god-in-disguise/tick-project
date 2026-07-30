@@ -1,6 +1,7 @@
 export type Side = "long" | "short";
 export type FeedStatus = "live" | "delayed" | "stale" | "disconnected" | "resyncing";
 export type PositionStatus = "opening" | "open" | "closing" | "closed" | "liquidated" | "unknown";
+export type TradingMode = "live" | "demo";
 
 export type MarketObservation = {
   seq: number;
@@ -73,6 +74,27 @@ export type WalletBalances = {
   gtradeAllowanceUsdc: number | null;
   source: string;
   unavailableReason: string | null;
+  tradingMode: TradingMode;
+  profileSeason: number;
+};
+
+export type TradingProfile = {
+  mode: TradingMode;
+  season: number;
+  startingBalanceUsd: number | null;
+  balanceUsd: number | null;
+  resetCount: number;
+  lastResetAt: string | null;
+};
+
+export type DemoReset = {
+  profile: TradingProfile;
+  endedSeason: number;
+  endingBalanceUsd: number;
+  realizedPnlUsd: number;
+  tradeCount: number;
+  winCount: number;
+  resetAt: string;
 };
 
 export type DepositAddress = {
@@ -97,6 +119,8 @@ export type Withdrawal = {
 
 export type Quote = {
   quoteId: string;
+  tradingMode: TradingMode;
+  profileSeason: number;
   venue: string;
   market: string;
   side: Side;
@@ -118,6 +142,8 @@ export type Quote = {
 
 export type Position = {
   id: string;
+  tradingMode: TradingMode;
+  profileSeason: number;
   venue: string;
   market: string;
   side: Side;
@@ -138,6 +164,8 @@ export type Position = {
 
 export type Intent = {
   id: string;
+  tradingMode: TradingMode;
+  profileSeason: number;
   action: "open" | "close";
   status: string;
   positionId: string | null;
@@ -148,6 +176,8 @@ export type Intent = {
 
 export type ExecutionAttempt = {
   id: string;
+  tradingMode: TradingMode;
+  profileSeason: number;
   tradeIntentId: string;
   action: "open" | "close";
   status: string;
@@ -171,6 +201,7 @@ export type Reconciliation = {
 export type AccountState = {
   user: User | null;
   wallet: Wallet | null;
+  tradingProfile: TradingProfile | null;
   positions: Position[];
   intents: Intent[];
   executionAttempts: ExecutionAttempt[];

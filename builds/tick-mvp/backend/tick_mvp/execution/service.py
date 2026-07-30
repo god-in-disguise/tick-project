@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
+import hashlib
 import threading
 import time
 from decimal import Decimal
 
 from tick_mvp.core.config import Settings, get_settings
-from tick_mvp.domain.states import TradeAction
+from tick_mvp.domain.states import TradeAction, TradeSide, TradingMode
 from tick_mvp.execution.repository import ExecutionContext, ExecutionRepository
 from tick_mvp.venues.registry import create_venue
 from tick_mvp.wallets.accounting import (
@@ -113,6 +114,12 @@ class ExecutionService:
         started = time.perf_counter()
         context = self._repository.load(execution_attempt_id)
         loaded_at = time.perf_counter()
+        if context.trading_mode == TradingMode.DEMO:
+            try:
+                return self._execute_demo(context)
+            except Exception as exc:
+                self._repository.mark_failed(context, f"{type(exc).__name__}: {exc}")
+                raise
         if not self._settings.tick_real_execution_enabled:
             LOGGER.info("real execution disabled", extra={"executionAttemptId": execution_attempt_id})
             return {
@@ -141,7 +148,58 @@ class ExecutionService:
             self._repository.mark_failed(context, f"{type(exc).__name__}: {exc}")
             raise
 
+    def check_demo_positions(self) -> int:
+        settled = 0
+        for position in self._repository.open_demo_positions():
+            try:
+                fill_quote = self._venue.quote_open(
+                    market=position.market,
+                    side=position.side,
+                    ticket_usd=position.ticket_usd,
+                    leverage=position.leverage,
+                    max_loss_usd=position.max_loss_usd,
+                    take_profit_usd=position.take_profit_usd,
+                )
+                price = Decimal(str(fill_quote.payload["price"]))
+                reason = _demo_terminal_reason(position, price)
+                if reason is None:
+                    continue
+                direction = Decimal(1) if position.side == TradeSide.LONG else Decimal(-1)
+                gross_pnl = (
+                    (price - position.entry_price)
+                    / position.entry_price
+                    * position.notional_usd
+                    * direction
+                )
+                returned = max(
+                    Decimal(0),
+                    position.ticket_usd
+                    + gross_pnl
+                    - position.open_cost_usd
+                    - fill_quote.estimated_close_cost_usd,
+                )
+                if reason == "liquidation":
+                    returned = Decimal(0)
+                if self._repository.settle_demo_terminal(
+                    position,
+                    exit_price=price,
+                    gross_pnl_usd=gross_pnl,
+                    close_cost_usd=fill_quote.estimated_close_cost_usd,
+                    returned_usd=returned,
+                    reason=reason,
+                    quote_payload=fill_quote.payload,
+                ):
+                    settled += 1
+            except Exception:
+                LOGGER.exception(
+                    "demo risk monitor failed",
+                    extra={"positionId": position.position_id},
+                )
+        return settled
+
     def _execute_live(self, context: ExecutionContext) -> dict[str, object]:
+        if context.private_key_hex is None:
+            raise WalletNotReady("live execution wallet key is unavailable")
         if context.action == TradeAction.OPEN:
             result = self._venue.open_position(
                 private_key_hex=context.private_key_hex,
@@ -204,6 +262,86 @@ class ExecutionService:
             "status": result.status,
             "txHash": result.tx.tx_hash,
             "walletDeltaUsd": str(wallet_delta_usd) if wallet_delta_usd is not None else None,
+        }
+
+    def _execute_demo(self, context: ExecutionContext) -> dict[str, object]:
+        delay_ms = _demo_delay_ms(context.execution_id, context.action)
+        time.sleep(delay_ms / 1000)
+        fill_quote = self._venue.quote_open(
+            market=context.market,
+            side=context.side,
+            ticket_usd=context.ticket_usd,
+            leverage=context.leverage,
+            max_loss_usd=context.max_loss_usd,
+            take_profit_usd=context.take_profit_usd,
+        )
+        fill_price = Decimal(str(fill_quote.payload["price"]))
+        if context.action == TradeAction.OPEN:
+            self._repository.mark_demo_open(
+                context,
+                entry_price=fill_price,
+                liquidation_price=fill_quote.liquidation_price,
+                stop_loss_price=fill_quote.stop_loss_price,
+                take_profit_price=fill_quote.take_profit_price,
+                open_cost_usd=fill_quote.estimated_open_cost_usd,
+                close_cost_usd=fill_quote.estimated_close_cost_usd,
+                quote_payload=fill_quote.payload,
+                delay_ms=delay_ms,
+            )
+            return {
+                "executionAttemptId": context.execution_id,
+                "status": "open",
+                "venuePositionId": f"demo:{context.position_id}",
+                "fillPrice": str(fill_price),
+                "delayMs": delay_ms,
+            }
+
+        if context.position_id is None:
+            raise ValueError("demo close is missing a position")
+        entry_price = context.entry_price or Decimal(0)
+        if entry_price <= 0:
+            raise ValueError("demo close is missing the entry price")
+        direction = Decimal(1) if context.side == TradeSide.LONG else Decimal(-1)
+        gross_pnl = (
+            (fill_price - entry_price)
+            / entry_price
+            * context.notional_usd
+            * direction
+        )
+        open_cost = context.open_cost_usd
+        close_cost = fill_quote.estimated_close_cost_usd
+        reason = "manual_close"
+        crossed_liquidation = (
+            context.liquidation_price is not None
+            and (
+                (context.side == TradeSide.LONG and fill_price <= context.liquidation_price)
+                or (context.side == TradeSide.SHORT and fill_price >= context.liquidation_price)
+            )
+        )
+        returned = max(
+            Decimal(0),
+            context.ticket_usd + gross_pnl - open_cost - close_cost,
+        )
+        if crossed_liquidation:
+            reason = "liquidation"
+            returned = Decimal(0)
+        net_pnl = self._repository.mark_demo_close(
+            context,
+            exit_price=fill_price,
+            gross_pnl_usd=gross_pnl,
+            open_cost_usd=open_cost,
+            close_cost_usd=close_cost,
+            returned_usd=returned,
+            reason=reason,
+            quote_payload=fill_quote.payload,
+            delay_ms=delay_ms,
+        )
+        return {
+            "executionAttemptId": context.execution_id,
+            "status": "liquidated" if reason == "liquidation" else "closed",
+            "fillPrice": str(fill_price),
+            "walletDeltaUsd": str(net_pnl),
+            "delayMs": delay_ms,
         }
 
     def _refresh_open_liquidation_price(self, context: ExecutionContext, result) -> None:
@@ -405,3 +543,28 @@ def _decimal_or_none(value: object) -> Decimal | None:
     if value is None:
         return None
     return Decimal(str(value))
+
+
+def _demo_delay_ms(execution_id: str, action: TradeAction) -> int:
+    digest = hashlib.sha256(execution_id.encode()).digest()
+    spread = int.from_bytes(digest[:2], "big") % 401
+    baseline = 1_250 if action == TradeAction.OPEN else 950
+    return baseline + spread
+
+
+def _demo_terminal_reason(position, price: Decimal) -> str | None:
+    if position.side == TradeSide.LONG:
+        if position.liquidation_price is not None and price <= position.liquidation_price:
+            return "liquidation"
+        if position.stop_loss_price is not None and price <= position.stop_loss_price:
+            return "stop_loss"
+        if position.take_profit_price is not None and price >= position.take_profit_price:
+            return "take_profit"
+        return None
+    if position.liquidation_price is not None and price >= position.liquidation_price:
+        return "liquidation"
+    if position.stop_loss_price is not None and price >= position.stop_loss_price:
+        return "stop_loss"
+    if position.take_profit_price is not None and price <= position.take_profit_price:
+        return "take_profit"
+    return None

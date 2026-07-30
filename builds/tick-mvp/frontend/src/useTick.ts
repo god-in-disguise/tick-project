@@ -12,6 +12,7 @@ import type {
   Session,
   Side,
   TradeSettings,
+  TradingMode,
   WalletBalances
 } from "./types";
 
@@ -49,6 +50,7 @@ export function useTick(initialSession: Session) {
   const [busyAction, setBusyAction] = useState<Side | "close" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [closedResult, setClosedResult] = useState<ClosedResult | null>(null);
+  const [profileBusy, setProfileBusy] = useState(false);
   const sequences = useRef<Record<string, number>>({});
   const chartRequests = useRef(new Map<string, Promise<void>>());
   const tapeBusy = useRef(new Set<string>());
@@ -164,6 +166,19 @@ export function useTick(initialSession: Session) {
       const next = await api.state();
       markBackgroundSuccess();
       setState(next);
+      if (
+        next.tradingProfile?.mode === "demo"
+        && typeof next.tradingProfile.balanceUsd === "number"
+      ) {
+        setBalances((current) => current ? {
+          ...current,
+          usdc: next.tradingProfile?.balanceUsd ?? 0,
+          spendableUsdc: next.tradingProfile?.balanceUsd ?? 0,
+          tradingMode: "demo",
+          profileSeason: next.tradingProfile?.season ?? 1,
+          source: "demo_ledger"
+        } : current);
+      }
       setBusyAction(null);
       if (!stateInitialized.current) {
         for (const reconciliation of next.reconciliations) {
@@ -469,11 +484,56 @@ export function useTick(initialSession: Session) {
     setSettingsState(next);
   }, []);
 
+  const reloadProfileState = useCallback(async () => {
+    stateInitialized.current = false;
+    shownReconciliations.current.clear();
+    shownExecutionFailures.current.clear();
+    pendingReconciliations.current.clear();
+    setClosedResult(null);
+    setQuotes({ long: null, short: null });
+    const [nextState, nextBalances] = await Promise.all([
+      api.state(),
+      api.balances()
+    ]);
+    setState(nextState);
+    setBalances(nextBalances);
+  }, []);
+
+  const switchTradingMode = useCallback(async (mode: TradingMode) => {
+    if (profileBusy || state?.tradingProfile?.mode === mode) return;
+    setProfileBusy(true);
+    try {
+      await api.switchTradingMode(mode);
+      await reloadProfileState();
+    } catch (cause) {
+      showError(cause);
+    } finally {
+      setProfileBusy(false);
+    }
+  }, [profileBusy, reloadProfileState, showError, state?.tradingProfile?.mode]);
+
+  const resetDemo = useCallback(async () => {
+    if (profileBusy) return;
+    setProfileBusy(true);
+    try {
+      await api.resetDemo();
+      await reloadProfileState();
+    } catch (cause) {
+      showError(cause);
+    } finally {
+      setProfileBusy(false);
+    }
+  }, [profileBusy, reloadProfileState, showError]);
+
   const open = useCallback(async (side: Side) => {
     if (!activeMarket || activePosition || actionBusy.current) return;
     const spendableUsdc = balances?.spendableUsdc ?? balances?.usdc;
     if (spendableUsdc !== null && spendableUsdc !== undefined && spendableUsdc < settings.ticketUsd) {
-      showError(new Error("Insufficient spendable USDC"));
+      showError(new Error(
+        state?.tradingProfile?.mode === "demo"
+          ? "Demo balance is too low. Reset the season in Me."
+          : "Insufficient spendable USDC"
+      ));
       return;
     }
     actionBusy.current = true;
@@ -519,6 +579,7 @@ export function useTick(initialSession: Session) {
     refreshState,
     rememberQuote,
     settings,
+    state?.tradingProfile?.mode,
     showError
   ]);
 
@@ -577,7 +638,10 @@ export function useTick(initialSession: Session) {
     busyAction,
     error,
     closedResult,
+    profileBusy,
     refreshBalances,
+    switchTradingMode,
+    resetDemo,
     open,
     close,
     shiftMarket,

@@ -6,6 +6,7 @@ from tick_mvp.domain.schemas import (
     QuoteResponse,
     ReconciliationResponse,
     TradeIntentResponse,
+    TradingProfileResponse,
     UserResponse,
     WalletAccountResponse,
     WithdrawalResponse,
@@ -18,6 +19,7 @@ from tick_mvp.domain.states import (
     TradeAction,
     TradeIntentStatus,
     TradeSide,
+    TradingMode,
     UserStatus,
     WalletStatus,
     WalletType,
@@ -30,6 +32,7 @@ from tick_mvp.infrastructure.models import (
     Quote,
     Reconciliation,
     TradeIntent,
+    TradingProfile,
     User,
     WalletAccount,
     Withdrawal,
@@ -65,10 +68,23 @@ def wallet_response(wallet: WalletAccount) -> WalletAccountResponse:
     )
 
 
+def trading_profile_response(profile: TradingProfile) -> TradingProfileResponse:
+    return TradingProfileResponse(
+        mode=TradingMode(profile.mode),
+        season=profile.current_season,
+        startingBalanceUsd=profile.starting_balance_usd,
+        balanceUsd=profile.balance_usd,
+        resetCount=profile.reset_count,
+        lastResetAt=profile.last_reset_at,
+    )
+
+
 def quote_response(quote: Quote) -> QuoteResponse:
     return QuoteResponse(
         quoteId=quote.id,
         userId=quote.user_id,
+        tradingMode=TradingMode(quote.trading_mode),
+        profileSeason=quote.profile_season,
         venue=quote.venue,
         market=quote.market,
         side=TradeSide(quote.side),
@@ -94,6 +110,8 @@ def intent_response(intent: TradeIntent) -> TradeIntentResponse:
     return TradeIntentResponse(
         id=intent.id,
         userId=intent.user_id,
+        tradingMode=TradingMode(intent.trading_mode),
+        profileSeason=intent.profile_season,
         idempotencyKey=intent.idempotency_key,
         action=TradeAction(intent.action),
         status=TradeIntentStatus(intent.status),
@@ -111,6 +129,8 @@ def execution_response(execution: ExecutionAttempt) -> ExecutionAttemptResponse:
         id=execution.id,
         tradeIntentId=execution.trade_intent_id,
         userId=execution.user_id,
+        tradingMode=TradingMode(execution.trading_mode),
+        profileSeason=execution.profile_season,
         venue=execution.venue,
         action=TradeAction(execution.action),
         status=ExecutionAttemptStatus(execution.status),
@@ -125,6 +145,8 @@ def position_response(position: Position) -> PositionResponse:
     return PositionResponse(
         id=position.id,
         userId=position.user_id,
+        tradingMode=TradingMode(position.trading_mode),
+        profileSeason=position.profile_season,
         venue=position.venue,
         market=position.market,
         side=TradeSide(position.side),

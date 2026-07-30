@@ -7,8 +7,12 @@ pytest.importorskip("sqlalchemy")
 
 from tick_mvp.core.config import Settings
 from tick_mvp.domain.states import TradeAction, TradeSide
-from tick_mvp.execution.repository import ExecutionContext
-from tick_mvp.execution.service import ExecutionService, InsufficientSpendableUSDC
+from tick_mvp.execution.repository import DemoPositionSnapshot, ExecutionContext
+from tick_mvp.execution.service import (
+    ExecutionService,
+    InsufficientSpendableUSDC,
+    _demo_terminal_reason,
+)
 
 
 class FakeRepository:
@@ -179,3 +183,43 @@ def test_open_rejects_known_insufficient_spendable_balance() -> None:
 
     with pytest.raises(InsufficientSpendableUSDC):
         service._require_open_balance(context)
+
+
+@pytest.mark.parametrize(
+    ("side", "price", "expected"),
+    [
+        (TradeSide.LONG, Decimal("79"), "liquidation"),
+        (TradeSide.LONG, Decimal("89"), "stop_loss"),
+        (TradeSide.LONG, Decimal("111"), "take_profit"),
+        (TradeSide.LONG, Decimal("100"), None),
+        (TradeSide.SHORT, Decimal("121"), "liquidation"),
+        (TradeSide.SHORT, Decimal("111"), "stop_loss"),
+        (TradeSide.SHORT, Decimal("89"), "take_profit"),
+        (TradeSide.SHORT, Decimal("100"), None),
+    ],
+)
+def test_demo_terminal_thresholds(
+    side: TradeSide,
+    price: Decimal,
+    expected: str | None,
+) -> None:
+    position = DemoPositionSnapshot(
+        position_id="pos_demo",
+        user_id="user_demo",
+        profile_season=1,
+        venue="gtrade",
+        market="BTCDEGEN-USD",
+        side=side,
+        ticket_usd=Decimal("10"),
+        leverage=Decimal("500"),
+        notional_usd=Decimal("5000"),
+        entry_price=Decimal("100"),
+        stop_loss_price=Decimal("90") if side == TradeSide.LONG else Decimal("110"),
+        take_profit_price=Decimal("110") if side == TradeSide.LONG else Decimal("90"),
+        liquidation_price=Decimal("80") if side == TradeSide.LONG else Decimal("120"),
+        max_loss_usd=Decimal("5"),
+        take_profit_usd=Decimal("5"),
+        open_cost_usd=Decimal("1"),
+    )
+
+    assert _demo_terminal_reason(position, price) == expected

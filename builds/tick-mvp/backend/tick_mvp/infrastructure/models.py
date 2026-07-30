@@ -22,7 +22,39 @@ class User(Base, TimestampMixin):
     display_name: Mapped[str | None] = mapped_column(Text)
     avatar_url: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False)
+    active_trading_mode: Mapped[str] = mapped_column(Text, nullable=False, default="live")
     last_login_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class TradingProfile(Base, TimestampMixin):
+    __tablename__ = "trading_profiles"
+    __table_args__ = (UniqueConstraint("user_id", "mode"),)
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    mode: Mapped[str] = mapped_column(Text, nullable=False)
+    current_season: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    starting_balance_usd: Mapped[object | None] = mapped_column(Numeric)
+    balance_usd: Mapped[object | None] = mapped_column(Numeric)
+    reset_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_reset_at: Mapped[object | None] = mapped_column(DateTime(timezone=True))
+
+
+class DemoProfileReset(Base):
+    __tablename__ = "demo_profile_resets"
+    __table_args__ = (UniqueConstraint("profile_id", "ended_season"),)
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    profile_id: Mapped[str] = mapped_column(ForeignKey("trading_profiles.id"), nullable=False)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    ended_season: Mapped[int] = mapped_column(Integer, nullable=False)
+    starting_balance_usd: Mapped[object] = mapped_column(Numeric, nullable=False)
+    ending_balance_usd: Mapped[object] = mapped_column(Numeric, nullable=False)
+    realized_pnl_usd: Mapped[object] = mapped_column(Numeric, nullable=False)
+    trade_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    win_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    reset_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
 
 class AuthIdentity(Base, TimestampMixin):
@@ -91,6 +123,8 @@ class Quote(Base):
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    trading_mode: Mapped[str] = mapped_column(Text, nullable=False, default="live")
+    profile_season: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     venue: Mapped[str] = mapped_column(Text, nullable=False)
     market: Mapped[str] = mapped_column(Text, nullable=False)
     side: Mapped[str] = mapped_column(Text, nullable=False)
@@ -114,10 +148,12 @@ class Quote(Base):
 
 class TradeIntent(Base, TimestampMixin):
     __tablename__ = "trade_intents"
-    __table_args__ = (UniqueConstraint("user_id", "idempotency_key"),)
+    __table_args__ = (UniqueConstraint("user_id", "trading_mode", "profile_season", "idempotency_key"),)
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    trading_mode: Mapped[str] = mapped_column(Text, nullable=False, default="live")
+    profile_season: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     idempotency_key: Mapped[str] = mapped_column(Text, nullable=False)
     request_hash: Mapped[str] = mapped_column(Text, nullable=False)
     action: Mapped[str] = mapped_column(Text, nullable=False)
@@ -136,6 +172,8 @@ class ExecutionAttempt(Base, TimestampMixin):
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     trade_intent_id: Mapped[str] = mapped_column(ForeignKey("trade_intents.id"), nullable=False)
     user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    trading_mode: Mapped[str] = mapped_column(Text, nullable=False, default="live")
+    profile_season: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     venue: Mapped[str] = mapped_column(Text, nullable=False)
     action: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False)
@@ -156,6 +194,8 @@ class Position(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    trading_mode: Mapped[str] = mapped_column(Text, nullable=False, default="live")
+    profile_season: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     wallet_id: Mapped[str | None] = mapped_column(ForeignKey("wallet_accounts.id"))
     venue: Mapped[str] = mapped_column(Text, nullable=False)
     venue_position_id: Mapped[str | None] = mapped_column(Text)
@@ -251,6 +291,8 @@ class LedgerEvent(Base):
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     user_id: Mapped[str] = mapped_column(Text, nullable=False)
+    trading_mode: Mapped[str] = mapped_column(Text, nullable=False, default="live")
+    profile_season: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     position_id: Mapped[str | None] = mapped_column(ForeignKey("positions.id"))
     event_type: Mapped[str] = mapped_column(Text, nullable=False)
     asset: Mapped[str] = mapped_column(Text, nullable=False)

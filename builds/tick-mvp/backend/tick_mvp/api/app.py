@@ -13,6 +13,7 @@ from tick_mvp.domain.invitations import InviteAuthError, hash_invite_code
 from tick_mvp.domain.schemas import (
     AcceptedTradeResponse,
     CloseRequest,
+    DemoResetResponse,
     DepositAddressResponse,
     InviteSessionRequest,
     MeResponse,
@@ -21,6 +22,8 @@ from tick_mvp.domain.schemas import (
     QuoteResponse,
     SessionResponse,
     StateResponse,
+    TradingModeRequest,
+    TradingProfileResponse,
     WalletBalancesResponse,
     WithdrawalRequest,
     WithdrawalResponse,
@@ -114,9 +117,44 @@ def create_app(store: Any | None = None) -> FastAPI:
     def me(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> MeResponse:
         session = _session(authorization, x_tick_user)
         try:
-            return MeResponse(user=_store(app).user(session.user_id), wallet=_store(app).wallet_for_user(session.user_id))
+            store = _store(app)
+            return MeResponse(
+                user=store.user(session.user_id),
+                wallet=store.wallet_for_user(session.user_id),
+                tradingProfile=store.trading_profile(session.user_id),
+            )
         except StoreNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.post("/api/trading-profile/mode", response_model=TradingProfileResponse)
+    def switch_trading_mode(
+        body: TradingModeRequest,
+        authorization: str | None = Header(default=None),
+        x_tick_user: str | None = Header(default=None),
+    ) -> TradingProfileResponse:
+        try:
+            return _store(app).switch_trading_mode(
+                _session(authorization, x_tick_user).user_id,
+                body.mode,
+            )
+        except StoreNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except StoreConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/trading-profile/demo/reset", response_model=DemoResetResponse)
+    def reset_demo_profile(
+        authorization: str | None = Header(default=None),
+        x_tick_user: str | None = Header(default=None),
+    ) -> DemoResetResponse:
+        try:
+            return _store(app).reset_demo_profile(
+                _session(authorization, x_tick_user).user_id,
+            )
+        except StoreNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except StoreConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.get("/api/state", response_model=StateResponse)
     def state(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> StateResponse:
@@ -200,15 +238,24 @@ def create_app(store: Any | None = None) -> FastAPI:
     @app.get("/api/wallet/deposit-address", response_model=DepositAddressResponse)
     def deposit_address(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> DepositAddressResponse:
         try:
-            return _store(app).deposit_address(_session(authorization, x_tick_user).user_id)
+            store = _store(app)
+            user_id = _session(authorization, x_tick_user).user_id
+            if store.is_demo_mode(user_id):
+                raise StoreConflict("deposits are unavailable in demo mode")
+            return store.deposit_address(user_id)
         except StoreNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except StoreConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.get("/api/wallet/balances", response_model=WalletBalancesResponse)
     def wallet_balances(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> WalletBalancesResponse:
         user_id = _session(authorization, x_tick_user).user_id
         try:
             store = _store(app)
+            demo = store.demo_balances(user_id)
+            if demo is not None:
+                return demo
             wallet = store.wallet_for_user(user_id)
         except StoreNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -268,7 +315,7 @@ def create_app(store: Any | None = None) -> FastAPI:
             response = _store(app).create_quote(user_id, body)
         except VenueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        if get_settings().tick_enqueue_jobs:
+        if get_settings().tick_enqueue_jobs and response.tradingMode.value == "live":
             background_tasks.add_task(
                 enqueue_wallet_preparation,
                 user_id,

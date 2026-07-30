@@ -12,6 +12,7 @@ from tick_mvp.domain.states import (
     TradeAction,
     TradeIntentStatus,
     TradeSide,
+    TradingMode,
     UserStatus,
     WalletStatus,
     WalletType,
@@ -44,6 +45,29 @@ class UserResponse(BaseModel):
     lastLoginAt: datetime
 
 
+class TradingProfileResponse(BaseModel):
+    mode: TradingMode
+    season: int
+    startingBalanceUsd: Decimal | None = None
+    balanceUsd: Decimal | None = None
+    resetCount: int = 0
+    lastResetAt: datetime | None = None
+
+
+class TradingModeRequest(BaseModel):
+    mode: TradingMode
+
+
+class DemoResetResponse(BaseModel):
+    profile: TradingProfileResponse
+    endedSeason: int
+    endingBalanceUsd: Decimal
+    realizedPnlUsd: Decimal
+    tradeCount: int
+    winCount: int
+    resetAt: datetime
+
+
 class WalletAccountResponse(BaseModel):
     id: str
     userId: str
@@ -70,11 +94,14 @@ class SessionResponse(BaseModel):
 class MeResponse(BaseModel):
     user: UserResponse
     wallet: WalletAccountResponse | None = None
+    tradingProfile: TradingProfileResponse | None = None
 
 
 class QuoteResponse(BaseModel):
     quoteId: str
     userId: str
+    tradingMode: TradingMode = TradingMode.LIVE
+    profileSeason: int = 1
     venue: str
     market: str
     side: TradeSide
@@ -124,6 +151,8 @@ class WalletBalancesResponse(BaseModel):
     source: str
     fetchedAt: datetime
     unavailableReason: str | None = None
+    tradingMode: TradingMode = TradingMode.LIVE
+    profileSeason: int = 1
 
 
 class WithdrawalRequest(BaseModel):
@@ -149,6 +178,8 @@ class WithdrawalResponse(BaseModel):
 class TradeIntentResponse(BaseModel):
     id: str
     userId: str
+    tradingMode: TradingMode = TradingMode.LIVE
+    profileSeason: int = 1
     idempotencyKey: str
     action: TradeAction
     status: TradeIntentStatus
@@ -164,6 +195,8 @@ class ExecutionAttemptResponse(BaseModel):
     id: str
     tradeIntentId: str
     userId: str
+    tradingMode: TradingMode = TradingMode.LIVE
+    profileSeason: int = 1
     venue: str
     action: TradeAction
     status: ExecutionAttemptStatus
@@ -181,6 +214,8 @@ class JobDispatchResponse(BaseModel):
 class PositionResponse(BaseModel):
     id: str
     userId: str
+    tradingMode: TradingMode = TradingMode.LIVE
+    profileSeason: int = 1
     venue: str
     market: str
     side: TradeSide
@@ -222,6 +257,7 @@ class AcceptedTradeResponse(BaseModel):
 class StateResponse(BaseModel):
     user: UserResponse | None = None
     wallet: WalletAccountResponse | None = None
+    tradingProfile: TradingProfileResponse | None = None
     positions: list[PositionResponse]
     intents: list[TradeIntentResponse]
     executionAttempts: list[ExecutionAttemptResponse]

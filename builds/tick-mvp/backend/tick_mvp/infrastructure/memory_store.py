@@ -12,6 +12,7 @@ from typing import Any
 from tick_mvp.domain.schemas import (
     AcceptedTradeResponse,
     CloseRequest,
+    DemoResetResponse,
     DepositAddressResponse,
     ExecutionAttemptResponse,
     OpenRequest,
@@ -21,8 +22,10 @@ from tick_mvp.domain.schemas import (
     ReconciliationResponse,
     StateResponse,
     TradeIntentResponse,
+    TradingProfileResponse,
     UserResponse,
     WalletAccountResponse,
+    WalletBalancesResponse,
     WithdrawalRequest,
     WithdrawalResponse,
 )
@@ -34,6 +37,7 @@ from tick_mvp.domain.states import (
     ReconciliationStatus,
     TradeAction,
     TradeIntentStatus,
+    TradingMode,
     UserStatus,
     WalletStatus,
     WalletType,
@@ -89,7 +93,9 @@ class MemoryStore:
     _positions: dict[str, PositionResponse] = field(default_factory=dict)
     _reconciliations: dict[str, ReconciliationResponse] = field(default_factory=dict)
     _withdrawals: dict[str, WithdrawalResponse] = field(default_factory=dict)
-    _idempotency: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)
+    _profiles: dict[tuple[str, TradingMode], TradingProfileResponse] = field(default_factory=dict)
+    _active_modes: dict[str, TradingMode] = field(default_factory=dict)
+    _idempotency: dict[tuple[str, TradingMode, int, str], tuple[str, str]] = field(default_factory=dict)
     _withdrawal_idempotency: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)
 
     def upsert_auth_user(
@@ -137,6 +143,7 @@ class MemoryStore:
                 self._users[user.id] = user
 
             wallet = self._wallet_for_user(user.id, chain_id=chain_id, custody_provider=custody_provider, now=now)
+            self._ensure_profiles(user.id)
             return user, wallet
 
     def create_invite_code(
@@ -205,6 +212,105 @@ class MemoryStore:
             raise StoreNotFound("wallet not found")
         return wallet
 
+    def trading_profile(self, user_id: str) -> TradingProfileResponse:
+        with self._lock:
+            self._ensure_profiles(user_id)
+            return self._profiles[(user_id, self._active_mode(user_id))]
+
+    def switch_trading_mode(self, user_id: str, mode: TradingMode) -> TradingProfileResponse:
+        with self._lock:
+            if any(
+                item.userId == user_id
+                and item.status in {
+                    PositionStatus.OPENING,
+                    PositionStatus.OPEN,
+                    PositionStatus.CLOSING,
+                    PositionStatus.UNKNOWN,
+                }
+                for item in self._positions.values()
+            ):
+                raise StoreConflict("finish the active trade before switching mode")
+            self._ensure_profiles(user_id)
+            user = self._users.get(user_id)
+            if user is None:
+                raise StoreNotFound("user not found")
+            self._active_modes[user_id] = mode
+            return self._profiles[(user_id, mode)]
+
+    def reset_demo_profile(self, user_id: str) -> DemoResetResponse:
+        now = _now()
+        with self._lock:
+            self._ensure_profiles(user_id)
+            profile = self._profiles[(user_id, TradingMode.DEMO)]
+            if any(
+                item.userId == user_id
+                and item.tradingMode == TradingMode.DEMO
+                and item.profileSeason == profile.season
+                and item.status in {
+                    PositionStatus.OPENING,
+                    PositionStatus.OPEN,
+                    PositionStatus.CLOSING,
+                    PositionStatus.UNKNOWN,
+                }
+                for item in self._positions.values()
+            ):
+                raise StoreConflict("close the demo trade before resetting")
+            ending = Decimal(profile.balanceUsd or 0)
+            starting = Decimal(profile.startingBalanceUsd or 1000)
+            completed = [
+                item
+                for item in self._positions.values()
+                if item.userId == user_id
+                and item.tradingMode == TradingMode.DEMO
+                and item.profileSeason == profile.season
+                and item.status in {PositionStatus.CLOSED, PositionStatus.LIQUIDATED}
+            ]
+            position_ids = {item.id for item in completed}
+            settled = [
+                item
+                for item in self._reconciliations.values()
+                if item.positionId in position_ids and item.walletDeltaUsd is not None
+            ]
+            updated = profile.model_copy(
+                update={
+                    "season": profile.season + 1,
+                    "startingBalanceUsd": Decimal("1000"),
+                    "balanceUsd": Decimal("1000"),
+                    "resetCount": profile.resetCount + 1,
+                    "lastResetAt": now,
+                }
+            )
+            self._profiles[(user_id, TradingMode.DEMO)] = updated
+            return DemoResetResponse(
+                profile=updated,
+                endedSeason=profile.season,
+                endingBalanceUsd=ending,
+                realizedPnlUsd=ending - starting,
+                tradeCount=len(settled),
+                winCount=sum(1 for item in settled if Decimal(item.walletDeltaUsd or 0) > 0),
+                resetAt=now,
+            )
+
+    def demo_balances(self, user_id: str) -> WalletBalancesResponse | None:
+        profile = self.trading_profile(user_id)
+        if profile.mode != TradingMode.DEMO:
+            return None
+        balance = Decimal(profile.balanceUsd or 0)
+        return WalletBalancesResponse(
+            chainId=42161,
+            address="demo",
+            usdc=balance,
+            gasChargesUsdc=Decimal(0),
+            spendableUsdc=balance,
+            source="demo_ledger",
+            fetchedAt=_now(),
+            tradingMode=TradingMode.DEMO,
+            profileSeason=profile.season,
+        )
+
+    def is_demo_mode(self, user_id: str) -> bool:
+        return self.trading_profile(user_id).mode == TradingMode.DEMO
+
     def deposit_address(self, user_id: str) -> DepositAddressResponse:
         wallet = self.wallet_for_user(user_id)
         return DepositAddressResponse(chainId=wallet.chainId, walletId=wallet.id, address=wallet.address)
@@ -215,6 +321,8 @@ class MemoryStore:
     def request_withdrawal(self, user_id: str, request: WithdrawalRequest) -> WithdrawalResponse:
         payload_hash = _hash_payload(request.model_dump(mode="json"))
         with self._lock:
+            if self._active_mode(user_id) == TradingMode.DEMO:
+                raise StoreConflict("withdrawals are unavailable in demo mode")
             existing = self._withdrawal_idempotency.get((user_id, request.idempotencyKey))
             if existing is not None:
                 previous_hash, withdrawal_id = existing
@@ -276,9 +384,12 @@ class MemoryStore:
         # Placeholder until venue quote extraction. Keep it explicit and conservative.
         estimated_open = notional * Decimal("0.0002")
         estimated_close = notional * Decimal("0.0002")
+        profile = self.trading_profile(user_id)
         response = QuoteResponse(
             quoteId=quote_id,
             userId=user_id,
+            tradingMode=profile.mode,
+            profileSeason=profile.season,
             venue=self.default_venue,
             market=_market(request.market),
             side=request.side,
@@ -305,7 +416,8 @@ class MemoryStore:
     def accept_open(self, user_id: str, request: OpenRequest) -> AcceptedTradeResponse:
         payload_hash = _hash_payload(request.model_dump(mode="json"))
         with self._lock:
-            existing = self._idempotent_lookup(user_id, request.idempotencyKey, payload_hash)
+            profile = self.trading_profile(user_id)
+            existing = self._idempotent_lookup(user_id, profile, request.idempotencyKey, payload_hash)
             if existing is not None:
                 return existing
 
@@ -314,9 +426,17 @@ class MemoryStore:
                 raise StoreNotFound("quote not found")
             if quote.response.expiresAt <= _now():
                 raise StoreConflict("quote expired")
-            if any(item.userId == user_id and item.status in {PositionStatus.OPENING, PositionStatus.OPEN, PositionStatus.CLOSING, PositionStatus.UNKNOWN} for item in self._positions.values()):
-                raise StoreConflict("user already has an active position")
+            if quote.response.tradingMode != profile.mode or quote.response.profileSeason != profile.season:
+                raise StoreConflict("quote belongs to another trading profile")
             if any(
+                item.userId == user_id
+                and item.tradingMode == profile.mode
+                and item.profileSeason == profile.season
+                and item.status in {PositionStatus.OPENING, PositionStatus.OPEN, PositionStatus.CLOSING, PositionStatus.UNKNOWN}
+                for item in self._positions.values()
+            ):
+                raise StoreConflict("user already has an active position")
+            if profile.mode == TradingMode.LIVE and any(
                 item.userId == user_id
                 and item.status
                 in {
@@ -334,6 +454,8 @@ class MemoryStore:
             intent = TradeIntentResponse(
                 id=_id("intent"),
                 userId=user_id,
+                tradingMode=profile.mode,
+                profileSeason=profile.season,
                 idempotencyKey=request.idempotencyKey,
                 action=TradeAction.OPEN,
                 status=TradeIntentStatus.ACCEPTED,
@@ -348,6 +470,8 @@ class MemoryStore:
                 id=_id("exec"),
                 tradeIntentId=intent.id,
                 userId=user_id,
+                tradingMode=profile.mode,
+                profileSeason=profile.season,
                 venue=quote.response.venue,
                 action=TradeAction.OPEN,
                 status=ExecutionAttemptStatus.CREATED,
@@ -357,6 +481,8 @@ class MemoryStore:
             position = PositionResponse(
                 id=_id("pos"),
                 userId=user_id,
+                tradingMode=profile.mode,
+                profileSeason=profile.season,
                 venue=quote.response.venue,
                 market=quote.response.market,
                 side=quote.response.side,
@@ -378,18 +504,24 @@ class MemoryStore:
             self._intents[intent.id] = intent
             self._executions[execution.id] = execution
             self._positions[position.id] = position
-            self._idempotency[(user_id, request.idempotencyKey)] = (payload_hash, execution.id)
+            self._idempotency[(user_id, profile.mode, profile.season, request.idempotencyKey)] = (payload_hash, execution.id)
             return AcceptedTradeResponse(intent=intent, executionAttempt=execution, position=position)
 
     def accept_close(self, user_id: str, request: CloseRequest) -> AcceptedTradeResponse:
         payload_hash = _hash_payload(request.model_dump(mode="json"))
         with self._lock:
-            existing = self._idempotent_lookup(user_id, request.idempotencyKey, payload_hash)
+            profile = self.trading_profile(user_id)
+            existing = self._idempotent_lookup(user_id, profile, request.idempotencyKey, payload_hash)
             if existing is not None:
                 return existing
 
             position = self._positions.get(request.positionId)
-            if position is None or position.userId != user_id:
+            if (
+                position is None
+                or position.userId != user_id
+                or position.tradingMode != profile.mode
+                or position.profileSeason != profile.season
+            ):
                 raise StoreNotFound("position not found")
             if position.status not in {PositionStatus.OPENING, PositionStatus.OPEN, PositionStatus.UNKNOWN}:
                 raise StoreConflict(f"position cannot close from {position.status}")
@@ -398,6 +530,8 @@ class MemoryStore:
             intent = TradeIntentResponse(
                 id=_id("intent"),
                 userId=user_id,
+                tradingMode=profile.mode,
+                profileSeason=profile.season,
                 idempotencyKey=request.idempotencyKey,
                 action=TradeAction.CLOSE,
                 status=TradeIntentStatus.ACCEPTED,
@@ -412,6 +546,8 @@ class MemoryStore:
                 id=_id("exec"),
                 tradeIntentId=intent.id,
                 userId=user_id,
+                tradingMode=profile.mode,
+                profileSeason=profile.season,
                 venue=position.venue,
                 action=TradeAction.CLOSE,
                 status=ExecutionAttemptStatus.CREATED,
@@ -433,7 +569,7 @@ class MemoryStore:
             self._executions[execution.id] = execution
             self._positions[position.id] = updated_position
             self._reconciliations[reconciliation.id] = reconciliation
-            self._idempotency[(user_id, request.idempotencyKey)] = (payload_hash, execution.id)
+            self._idempotency[(user_id, profile.mode, profile.season, request.idempotencyKey)] = (payload_hash, execution.id)
             return AcceptedTradeResponse(intent=intent, executionAttempt=execution, position=updated_position)
 
     def state(self, user_id: str | None = None) -> StateResponse:
@@ -445,16 +581,18 @@ class MemoryStore:
             withdrawals = list(self._withdrawals.values())
             user = self._users.get(user_id or "")
             wallet = self._wallets.get(self._wallet_by_user.get(user_id or "") or "")
+            profile = self.trading_profile(user_id) if user_id else None
         if user_id is not None:
-            positions = [item for item in positions if item.userId == user_id]
-            intents = [item for item in intents if item.userId == user_id]
-            executions = [item for item in executions if item.userId == user_id]
-            withdrawals = [item for item in withdrawals if item.userId == user_id]
+            positions = [item for item in positions if item.userId == user_id and item.tradingMode == profile.mode and item.profileSeason == profile.season]
+            intents = [item for item in intents if item.userId == user_id and item.tradingMode == profile.mode and item.profileSeason == profile.season]
+            executions = [item for item in executions if item.userId == user_id and item.tradingMode == profile.mode and item.profileSeason == profile.season]
+            withdrawals = [item for item in withdrawals if item.userId == user_id and profile.mode == TradingMode.LIVE]
             position_ids = {item.id for item in positions}
             reconciliations = [item for item in reconciliations if item.positionId in position_ids]
         return StateResponse(
             user=user,
             wallet=wallet,
+            tradingProfile=profile,
             positions=positions,
             intents=intents,
             executionAttempts=executions,
@@ -462,8 +600,8 @@ class MemoryStore:
             withdrawals=withdrawals,
         )
 
-    def _idempotent_lookup(self, user_id: str, key: str, payload_hash: str) -> AcceptedTradeResponse | None:
-        existing = self._idempotency.get((user_id, key))
+    def _idempotent_lookup(self, user_id: str, profile: TradingProfileResponse, key: str, payload_hash: str) -> AcceptedTradeResponse | None:
+        existing = self._idempotency.get((user_id, profile.mode, profile.season, key))
         if existing is None:
             return None
         previous_hash, execution_id = existing
@@ -493,6 +631,26 @@ class MemoryStore:
         self._wallets[wallet.id] = wallet
         self._wallet_by_user[user_id] = wallet.id
         return wallet
+
+    def _ensure_profiles(self, user_id: str) -> None:
+        if (user_id, TradingMode.LIVE) not in self._profiles:
+            self._profiles[(user_id, TradingMode.LIVE)] = TradingProfileResponse(
+                mode=TradingMode.LIVE,
+                season=1,
+                startingBalanceUsd=None,
+                balanceUsd=None,
+            )
+        if (user_id, TradingMode.DEMO) not in self._profiles:
+            self._profiles[(user_id, TradingMode.DEMO)] = TradingProfileResponse(
+                mode=TradingMode.DEMO,
+                season=1,
+                startingBalanceUsd=Decimal("1000"),
+                balanceUsd=Decimal("1000"),
+            )
+
+    def _active_mode(self, user_id: str) -> TradingMode:
+        self._ensure_profiles(user_id)
+        return self._active_modes.get(user_id, TradingMode.LIVE)
 
 
 def _id(prefix: str) -> str:
