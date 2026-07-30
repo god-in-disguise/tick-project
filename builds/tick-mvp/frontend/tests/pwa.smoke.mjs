@@ -146,6 +146,9 @@ const gestureStart = {
   x: tradeBox.x + tradeBox.width * 0.5,
   y: tradeBox.y + tradeBox.height * 0.52
 };
+const fixedChartStage = page.locator(".trade-scene > .chart-stage");
+const chartBeforeSwipe = await fixedChartStage.boundingBox();
+assert.ok(chartBeforeSwipe, "Chart has no gesture bounds");
 await page.mouse.move(gestureStart.x, gestureStart.y);
 await page.mouse.down();
 await page.mouse.move(gestureStart.x, gestureStart.y - 64, { steps: 5 });
@@ -153,11 +156,21 @@ const pullAction = page.locator(".swipe-action-layer.swipe-action-up");
 await pullAction.waitFor();
 assert.match(await pullAction.innerText(), /PULL TO\s+(LONG|ADD FUNDS)/);
 await page.screenshot({ path: "/tmp/tick-swipe-arm.png" });
-assert.notEqual(
+assert.equal(
   await tradeView.evaluate((element) => element.style.getPropertyValue("--swipe-y")),
   "0px",
-  "Vertical gesture did not track the pointer"
+  "Vertical gesture moved the chart"
 );
+assert.notEqual(
+  await tradeView.evaluate((element) => element.style.getPropertyValue("--swipe-progress")),
+  "0",
+  "Vertical gesture did not update its action progress"
+);
+const chartDuringSwipe = await fixedChartStage.boundingBox();
+assert.ok(chartDuringSwipe);
+assert.equal(chartDuringSwipe.y, chartBeforeSwipe.y, "Chart moved vertically during a trade gesture");
+assert.equal(await fixedChartStage.evaluate((element) => getComputedStyle(element).transform), "none");
+assert.equal(await page.evaluate(() => window.scrollY), 0, "Trade gesture scrolled the page");
 await page.mouse.up();
 await page.waitForTimeout(320);
 assert.equal(await page.locator(".swipe-action-content").count(), 0);

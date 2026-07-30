@@ -224,6 +224,8 @@ export function useTradeSwipe(options: Options): {
       lastChartTap.current = null;
     }
 
+    if (event.cancelable) event.preventDefault();
+
     if (current.axis === "horizontal") {
       const blocked = Boolean(options.positionSide || options.busy);
       const offset: -1 | 1 = dx < 0 ? 1 : -1;
@@ -250,13 +252,12 @@ export function useTradeSwipe(options: Options): {
     const side: Side = direction === "up" ? "long" : "short";
     const nextAction = verticalAction(options, side, direction, verticalArmed.current);
     setAction(nextAction);
-    const visibleY = Math.sign(dy) * resistedVerticalTravel(vertical, rootRef.current);
     updateMotion({
       x: 0,
-      y: visibleY,
+      y: 0,
       progress,
       pageProgress: 0,
-      scale: 1 - progress * 0.006
+      scale: 1
     });
   };
 
@@ -455,11 +456,6 @@ function pointerVelocity(pointer: Pointer): { x: number; y: number } {
 function verticalThreshold(root: HTMLElement | null): number {
   const height = root?.clientHeight ?? window.innerHeight;
   return clamp(height * 0.12, 90, 120);
-}
-
-function resistedVerticalTravel(distance: number, root: HTMLElement | null): number {
-  const cap = clamp((root?.clientHeight ?? window.innerHeight) * 0.09, 60, 90);
-  return cap * (1 - Math.exp(-distance / (cap * 0.72)));
 }
 
 function rubberBand(distance: number, cap: number): number {

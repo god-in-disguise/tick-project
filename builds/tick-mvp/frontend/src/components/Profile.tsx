@@ -53,6 +53,7 @@ export function Profile(props: Props) {
   const [walletMessage, setWalletMessage] = useState<string | null>(null);
   const [addressCopied, setAddressCopied] = useState(false);
   const [editingPreset, setEditingPreset] = useState(false);
+  const [confirmingDemoReset, setConfirmingDemoReset] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<"all" | "wins" | "losses" | "liquidations">("all");
   const leverageOptions = [25, 50, 100, 500];
   const address = props.session?.walletAddress ?? props.balances?.address;
@@ -366,10 +367,7 @@ export function Profile(props: Props) {
             className="reset-demo-button"
             type="button"
             disabled={props.profileBusy || Boolean(activePosition)}
-            onClick={() => {
-              if (!window.confirm("Reset this demo season and start again at $1,000?")) return;
-              void props.onResetDemo();
-            }}
+            onClick={() => setConfirmingDemoReset(true)}
           >
             <RotateCcw size={15} />
             Reset demo season
@@ -380,6 +378,60 @@ export function Profile(props: Props) {
         <LogOut size={16} />
         Sign out
       </button>
+
+      {confirmingDemoReset ? createPortal(
+        <div
+          className="wallet-sheet-backdrop"
+          role="presentation"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) setConfirmingDemoReset(false);
+          }}
+        >
+          <section
+            className="wallet-sheet demo-reset-sheet"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="demo-reset-title"
+            aria-describedby="demo-reset-description"
+          >
+            <button
+              className="wallet-sheet-close"
+              type="button"
+              aria-label="Cancel demo reset"
+              onClick={() => setConfirmingDemoReset(false)}
+            >
+              <X size={20} />
+            </button>
+            <span className="wallet-sheet-kicker">DEMO SEASON</span>
+            <h2 id="demo-reset-title">Start over?</h2>
+            <p id="demo-reset-description">
+              Your demo balance returns to $1,000. This season's trades and score are cleared.
+            </p>
+            <div className="demo-reset-actions">
+              <button
+                type="button"
+                className="demo-reset-cancel"
+                onClick={() => setConfirmingDemoReset(false)}
+              >
+                Keep season
+              </button>
+              <button
+                type="button"
+                className="demo-reset-confirm"
+                disabled={props.profileBusy}
+                onClick={async () => {
+                  await props.onResetDemo();
+                  setConfirmingDemoReset(false);
+                }}
+              >
+                <RotateCcw size={15} />
+                Reset to $1,000
+              </button>
+            </div>
+          </section>
+        </div>,
+        document.body
+      ) : null}
 
       {editingPreset ? createPortal(
         <div className="wallet-sheet-backdrop" role="presentation">

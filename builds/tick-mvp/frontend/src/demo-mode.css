@@ -114,3 +114,41 @@
 .reset-demo-button:disabled {
   opacity: 0.45;
 }
+
+.demo-reset-sheet {
+  padding-bottom: calc(18px + var(--safe-area-bottom));
+}
+
+.demo-reset-actions {
+  display: grid;
+  grid-template-columns: 0.9fr 1.1fr;
+  gap: 8px;
+}
+
+.demo-reset-actions button {
+  display: inline-flex;
+  min-width: 0;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.demo-reset-cancel {
+  border: 1px solid rgb(255 255 255 / 10%);
+  color: var(--silver);
+  background: rgb(255 255 255 / 4%);
+}
+
+.demo-reset-confirm {
+  border: 1px solid rgb(255 157 54 / 34%);
+  color: #ffb15f;
+  background: rgb(255 157 54 / 10%);
+}
+
+.demo-reset-confirm:disabled {
+  opacity: 0.5;
+}

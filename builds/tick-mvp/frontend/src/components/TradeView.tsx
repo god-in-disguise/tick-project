@@ -177,12 +177,22 @@ export function TradeView(props: Props) {
       {...swipe.handlers}
     >
       <SwipeActionLayer action={swipe.action} />
+      <div className="trade-header-shell" aria-hidden="true" />
+      <button
+        className="balance-summary trade-balance-fixed"
+        type="button"
+        aria-label={`Available balance ${money(available)}. Deposit USDC`}
+        onClick={props.onFund}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <WalletCards aria-hidden="true" />
+        <strong>{money(available)}</strong>
+      </button>
       {previousMarket ? (
         <MarketSwipePreview
           market={previousMarket}
           offset={-1}
           active={swipe.previewOffset === -1}
-          available={available}
           settings={props.settings}
         />
       ) : null}
@@ -191,12 +201,11 @@ export function TradeView(props: Props) {
           market={nextMarket}
           offset={1}
           active={swipe.previewOffset === 1}
-          available={available}
           settings={props.settings}
         />
       ) : null}
       <div className="trade-scene">
-      <header className="trade-header">
+      <header className="trade-header market-page-header">
         <div className="market-heading">
           <div className="market-name">
             <div className="market-name-row">
@@ -212,16 +221,6 @@ export function TradeView(props: Props) {
             </div>
           </div>
         </div>
-        <button
-          className="balance-summary"
-          type="button"
-          aria-label={`Available balance ${money(available)}. Deposit USDC`}
-          onClick={props.onFund}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <WalletCards aria-hidden="true" />
-          <strong>{money(available)}</strong>
-        </button>
       </header>
 
       <section

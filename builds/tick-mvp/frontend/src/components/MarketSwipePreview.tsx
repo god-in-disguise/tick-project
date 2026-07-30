@@ -1,4 +1,3 @@
-import { WalletCards } from "lucide-react";
 import type { CSSProperties } from "react";
 
 import { money, percent, price } from "../format";
@@ -11,7 +10,6 @@ type Props = {
   market: Market;
   offset: -1 | 1;
   active: boolean;
-  available: number | null | undefined;
   settings: TradeSettings;
 };
 
@@ -19,7 +17,6 @@ export function MarketSwipePreview({
   market,
   offset,
   active,
-  available,
   settings
 }: Props) {
   const theme = themeFor(market.market);
@@ -33,7 +30,7 @@ export function MarketSwipePreview({
       style={style}
       aria-hidden="true"
     >
-      <header className="trade-header">
+      <header className="trade-header market-page-header">
         <div className="market-heading">
           <div className="market-name">
             <div className="market-name-row">
@@ -48,10 +45,6 @@ export function MarketSwipePreview({
               </span>
             </div>
           </div>
-        </div>
-        <div className="balance-summary preview-balance">
-          <WalletCards aria-hidden="true" />
-          <strong>{money(available)}</strong>
         </div>
       </header>
 
