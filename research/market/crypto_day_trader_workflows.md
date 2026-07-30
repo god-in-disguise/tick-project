@@ -1,6 +1,10 @@
 # Crypto Day-Trader Workflows and TICK
 
-Last reviewed: 2026-07-28
+Last reviewed: 2026-07-30
+
+This is the implementation-facing memo for the current crypto chart and mobile
+loop. The deeper empirical, behavioral, and cross-asset research now lives in
+[`day-trading/`](day-trading/README.md).
 
 ## Executive Decision
 
