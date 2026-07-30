@@ -425,7 +425,7 @@ def _session(authorization: str | None, dev_user_id: str | None) -> UserSession:
             return verify_session_token(token, secret=settings.jwt_secret)
         except AuthError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
-    if settings.tick_allow_dev_auth:
+    if settings.tick_env.strip().lower() != "production":
         return UserSession(user_id=dev_user_id or "dev-user")
     raise HTTPException(status_code=401, detail="missing bearer token")
 

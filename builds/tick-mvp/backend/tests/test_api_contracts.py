@@ -1,5 +1,8 @@
+import pytest
+from fastapi import HTTPException
+
 from tick_mvp.app import create_app
-from tick_mvp.api.app import _market_snapshot
+from tick_mvp.api.app import _market_snapshot, _session
 from tick_mvp.auth import create_session_token, verify_session_token
 from tick_mvp.core.config import get_settings
 from tick_mvp.domain.invitations import InviteAuthError, hash_invite_code
@@ -232,6 +235,17 @@ def test_session_token_round_trip() -> None:
     session = verify_session_token(token, secret="secret")
     assert session.user_id == "alice"
     assert session.wallet_address == "0xabc"
+
+
+def test_production_rejects_missing_session(monkeypatch) -> None:
+    monkeypatch.setenv("TICK_ENV", "production")
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(HTTPException) as exc_info:
+            _session(None, None)
+        assert exc_info.value.status_code == 401
+    finally:
+        get_settings.cache_clear()
 
 
 def test_api_routes_are_present() -> None:
