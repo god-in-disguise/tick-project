@@ -607,15 +607,3 @@ The core message is:
 
 > Find the market moving now. Understand the move. Trade it through the route
 > that fits.
-
-## Repository Sources
-
-This overview consolidates decisions and verified implementation details from:
-
-- [`tick_real_build_spec.md`](tick_real_build_spec.md);
-- [`tick_product_infra.md`](tick_product_infra.md);
-- [`market_research.md`](market_research.md);
-- [`flow_tech_doc.md`](flow_tech_doc.md);
-- [`tick-engine.md`](../research/market/day-trading/tick-engine.md);
-- [`builds/tick-mvp/README.md`](../builds/tick-mvp/README.md);
-- [`research/venues/README.md`](../research/venues/README.md).
