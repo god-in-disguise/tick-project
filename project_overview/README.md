@@ -14,6 +14,9 @@ For the current product, technical, commercial, marketing, and roadmap source,
 use
 [`tick_overview.md`](tick_overview.md).
 
+For the focused market position of TICK, TICK Engine, the web terminal, and the
+future API products, use [`positioning.md`](positioning.md).
+
 ## Product TODOs
 
 - Add a deliberate chart context control that switches between the truthful
