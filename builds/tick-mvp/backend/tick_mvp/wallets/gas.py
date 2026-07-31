@@ -20,6 +20,7 @@ from tick_mvp.wallets.gas_sweep_repository import (
 
 DIRECT_SEQUENCER_URL = "https://arb1-sequencer.arbitrum.io/rpc"
 PreparedHandler = Callable[[str, int, str], None]
+SweepPreparedHandler = Callable[[str, int, str, Decimal], None]
 BroadcastHandler = Callable[[str, dict[str, Any]], None]
 LOGGER = logging.getLogger("tick.gas")
 
@@ -178,7 +179,7 @@ class ArbitrumGasTopupExecutor:
         context: GasSweepContext,
         *,
         private_key_hex: str,
-        on_prepared: PreparedHandler,
+        on_prepared: SweepPreparedHandler,
         on_broadcast: BroadcastHandler,
     ) -> GasSweepResult:
         web3 = self._web3()
@@ -207,14 +208,21 @@ class ArbitrumGasTopupExecutor:
                     if context.nonce is None:
                         raise GasFundingError("stored gas sweep transaction has no nonce")
                     nonce = context.nonce
+                    signed_amount_native = context.amount_native
                     EVM_NONCES.observe(sender, nonce)
                 else:
-                    raw_transaction, tx_hash, nonce = self._prepare_sweep(
-                        context,
-                        account,
-                        web3,
+                    (
+                        raw_transaction,
+                        tx_hash,
+                        nonce,
+                        signed_amount_native,
+                    ) = self._prepare_sweep(context, account, web3)
+                    on_prepared(
+                        tx_hash,
+                        nonce,
+                        f"0x{raw_transaction.hex()}",
+                        signed_amount_native,
                     )
-                    on_prepared(tx_hash, nonce, f"0x{raw_transaction.hex()}")
 
                 race = self._broadcaster.broadcast(
                     raw_transaction=raw_transaction,
@@ -253,6 +261,7 @@ class ArbitrumGasTopupExecutor:
         return self._sweep_result(
             context,
             receipt,
+            amount_native=signed_amount_native,
             payload={
                 "txHash": tx_hash,
                 "nonce": nonce,
@@ -271,6 +280,7 @@ class ArbitrumGasTopupExecutor:
         context: GasSweepContext,
         receipt: Any,
         *,
+        amount_native: Decimal | None = None,
         payload: dict[str, Any],
     ) -> GasSweepResult:
         gas_used = int(receipt.gasUsed)
@@ -293,7 +303,7 @@ class ArbitrumGasTopupExecutor:
             block_number=int(receipt.blockNumber),
             gas_used=gas_used,
             effective_gas_price=gas_price,
-            amount_native=context.amount_native,
+            amount_native=amount_native or context.amount_native,
             gas_cost_native=Decimal(gas_used * gas_price) / Decimal(10**18),
             payload={**payload, "status": status},
         )
@@ -335,16 +345,19 @@ class ArbitrumGasTopupExecutor:
         context: GasSweepContext,
         account: Any,
         web3: Any,
-    ) -> tuple[bytes, str, int]:
-        amount_wei = int(context.amount_native * Decimal(10**18))
-        if amount_wei <= 0:
+    ) -> tuple[bytes, str, int, Decimal]:
+        requested_amount_wei = int(context.amount_native * Decimal(10**18))
+        if requested_amount_wei <= 0:
             raise GasFundingError("gas sweep amount must be positive")
         nonce = EVM_NONCES.reserve(web3, account.address)
         fee_params = _fee_params(web3)
-        max_cost = amount_wei + (
-            self._settings.gas_sweep_transfer_gas * fee_params["maxFeePerGas"]
+        balance_wei = int(web3.eth.get_balance(account.address))
+        max_gas_wei = (
+            self._settings.gas_sweep_transfer_gas
+            * fee_params["maxFeePerGas"]
         )
-        if int(web3.eth.get_balance(account.address)) < max_cost:
+        amount_wei = min(requested_amount_wei, balance_wei - max_gas_wei)
+        if amount_wei <= 0:
             raise GasFundingError("user wallet has insufficient ETH for gas sweep")
         signed = account.sign_transaction(
             {
@@ -359,7 +372,12 @@ class ArbitrumGasTopupExecutor:
         )
         raw = getattr(signed, "raw_transaction", None) or signed.rawTransaction
         tx_hash = _normalize_hash(web3.keccak(raw).hex())
-        return bytes(raw), tx_hash, nonce
+        return (
+            bytes(raw),
+            tx_hash,
+            nonce,
+            Decimal(amount_wei) / Decimal(10**18),
+        )
 
     def _account(self):
         from eth_account import Account
@@ -613,11 +631,16 @@ class GasFundingService:
                 result = self._executor.sweep(
                     context,
                     private_key_hex=private_key_hex,
-                    on_prepared=lambda tx_hash, nonce, signed_raw: self._sweep_repository.mark_signed(
-                        context.sweep_id,
-                        tx_hash=tx_hash,
-                        nonce=nonce,
-                        signed_raw_transaction=signed_raw,
+                    on_prepared=(
+                        lambda tx_hash, nonce, signed_raw, amount_native: (
+                            self._sweep_repository.mark_signed(
+                                context.sweep_id,
+                                tx_hash=tx_hash,
+                                nonce=nonce,
+                                signed_raw_transaction=signed_raw,
+                                amount_native=amount_native,
+                            )
+                        )
                     ),
                     on_broadcast=lambda tx_hash, payload: self._sweep_repository.mark_broadcast(
                         context.sweep_id,

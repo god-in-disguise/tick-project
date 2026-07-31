@@ -149,7 +149,7 @@ class SweepExecutor(FakeExecutor):
         on_broadcast,
     ) -> GasSweepResult:
         tx_hash = "0x" + "cd" * 32
-        on_prepared(tx_hash, 9, "0x02beef")
+        on_prepared(tx_hash, 9, "0x02beef", context.amount_native)
         on_broadcast(tx_hash, {"winner": "primary_rpc"})
         return GasSweepResult(
             status="confirmed",

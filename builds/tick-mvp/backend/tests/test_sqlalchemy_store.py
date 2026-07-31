@@ -387,6 +387,7 @@ def test_postgres_gas_topup_persists_exact_signed_transaction() -> None:
         tx_hash=sweep_hash,
         nonce=10,
         signed_raw_transaction="0x02c0ffee",
+        amount_native=Decimal("0.00085"),
     )
     recovered_sweep = sweep_repository.load_active(
         user_id=user_id,
@@ -394,6 +395,7 @@ def test_postgres_gas_topup_persists_exact_signed_transaction() -> None:
         wallet_address=wallet_address,
     )
     assert recovered_sweep.signed_raw_transaction == "0x02c0ffee"
+    assert recovered_sweep.amount_native == Decimal("0.00085")
     sweep_repository.mark_broadcast(
         sweep.sweep_id,
         tx_hash=sweep_hash,
@@ -409,7 +411,7 @@ def test_postgres_gas_topup_persists_exact_signed_transaction() -> None:
         user_id=user_id,
         wallet_id=wallet_id,
         wallet_address=wallet_address,
-    ) == Decimal(0)
+    ) == Decimal("0.00004")
     with session_factory() as session:
         stored_sweep = session.get(GasSweep, sweep.sweep_id)
         assert stored_sweep.status == "confirmed"

@@ -148,12 +148,14 @@ class GasSweepRepository:
         tx_hash: str,
         nonce: int,
         signed_raw_transaction: str,
+        amount_native: Decimal,
     ) -> None:
         now = _now()
         with session_scope(self._session_factory) as session:
             sweep = _sweep_for_update(session, sweep_id)
             _require_tx_hash(sweep, tx_hash, allow_empty=True)
             sweep.status = GasSweepStatus.SIGNED.value
+            sweep.amount_native = amount_native
             sweep.tx_hash = tx_hash
             sweep.nonce = nonce
             sweep.payload = {
