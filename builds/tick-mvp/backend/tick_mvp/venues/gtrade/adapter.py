@@ -104,7 +104,7 @@ class GTradeVenue:
         *,
         private_key_hex: str,
         required_collateral_usd: Decimal,
-        ensure_transaction_gas: Callable[[], Any] | None = None,
+        ensure_transaction_gas: Callable[[int], Any] | None = None,
     ) -> dict[str, Any]:
         return self._wallet.prepare_wallet(
             private_key_hex,

@@ -255,6 +255,21 @@ class GasTopup(Base, TimestampMixin):
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
 
+class GasSweep(Base, TimestampMixin):
+    __tablename__ = "gas_sweeps"
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    wallet_id: Mapped[str] = mapped_column(ForeignKey("wallet_accounts.id"), nullable=False)
+    amount_native: Mapped[object] = mapped_column(Numeric, nullable=False)
+    status: Mapped[str] = mapped_column(Text, nullable=False)
+    nonce: Mapped[int | None] = mapped_column(BigInteger)
+    tx_hash: Mapped[str | None] = mapped_column(Text)
+    gas_cost_native: Mapped[object | None] = mapped_column(Numeric)
+    error: Mapped[str | None] = mapped_column(Text)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+
+
 class VenueEvent(Base):
     __tablename__ = "venue_events"
     __table_args__ = (UniqueConstraint("chain_id", "transaction_hash", "log_index"),)

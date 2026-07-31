@@ -38,7 +38,10 @@ class Settings:
     platform_gas_wallet_private_key: str = ""
     user_gas_min_eth: Decimal = Decimal("0.0003")
     user_gas_target_eth: Decimal = Decimal("0.001")
+    user_gas_buffer_eth: Decimal = Decimal("0.00002")
+    user_gas_sweep_min_eth: Decimal = Decimal("0.00001")
     gas_topup_transfer_gas: int = 30_000
+    gas_sweep_transfer_gas: int = 30_000
     arb_eth_usd_feed_address: str = "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612"
     arb_eth_usd_max_age_seconds: int = 7200
     tick_real_quotes_enabled: bool = False
@@ -125,7 +128,10 @@ def get_settings() -> Settings:
         platform_gas_wallet_private_key=os.getenv("PLATFORM_GAS_WALLET_PRIVATE_KEY", ""),
         user_gas_min_eth=_decimal_env("USER_GAS_MIN_ETH", "0.0003"),
         user_gas_target_eth=_decimal_env("USER_GAS_TARGET_ETH", "0.001"),
+        user_gas_buffer_eth=_decimal_env("USER_GAS_BUFFER_ETH", "0.00002"),
+        user_gas_sweep_min_eth=_decimal_env("USER_GAS_SWEEP_MIN_ETH", "0.00001"),
         gas_topup_transfer_gas=_int_env("GAS_TOPUP_TRANSFER_GAS", 30_000),
+        gas_sweep_transfer_gas=_int_env("GAS_SWEEP_TRANSFER_GAS", 30_000),
         arb_eth_usd_feed_address=os.getenv(
             "ARB_ETH_USD_FEED_ADDRESS",
             "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612",

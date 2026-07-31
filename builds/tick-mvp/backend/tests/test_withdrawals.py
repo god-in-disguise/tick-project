@@ -82,6 +82,9 @@ class FakeGasFunding:
     def note_spent(self, wallet_address: str, amount_native: Decimal) -> None:
         self.spent.append(amount_native)
 
+    def reclaim_excess(self, **kwargs):
+        return {"status": "reclaimed", "amountEth": "0.0001"}
+
 
 class FakeGasAccounting:
     def __init__(self) -> None:

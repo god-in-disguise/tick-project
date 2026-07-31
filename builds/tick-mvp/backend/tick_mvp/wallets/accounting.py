@@ -68,6 +68,7 @@ class GasCharge:
     eth_usd_price: Decimal
     charge_usdc: Decimal
     oracle_updated_at: int
+    gas_payer_address: str | None = None
 
 
 class EthUsdOracle:
@@ -174,6 +175,7 @@ class GasAccountingRepository:
                         "nativeGasCost": str(charge.native_cost),
                         "ethUsdPrice": str(charge.eth_usd_price),
                         "oracleUpdatedAt": charge.oracle_updated_at,
+                        "gasPayerAddress": charge.gas_payer_address,
                     },
                     created_at=now,
                 )
@@ -248,6 +250,7 @@ class GasAccountingService:
             eth_usd_price=eth_usd,
             charge_usdc=amount,
             oracle_updated_at=oracle_updated_at,
+            gas_payer_address=transaction.gas_payer_address,
         )
         self._repository.record_charge(
             user_id=user_id,

@@ -262,8 +262,15 @@ def test_postgres_gas_topup_persists_exact_signed_transaction() -> None:
     from tick_mvp.core.config import Settings
     from tick_mvp.infrastructure.custody import SecretCipher
     from tick_mvp.infrastructure.database import create_session_factory, run_sql_migrations
-    from tick_mvp.infrastructure.models import GasTopup, User, WalletAccount
+    from tick_mvp.infrastructure.models import (
+        GasSweep,
+        GasTopup,
+        LedgerEvent,
+        User,
+        WalletAccount,
+    )
     from tick_mvp.wallets.gas_repository import GasTopupRepository
+    from tick_mvp.wallets.gas_sweep_repository import GasSweepRepository
 
     run_sql_migrations(database_url)
     engine = sqlalchemy.create_engine(_sqlalchemy_url(database_url), pool_pre_ping=True)
@@ -341,6 +348,71 @@ def test_postgres_gas_topup_persists_exact_signed_transaction() -> None:
         topup = session.get(GasTopup, context.topup_id)
         assert topup.status == "confirmed"
         assert topup.gas_cost_native == Decimal("0.00000042")
+        session.add(
+            LedgerEvent(
+                id=f"gas_charge_{suffix}",
+                user_id=user_id,
+                event_type="gas_charge",
+                asset="USDC",
+                amount=Decimal("-0.20"),
+                source="platform_gas",
+                payload={
+                    "operation": "approve",
+                    "nativeGasCost": "0.0001",
+                    "gasPayerAddress": wallet_address,
+                },
+            )
+        )
+        session.commit()
+
+    sweep_repository = GasSweepRepository(
+        Settings(custody_private_key_encryption_key=key),
+        session_factory=session_factory,
+    )
+    recoverable = sweep_repository.recoverable_native(
+        user_id=user_id,
+        wallet_id=wallet_id,
+        wallet_address=wallet_address,
+    )
+    assert recoverable == Decimal("0.0009")
+    sweep = sweep_repository.create_or_load(
+        user_id=user_id,
+        wallet_id=wallet_id,
+        wallet_address=wallet_address,
+        amount_native=Decimal("0.00089"),
+    )
+    sweep_hash = "0x" + "ef" * 32
+    sweep_repository.mark_signed(
+        sweep.sweep_id,
+        tx_hash=sweep_hash,
+        nonce=10,
+        signed_raw_transaction="0x02c0ffee",
+    )
+    recovered_sweep = sweep_repository.load_active(
+        user_id=user_id,
+        wallet_id=wallet_id,
+        wallet_address=wallet_address,
+    )
+    assert recovered_sweep.signed_raw_transaction == "0x02c0ffee"
+    sweep_repository.mark_broadcast(
+        sweep.sweep_id,
+        tx_hash=sweep_hash,
+        payload={"winner": "primary_rpc"},
+    )
+    sweep_repository.mark_confirmed(
+        sweep.sweep_id,
+        tx_hash=sweep_hash,
+        gas_cost_native=Decimal("0.00001"),
+        payload={"blockNumber": 124},
+    )
+    assert sweep_repository.recoverable_native(
+        user_id=user_id,
+        wallet_id=wallet_id,
+        wallet_address=wallet_address,
+    ) == Decimal(0)
+    with session_factory() as session:
+        stored_sweep = session.get(GasSweep, sweep.sweep_id)
+        assert stored_sweep.status == "confirmed"
 
 
 def test_demo_profile_isolated_and_reset_is_audited() -> None:

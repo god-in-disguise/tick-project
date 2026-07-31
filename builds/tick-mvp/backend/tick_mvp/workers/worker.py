@@ -13,6 +13,7 @@ from tick_mvp.workers.tasks import (
     execute_trade_attempt,
     execute_withdrawal_request,
     prepare_user_wallet,
+    reclaim_user_gas,
     reconcile_positions,
 )
 from tick_mvp.infrastructure.queue import EXECUTION_JOB
@@ -87,7 +88,13 @@ class WorkerSettings:
     from arq.connections import RedisSettings
 
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
-    functions = [execute_trade_attempt, prepare_user_wallet, execute_withdrawal_request, reconcile_positions]
+    functions = [
+        execute_trade_attempt,
+        prepare_user_wallet,
+        reclaim_user_gas,
+        execute_withdrawal_request,
+        reconcile_positions,
+    ]
     on_startup = startup
     on_shutdown = shutdown
     max_jobs = settings.arq_max_jobs

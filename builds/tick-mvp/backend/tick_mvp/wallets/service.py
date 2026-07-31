@@ -73,6 +73,7 @@ class WithdrawalService:
                 user_id=context.user_id,
                 wallet_id=context.wallet_id,
                 wallet_address=context.wallet_address,
+                required_gas_units=self._settings.arb_usdc_transfer_gas,
             )
             result = self._executor.transfer(
                 context,
@@ -133,6 +134,7 @@ class WithdrawalService:
             gas_used=result.gas_used,
             effective_gas_price=result.effective_gas_price,
             operation="withdrawal",
+            gas_payer_address=context.wallet_address,
         )
         if transaction is not None:
             self._gas_funding.note_spent(
@@ -151,10 +153,26 @@ class WithdrawalService:
                     withdrawal_id,
                     result.tx_hash,
                 )
+        gas_sweep = None
+        if result.status == "confirmed":
+            try:
+                gas_sweep = self._gas_funding.reclaim_excess(
+                    user_id=context.user_id,
+                    wallet_id=context.wallet_id,
+                    wallet_address=context.wallet_address,
+                    private_key_hex=context.private_key_hex,
+                )
+            except Exception:
+                LOGGER.exception(
+                    "withdrawal gas reserve sweep deferred withdrawalId=%s wallet=%s",
+                    withdrawal_id,
+                    context.wallet_address,
+                )
         return {
             "withdrawalId": withdrawal_id,
             "status": result.status,
             "txHash": result.tx_hash,
             "blockNumber": result.block_number,
             "gasCostNative": str(result.gas_cost_native),
+            "gasSweep": gas_sweep,
         }

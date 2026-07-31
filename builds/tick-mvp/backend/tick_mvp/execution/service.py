@@ -131,13 +131,14 @@ class ExecutionService:
         if prepare is None:
             return {"userId": user_id, "status": "unsupported"}
 
-        def ensure_transaction_gas() -> dict[str, object]:
+        def ensure_transaction_gas(required_gas_units: int) -> dict[str, object]:
             nonlocal gas
             if gas is None:
                 gas = self._gas_funding.ensure_funded(
                     user_id=user_id,
                     wallet_id=wallet_id,
                     wallet_address=wallet_address,
+                    required_gas_units=required_gas_units,
                 )
             return gas
 
@@ -164,12 +165,44 @@ class ExecutionService:
             payload=result.get("gasTransactions"),
             wallet_address=wallet_address,
         )
+        gas_sweep = None
+        if self._settings.tick_real_execution_enabled:
+            try:
+                gas_sweep = self._gas_funding.reclaim_excess(
+                    user_id=user_id,
+                    wallet_id=wallet_id,
+                    wallet_address=wallet_address,
+                    private_key_hex=private_key_hex,
+                )
+            except Exception:
+                LOGGER.exception(
+                    "user gas reserve sweep deferred userId=%s wallet=%s",
+                    user_id,
+                    wallet_address,
+                )
         if not result.get("allowanceReady", True):
             raise WalletNotReady("wallet collateral allowance is not ready")
         if not result.get("delegationReady", True):
             raise WalletNotReady("wallet trading delegation is not ready")
         self._remember_wallet_ready(user_id, required_collateral_usd)
-        return {"userId": user_id, "status": "ready", "gas": gas, **result}
+        return {
+            "userId": user_id,
+            "status": "ready",
+            "gas": gas,
+            "gasSweep": gas_sweep,
+            **result,
+        }
+
+    def reclaim_user_gas(self, user_id: str) -> dict[str, object]:
+        wallet_id, wallet_address, private_key_hex = (
+            self._repository.load_user_wallet_context(user_id)
+        )
+        return self._gas_funding.reclaim_excess(
+            user_id=user_id,
+            wallet_id=wallet_id,
+            wallet_address=wallet_address,
+            private_key_hex=private_key_hex,
+        )
 
     def execute(self, execution_attempt_id: str) -> dict[str, object]:
         started = time.perf_counter()

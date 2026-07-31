@@ -54,6 +54,15 @@ class GasTopupStatus(StrEnum):
     FAILED = "failed"
 
 
+class GasSweepStatus(StrEnum):
+    CREATED = "created"
+    SIGNED = "signed"
+    BROADCAST = "broadcast"
+    UNKNOWN = "unknown"
+    CONFIRMED = "confirmed"
+    FAILED = "failed"
+
+
 class TradeIntentStatus(StrEnum):
     CREATED = "created"
     VALIDATED = "validated"

@@ -93,7 +93,7 @@ class GTradeWalletExecutor:
         self,
         private_key_hex: str,
         required_collateral_usd: Decimal,
-        ensure_transaction_gas: Callable[[], Any] | None = None,
+        ensure_transaction_gas: Callable[[int], Any] | None = None,
     ) -> dict[str, Any]:
         """Warm one user's trading state before the execution gesture."""
         started = time.perf_counter()
@@ -129,7 +129,16 @@ class GTradeWalletExecutor:
         if setup_required:
             if ensure_transaction_gas is None:
                 raise GTradeError("user wallet setup requires transaction gas")
-            ensure_transaction_gas()
+            required_gas_units = (
+                self._settings.gtrade_fixed_delegate_gas
+                if not delegate_ready
+                else 0
+            ) + (
+                self._settings.gtrade_fixed_approve_gas
+                if approval_required
+                else 0
+            )
+            ensure_transaction_gas(required_gas_units)
 
         gas_transactions: list[VenueTxResult] = []
         delegation: VenueTxResult | None = None

@@ -362,17 +362,17 @@ def test_wallet_preparation_approves_once_before_the_trade(monkeypatch) -> None:
         ),
     )
 
-    gas_requests: list[bool] = []
+    gas_requests: list[int] = []
     result = wallet.prepare_wallet(
         "0x" + "1" * 64,
         Decimal("10"),
-        ensure_transaction_gas=lambda: gas_requests.append(True),
+        ensure_transaction_gas=gas_requests.append,
     )
 
     assert result["allowanceReady"] is True
     assert result["approvalSubmitted"] is True
     assert wallet._allowance_cache[OWNER_A.lower()] > Decimal("10")
-    assert gas_requests == [True]
+    assert gas_requests == [wallet._settings.gtrade_fixed_approve_gas]
 
 
 def test_delegated_trading_wraps_call_and_uses_platform_agent(monkeypatch) -> None:
@@ -453,7 +453,7 @@ def test_prepared_delegated_wallet_does_not_request_user_gas(monkeypatch) -> Non
     result = wallet.prepare_wallet(
         "0x" + "1" * 64,
         Decimal("10"),
-        ensure_transaction_gas=lambda: gas_requests.append(True),
+        ensure_transaction_gas=lambda _gas_units: gas_requests.append(True),
     )
 
     assert result["delegationReady"] is True

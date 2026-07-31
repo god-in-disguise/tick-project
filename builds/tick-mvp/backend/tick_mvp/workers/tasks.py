@@ -29,6 +29,12 @@ async def prepare_user_wallet(ctx: dict, user_id: str, required_collateral_usd: 
     return {key: str(value) for key, value in result.items() if value is not None}
 
 
+async def reclaim_user_gas(ctx: dict, user_id: str) -> dict[str, str]:
+    service: ExecutionService = ctx["execution_service"]
+    result = await asyncio.to_thread(service.reclaim_user_gas, user_id)
+    return {key: str(value) for key, value in result.items() if value is not None}
+
+
 async def execute_withdrawal_request(ctx: dict, withdrawal_id: str) -> dict[str, str]:
     LOGGER.info("withdrawal request queued", extra={"withdrawalId": withdrawal_id})
     service: WithdrawalService = ctx["withdrawal_service"]
