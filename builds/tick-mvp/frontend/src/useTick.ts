@@ -16,6 +16,7 @@ import type {
   WalletBalances
 } from "./types";
 import { effectiveTicketUsd, minimumTicketUsd, ticketMeetsMarketMinimum } from "./tradeSettings";
+import { positionNetPnl } from "./positionPnl";
 
 const SETTINGS_KEY = "tick.trade.settings.v2";
 const LEGACY_SETTINGS_KEY = "tick.trade.settings";
@@ -723,19 +724,6 @@ function routeMarkets(markets: Market[], desiredLeverage: number): Market[] {
     })
     .filter((market): market is Market => Boolean(market))
     .sort((left, right) => right.score - left.score);
-}
-
-function positionNetPnl(position: Position | null, market: Market | null, quote: Quote | null): number | null {
-  if (!position?.entryPrice || !market || position.market !== market.market) return null;
-  const estimatedCost = quote?.estimatedRoundTripCostUsd ?? 0;
-  const latestObservation = market.observations.at(-1);
-  const positionConfirmedAt = Date.parse(position.openedAt ?? position.updatedAt) / 1_000;
-  if (!latestObservation || latestObservation.receivedTs < positionConfirmedAt) {
-    return -estimatedCost;
-  }
-  const direction = position.side === "long" ? 1 : -1;
-  const gross = ((market.price - position.entryPrice) / position.entryPrice) * position.notionalUsd * direction;
-  return gross - estimatedCost;
 }
 
 function applyAccepted(

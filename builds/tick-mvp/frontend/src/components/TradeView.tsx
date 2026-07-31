@@ -5,6 +5,7 @@ import { api } from "../api";
 import { distance, money, percent, price, signedMoney } from "../format";
 import { themeFor } from "../theme";
 import { effectiveTicketUsd } from "../tradeSettings";
+import { liquidationThresholdCrossed } from "../positionPnl";
 import type {
   ClosedResult,
   Market,
@@ -81,6 +82,9 @@ export function TradeView(props: Props) {
   const needsFunding = available !== null && available !== undefined && available < amount;
   const positionOpening = props.position?.status === "opening";
   const positionClosing = props.position?.status === "closing" || props.busyAction === "close";
+  const liquidationCrossed = props.position
+    ? liquidationThresholdCrossed(props.position, props.market.price)
+    : false;
   const executionPending = positionOpening || positionClosing || props.busy;
   const positionCost = props.position ? props.quote?.estimatedRoundTripCostUsd ?? 0 : 0;
   const breakEven = props.position?.entryPrice && props.position.notionalUsd > 0 && positionCost > 0
@@ -337,7 +341,9 @@ export function TradeView(props: Props) {
                 ? "position remains exposed"
                 : positionOpening
                   ? "waiting for venue execution"
-                  : "estimated net if closed now"}
+                  : liquidationCrossed
+                    ? "liquidation threshold crossed"
+                    : "estimated net if closed now"}
             </small>
           </div>
         ) : props.busyAction === "long" || props.busyAction === "short" ? (

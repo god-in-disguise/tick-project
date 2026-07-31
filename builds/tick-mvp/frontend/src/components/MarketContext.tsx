@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 
 import { buildMicroBars, describeMarket } from "../marketActivity";
+import { liquidationThresholdCrossed } from "../positionPnl";
 import type { Market, Position, Quote, Theme } from "../types";
 import { TapeHeat } from "./TapeHeat";
 
@@ -37,6 +38,7 @@ export function MarketContext({ market, position, quote, estimatedNetPnl, theme 
         position={position}
         quote={quote}
         estimatedNetPnl={estimatedNetPnl}
+        liquidationCrossed={liquidationThresholdCrossed(position, market.price)}
         accent={theme.accent}
       />
     );
@@ -59,11 +61,13 @@ function PositionContext({
   position,
   quote,
   estimatedNetPnl,
+  liquidationCrossed,
   accent
 }: {
   position: Position;
   quote: Quote | null;
   estimatedNetPnl: number | null;
+  liquidationCrossed: boolean;
   accent: string;
 }) {
   const [now, setNow] = useState(Date.now());
@@ -91,13 +95,20 @@ function PositionContext({
   return (
     <div className="market-context position-context" style={style}>
       <div className="market-story">
-        <strong>{hasCostModel ? covered ? "COST COVERED" : "RECOVERING COST" : "POSITION LIVE"}</strong>
+        <strong>
+          {liquidationCrossed
+            ? "LIQUIDATION THRESHOLD"
+            : hasCostModel
+              ? covered ? "COST COVERED" : "RECOVERING COST"
+              : "POSITION LIVE"}
+        </strong>
         <span>
-          {hasCostModel && !covered ? `${Math.round(recovery)}% · ` : ""}
-          {secondsOpen}s IN TRADE
+          {liquidationCrossed
+            ? "AWAITING VENUE"
+            : `${hasCostModel && !covered ? `${Math.round(recovery)}% · ` : ""}${secondsOpen}s IN TRADE`}
         </span>
       </div>
-      {hasCostModel ? (
+      {hasCostModel && !liquidationCrossed ? (
         <div className="cost-recovery-track">
           <i />
         </div>
