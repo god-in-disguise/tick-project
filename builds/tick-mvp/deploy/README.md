@@ -27,8 +27,8 @@ TICK_SSH_KEY=.runtime/tick_ed25519 \
 ./scripts/deploy_backend.sh
 ```
 
-The public API hostname is `<droplet-ip>.sslip.io`. Caddy provisions TLS
-automatically.
+The public API hostname is `api.tick.trading`. Its DNS `A` record points to the
+droplet IP, and Caddy provisions TLS automatically.
 
 ## Runtime layout
 

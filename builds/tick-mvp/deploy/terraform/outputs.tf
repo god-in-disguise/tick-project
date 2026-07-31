@@ -7,5 +7,5 @@ output "droplet_id" {
 }
 
 output "api_hostname" {
-  value = "${digitalocean_droplet.tick.ipv4_address}.sslip.io"
+  value = "api.tick.trading"
 }

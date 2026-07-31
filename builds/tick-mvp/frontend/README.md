@@ -52,7 +52,7 @@ an iPhone-sized viewport with headless Chrome.
 The Vercel project root is this directory. Configure:
 
 ```text
-VITE_API_BASE_URL=https://<backend-host>
+VITE_API_BASE_URL=https://api.tick.trading
 ```
 
 ## Rendering
