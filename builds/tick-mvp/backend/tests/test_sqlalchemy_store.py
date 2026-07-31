@@ -352,7 +352,16 @@ def test_demo_profile_isolated_and_reset_is_audited() -> None:
     from tick_mvp.domain.states import TradingMode
     from tick_mvp.execution.repository import ExecutionRepository
     from tick_mvp.infrastructure.database import create_session_factory, run_sql_migrations
-    from tick_mvp.infrastructure.models import DemoProfileReset, User, WalletAccount
+    from tick_mvp.infrastructure.models import (
+        DemoProfileReset,
+        ExecutionAttempt,
+        LedgerEvent,
+        Position,
+        Reconciliation,
+        TradeIntent,
+        User,
+        WalletAccount,
+    )
     from tick_mvp.infrastructure.sqlalchemy_store import SQLAlchemyStore, StoreConflict
 
     run_sql_migrations(database_url)
@@ -449,6 +458,54 @@ def test_demo_profile_isolated_and_reset_is_audited() -> None:
     assert reset.profile.balanceUsd == Decimal("1000")
     assert store.state(user_id).positions == []
 
+    monitor_quote = store.create_quote(
+        user_id,
+        QuoteRequest(market="BTCDEGEN/USD", side="long", ticketUsd="10", leverage="100"),
+    )
+    monitor_opened = store.accept_open(
+        user_id,
+        OpenRequest(
+            quoteId=monitor_quote.quoteId,
+            idempotencyKey=f"demo-monitor-open-{suffix}",
+        ),
+    )
+    monitor_context = repository.claim(monitor_opened.executionAttempt.id)
+    assert monitor_context is not None
+    repository.mark_demo_open(
+        monitor_context,
+        entry_price=Decimal("100"),
+        liquidation_price=Decimal("99"),
+        stop_loss_price=Decimal("99.50"),
+        take_profit_price=None,
+        open_cost_usd=Decimal("0.20"),
+        close_cost_usd=Decimal("0.20"),
+        quote_payload={"price": "100"},
+        delay_ms=1200,
+    )
+    monitor_snapshot = next(
+        snapshot
+        for snapshot in repository.open_demo_positions()
+        if snapshot.position_id == monitor_opened.position.id
+    )
+    assert repository.settle_demo_terminal(
+        monitor_snapshot,
+        exit_price=Decimal("99.50"),
+        gross_pnl_usd=Decimal("-5"),
+        close_cost_usd=Decimal("0.20"),
+        returned_usd=Decimal("4.80"),
+        reason="stop_loss",
+        quote_payload={"price": "99.50"},
+    )
+    assert not repository.settle_demo_terminal(
+        monitor_snapshot,
+        exit_price=Decimal("99.50"),
+        gross_pnl_usd=Decimal("-5"),
+        close_cost_usd=Decimal("0.20"),
+        returned_usd=Decimal("4.80"),
+        reason="stop_loss",
+        quote_payload={"price": "99.50"},
+    )
+
     with session_factory() as session:
         audit = (
             session.query(DemoProfileReset)
@@ -457,6 +514,35 @@ def test_demo_profile_isolated_and_reset_is_audited() -> None:
         )
         assert audit.ended_season == 1
         assert audit.ending_balance_usd == Decimal("1000.60")
+        monitor_position = session.get(Position, monitor_opened.position.id)
+        assert monitor_position.status == "closed"
+        monitor_intent = (
+            session.query(TradeIntent)
+            .filter(TradeIntent.position_id == monitor_opened.position.id)
+            .order_by(TradeIntent.created_at.desc())
+            .first()
+        )
+        monitor_execution = (
+            session.query(ExecutionAttempt)
+            .filter(ExecutionAttempt.trade_intent_id == monitor_intent.id)
+            .one()
+        )
+        monitor_reconciliation = (
+            session.query(Reconciliation)
+            .filter(Reconciliation.position_id == monitor_opened.position.id)
+            .one()
+        )
+        monitor_ledger = (
+            session.query(LedgerEvent)
+            .filter(
+                LedgerEvent.position_id == monitor_opened.position.id,
+                LedgerEvent.event_type == "demo_position_settled",
+            )
+            .one()
+        )
+        assert monitor_execution.status == "venue_executed"
+        assert monitor_reconciliation.difference_usd == Decimal("0")
+        assert monitor_ledger.execution_attempt_id == monitor_execution.id
 
     store.switch_trading_mode(user_id, TradingMode.LIVE)
     live_state = store.state(user_id)

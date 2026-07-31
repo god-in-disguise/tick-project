@@ -652,14 +652,6 @@ class ExecutionRepository:
         now = _now()
         net_pnl = returned_usd - snapshot.ticket_usd
         with session_scope(self._session_factory) as session:
-            position = (
-                session.query(Position)
-                .filter(Position.id == snapshot.position_id)
-                .with_for_update()
-                .one_or_none()
-            )
-            if position is None or position.status != PositionStatus.OPEN.value:
-                return False
             profile = (
                 session.query(TradingProfile)
                 .filter(
@@ -671,6 +663,14 @@ class ExecutionRepository:
                 .one_or_none()
             )
             if profile is None:
+                return False
+            position = (
+                session.query(Position)
+                .filter(Position.id == snapshot.position_id)
+                .with_for_update()
+                .one_or_none()
+            )
+            if position is None or position.status != PositionStatus.OPEN.value:
                 return False
             intent = TradeIntent(
                 id=_id("intent"),
@@ -690,6 +690,8 @@ class ExecutionRepository:
                 created_at=now,
                 updated_at=now,
             )
+            session.add(intent)
+            session.flush()
             execution = ExecutionAttempt(
                 id=_id("exec"),
                 trade_intent_id=intent.id,
@@ -704,6 +706,8 @@ class ExecutionRepository:
                 created_at=now,
                 updated_at=now,
             )
+            session.add(execution)
+            session.flush()
             profile.balance_usd = Decimal(profile.balance_usd or 0) + returned_usd
             profile.updated_at = now
             _transition_position(
@@ -757,7 +761,7 @@ class ExecutionRepository:
                 payload={"netPnlUsd": str(net_pnl), "terminalReason": reason},
                 created_at=now,
             )
-            session.add_all([intent, execution, reconciliation, ledger])
+            session.add_all([reconciliation, ledger])
             return True
 
     def load_user_wallet_credentials(self, user_id: str) -> tuple[str, str]:
