@@ -32,6 +32,7 @@ export type Market = {
   activeTapePct: number;
   feeHurdlePct: number;
   activitySurplusPct: number;
+  minPositionSizeUsd: number;
   minLeverage: number;
   maxLeverage: number;
   suggestedLeverage: number;
@@ -222,9 +223,11 @@ export type ClosedResult = {
   pnl: number | null;
   market: string;
   reason: Position["terminalReason"];
+  reconciliationStatus?: string;
 };
 
 export type TradeSettings = {
+  amountMode: "fixed" | "minimum" | "custom";
   ticketUsd: number;
   leverage: number;
   maxLossUsd: number;

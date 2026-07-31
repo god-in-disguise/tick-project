@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 
 from tick_mvp.core.config import get_settings
 from tick_mvp.execution.service import ExecutionService
@@ -14,6 +15,7 @@ from tick_mvp.workers.tasks import (
     prepare_user_wallet,
     reconcile_positions,
 )
+from tick_mvp.infrastructure.queue import EXECUTION_JOB
 
 
 settings = get_settings()
@@ -30,6 +32,9 @@ async def startup(ctx: dict) -> None:
     service.start()
     ctx["execution_service"] = service
     ctx["demo_monitor_task"] = asyncio.create_task(_run_demo_monitor(service))
+    ctx["execution_recovery_task"] = asyncio.create_task(
+        _run_execution_recovery(ctx, service)
+    )
     ctx["withdrawal_service"] = WithdrawalService(
         gas_funding=gas_funding,
         gas_accounting=gas_accounting,
@@ -38,13 +43,14 @@ async def startup(ctx: dict) -> None:
 
 
 async def shutdown(ctx: dict) -> None:
-    monitor_task: asyncio.Task | None = ctx.get("demo_monitor_task")
-    if monitor_task is not None:
-        monitor_task.cancel()
-        try:
-            await monitor_task
-        except asyncio.CancelledError:
-            pass
+    for task_name in ("demo_monitor_task", "execution_recovery_task"):
+        task: asyncio.Task | None = ctx.get(task_name)
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
     service: ExecutionService | None = ctx.get("execution_service")
     if service is not None:
         service.stop()
@@ -58,6 +64,23 @@ async def _run_demo_monitor(service: ExecutionService) -> None:
     while True:
         await asyncio.to_thread(service.check_demo_positions)
         await asyncio.sleep(0.20)
+
+
+async def _run_execution_recovery(ctx: dict, service: ExecutionService) -> None:
+    while True:
+        try:
+            execution_ids = await asyncio.to_thread(service.recoverable_execution_ids)
+            bucket = int(time.time() // 5)
+            for execution_id in execution_ids:
+                await ctx["redis"].enqueue_job(
+                    EXECUTION_JOB,
+                    execution_id,
+                    _job_id=f"execution-recovery:{execution_id}:{bucket}",
+                )
+            await asyncio.to_thread(service.recover_ambiguous_executions)
+        except Exception:
+            logging.getLogger("tick.worker").exception("execution redispatch scan failed")
+        await asyncio.sleep(1.0)
 
 
 class WorkerSettings:

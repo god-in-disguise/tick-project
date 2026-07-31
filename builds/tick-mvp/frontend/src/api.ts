@@ -217,6 +217,7 @@ export const api = {
     }>(`/api/markets${suffix}`);
     return response.markets.map((market) => ({
       ...market,
+      minPositionSizeUsd: Number(market.minPositionSizeUsd ?? 0),
       minLeverage: Number(market.minLeverage ?? 1),
       observations: (market.observations ?? []).map(observation),
       sequence: Number(market.sequence ?? 0)
@@ -285,6 +286,36 @@ export const api = {
       observations: response.observations.map(observation),
       sequence: Number(response.sequence)
     };
+  },
+
+  tapes: async (
+    requests: Array<{ market: string; since: number }>
+  ): Promise<Array<{
+    market: string;
+    observations: MarketObservation[];
+    sequence: number;
+    feedStatus: string;
+    resyncRequired: boolean;
+  }>> => {
+    const query = new URLSearchParams();
+    for (const request of requests) {
+      query.append("market", request.market);
+      query.append("since", String(request.since));
+    }
+    const response = await json<{
+      tapes: Array<{
+        market: string;
+        observations: MarketObservation[];
+        sequence: number;
+        feedStatus: string;
+        resyncRequired: boolean;
+      }>;
+    }>(`/api/tapes?${query.toString()}`, undefined, 3_000);
+    return response.tapes.map((tape) => ({
+      ...tape,
+      sequence: Number(tape.sequence),
+      observations: tape.observations.map(observation)
+    }));
   },
 
   quote: (

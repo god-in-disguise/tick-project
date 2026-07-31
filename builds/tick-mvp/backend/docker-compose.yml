@@ -35,16 +35,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  market-feed:
-    build:
-      context: .
-    env_file: *backend-env
-    command: python -m tick_mvp.workers.service market-feed
-    depends_on:
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-
   venue-events:
     build:
       context: .

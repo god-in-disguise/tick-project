@@ -16,10 +16,13 @@ Production-shaped MVP for TICK.
 
 The backend is one codebase with multiple process roles:
 
-- `api` - FastAPI HTTP API and client event stream.
+- `api` - FastAPI HTTP API, one shared market feed, retained bars, and client event stream.
 - `worker` - durable execution jobs and reconciliation.
-- `market-feed` - shared price ingestion, retained bars, and scanner data.
 - `venue-events` - direct venue event listener and state observations.
+
+V1 runs exactly one API replica because that process owns the shared market
+feed and history writer. Moving feed ownership to a separate process is required
+before scaling the API horizontally.
 
 Avoid microservices until the state model is stable.
 
@@ -41,8 +44,8 @@ The PWA is a distribution choice for the first deployable MVP. The product refer
 
 ## Current Implementation Status
 
-- Backend runs with Docker Compose, Postgres, Redis, an ARQ worker, a shared
-  market-feed process, and a venue-events process.
+- Backend runs with Docker Compose, Postgres, Redis, one API-owned market feed,
+  an ARQ worker, and a venue-events process.
 - Real delegated gTrade open/close execution is extracted and live-tested.
   The user wallet owns collateral and the position; TICK's platform agent pays
   Arbitrum gas.

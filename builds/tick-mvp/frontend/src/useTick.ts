@@ -15,12 +15,14 @@ import type {
   TradingMode,
   WalletBalances
 } from "./types";
+import { effectiveTicketUsd, minimumTicketUsd, ticketMeetsMarketMinimum } from "./tradeSettings";
 
 const SETTINGS_KEY = "tick.trade.settings.v2";
 const LEGACY_SETTINGS_KEY = "tick.trade.settings";
 const QUOTES_KEY = "tick.trade.quotes";
 const ACTIVE_STATUSES = new Set(["opening", "open", "closing", "unknown"]);
 const DEFAULT_SETTINGS: TradeSettings = {
+  amountMode: "fixed",
   ticketUsd: 10,
   leverage: 500,
   maxLossUsd: 10,
@@ -94,6 +96,16 @@ export function useTick(initialSession: Session) {
     },
     [activeMarketId, activePosition, markets, routedMarkets]
   );
+  const watchedMarketIds = useMemo(() => {
+    if (!activeMarket || routedMarkets.length < 2) return activeMarket ? [activeMarket.market] : [];
+    const index = routedMarkets.findIndex((market) => market.market === activeMarket.market);
+    if (index < 0) return [activeMarket.market];
+    return [...new Set([
+      activeMarket.market,
+      routedMarkets[(index - 1 + routedMarkets.length) % routedMarkets.length]?.market,
+      routedMarkets[(index + 1) % routedMarkets.length]?.market
+    ].filter((marketId): marketId is string => Boolean(marketId)))];
+  }, [activeMarket?.market, routedMarkets.map((market) => market.market).join("|")]);
 
   const activeQuote = activePosition?.quoteId ? quoteCache.current[activePosition.quoteId] ?? null : null;
   const estimatedNetPnl = useMemo(
@@ -138,18 +150,7 @@ export function useTick(initialSession: Session) {
         markBackgroundSuccess();
         sequences.current[marketId] = Math.max(sequences.current[marketId] ?? 0, chart.sequence);
         setMarkets((markets) =>
-          markets.map((market) =>
-            market.market === marketId
-              && chart.sequence >= market.sequence
-              ? {
-                  ...market,
-                  price: chart.observations.at(-1)?.price ?? market.price,
-                  observations: chart.observations,
-                  sequence: chart.sequence,
-                  feedStatus: chart.feedStatus as Market["feedStatus"]
-                }
-              : market
-          )
+          updateMarketTape(markets, marketId, chart.observations, chart.sequence, chart.feedStatus)
         );
       })
       .finally(() => {
@@ -206,7 +207,12 @@ export function useTick(initialSession: Session) {
         const reconciliation = next.reconciliations.find((item) => item.positionId === terminal.id);
         if (reconciliation && !shownReconciliations.current.has(reconciliation.id)) {
           const pnl = reconciliation.walletDeltaUsd;
-          if (pnl === null || reconciliation.status !== "wallet_reconciled") {
+          const hasFinalWalletResult = pnl !== null && [
+            "wallet_observed",
+            "wallet_reconciled",
+            "mismatched"
+          ].includes(reconciliation.status);
+          if (!hasFinalWalletResult) {
             if (!pendingReconciliations.current.has(reconciliation.id)) {
               pendingReconciliations.current.add(reconciliation.id);
               setClosedResult({
@@ -214,7 +220,8 @@ export function useTick(initialSession: Session) {
                 label: terminalLabel(terminal),
                 pnl: null,
                 market: terminal.market,
-                reason: terminal.terminalReason
+                reason: terminal.terminalReason,
+                reconciliationStatus: reconciliation.status
               });
             }
             return;
@@ -226,7 +233,8 @@ export function useTick(initialSession: Session) {
             label: terminalLabel(terminal, pnl),
             pnl,
             market: terminal.market,
-            reason: terminal.terminalReason
+            reason: terminal.terminalReason,
+            reconciliationStatus: reconciliation.status
           });
           if (resultTimer.current) window.clearTimeout(resultTimer.current);
           resultTimer.current = window.setTimeout(
@@ -344,59 +352,49 @@ export function useTick(initialSession: Session) {
   }, [activeMarket?.market, activeMarket?.observations.length, loadMarketChart, showBackgroundError]);
 
   useEffect(() => {
-    if (!activeMarket || routedMarkets.length < 2) return;
-    const index = routedMarkets.findIndex((market) => market.market === activeMarket.market);
-    if (index < 0) return;
-    const neighborIds = new Set<string>();
-    const previous = routedMarkets[(index - 1 + routedMarkets.length) % routedMarkets.length];
-    const next = routedMarkets[(index + 1) % routedMarkets.length];
-    if (previous) neighborIds.add(previous.market);
-    if (next) neighborIds.add(next.market);
-
-    const warmNeighbors = () => {
-      const cutoff = Date.now() / 1_000 - 2.5;
-      for (const marketId of neighborIds) {
-        const market = routedMarkets.find((candidate) => candidate.market === marketId);
-        if (!market || (market.observations.at(-1)?.receivedTs ?? 0) >= cutoff) continue;
-        void loadMarketChart(market.market).catch(showBackgroundError);
-      }
-    };
-    warmNeighbors();
-    const timer = window.setInterval(warmNeighbors, 2_500);
-    return () => window.clearInterval(timer);
-  }, [activeMarket?.market, loadMarketChart, showBackgroundError]);
-
-  useEffect(() => {
-    if (!activeMarket) return;
-    const marketId = activeMarket.market;
+    if (!watchedMarketIds.length) return;
     const poll = async () => {
-      if (tapeBusy.current.has(marketId)) return;
-      tapeBusy.current.add(marketId);
+      const requestKey = watchedMarketIds.join("|");
+      if (tapeBusy.current.has(requestKey)) return;
+      tapeBusy.current.add(requestKey);
       try {
-        const result = await api.tape(marketId, sequences.current[marketId] ?? 0);
+        const results = await api.tapes(
+          watchedMarketIds.map((marketId) => ({
+            market: marketId,
+            since: sequences.current[marketId] ?? 0
+          }))
+        );
         markBackgroundSuccess();
-        if (result.resyncRequired) {
-          const chart = await api.chart(marketId);
-          sequences.current[marketId] = chart.sequence;
-          setMarkets((current) =>
-            updateMarketTape(current, marketId, chart.observations, chart.sequence, chart.feedStatus)
+        const deltas = results.filter((result) => !result.resyncRequired);
+        for (const result of deltas) {
+          sequences.current[result.market] = Math.max(
+            sequences.current[result.market] ?? 0,
+            result.sequence
           );
-        } else {
-          sequences.current[marketId] = Math.max(sequences.current[marketId] ?? 0, result.sequence);
-          setMarkets((current) =>
-            updateMarketTape(current, marketId, result.observations, result.sequence, result.feedStatus)
-          );
+        }
+        setMarkets((current) => deltas.reduce(
+          (next, result) => updateMarketTape(
+            next,
+            result.market,
+            result.observations,
+            result.sequence,
+            result.feedStatus
+          ),
+          current
+        ));
+        for (const result of results) {
+          if (result.resyncRequired) void loadMarketChart(result.market).catch(showBackgroundError);
         }
       } catch (cause) {
         showBackgroundError(cause);
       } finally {
-        tapeBusy.current.delete(marketId);
+        tapeBusy.current.delete(requestKey);
       }
     };
     void poll();
-    const timer = window.setInterval(poll, 200);
+    const timer = window.setInterval(poll, 250);
     return () => window.clearInterval(timer);
-  }, [activeMarket?.market, markBackgroundSuccess, showBackgroundError]);
+  }, [watchedMarketIds.join("|"), loadMarketChart, markBackgroundSuccess, showBackgroundError]);
 
   useEffect(() => {
     if (!activeMarket || activePosition) {
@@ -407,13 +405,18 @@ export function useTick(initialSession: Session) {
     let quoteBlocked = false;
     const refresh = async () => {
       if (quoteBlocked) return;
+      if (!ticketMeetsMarketMinimum(settings, activeMarket)) {
+        setQuotes({ long: null, short: null });
+        return;
+      }
       const leverage = Math.min(settings.leverage, activeMarket.maxLeverage);
+      const ticketUsd = effectiveTicketUsd(settings, activeMarket);
       const maxLossUsd = settings.stopLossEnabled ? settings.maxLossUsd : null;
       const takeProfitUsd = settings.takeProfitEnabled ? settings.takeProfitUsd : null;
       try {
         const [long, short] = await Promise.all([
-          api.quote(activeMarket.market, "long", settings.ticketUsd, leverage, maxLossUsd, takeProfitUsd),
-          api.quote(activeMarket.market, "short", settings.ticketUsd, leverage, maxLossUsd, takeProfitUsd)
+          api.quote(activeMarket.market, "long", ticketUsd, leverage, maxLossUsd, takeProfitUsd),
+          api.quote(activeMarket.market, "short", ticketUsd, leverage, maxLossUsd, takeProfitUsd)
         ]);
         if (!canceled) {
           markBackgroundSuccess();
@@ -443,6 +446,7 @@ export function useTick(initialSession: Session) {
     markBackgroundSuccess,
     rememberQuote,
     settings.leverage,
+    settings.amountMode,
     settings.maxLossUsd,
     settings.stopLossEnabled,
     settings.takeProfitEnabled,
@@ -527,8 +531,15 @@ export function useTick(initialSession: Session) {
 
   const open = useCallback(async (side: Side) => {
     if (!activeMarket || activePosition || actionBusy.current) return;
+    const ticketUsd = effectiveTicketUsd(settings, activeMarket);
+    if (!ticketMeetsMarketMinimum(settings, activeMarket)) {
+      showError(new Error(
+        `${activeMarket.symbol} needs at least $${minimumTicketUsd(activeMarket, settings.leverage).toFixed(2)}. Choose MIN or CUSTOM in your preset.`
+      ));
+      return;
+    }
     const spendableUsdc = balances?.spendableUsdc ?? balances?.usdc;
-    if (spendableUsdc !== null && spendableUsdc !== undefined && spendableUsdc < settings.ticketUsd) {
+    if (spendableUsdc !== null && spendableUsdc !== undefined && spendableUsdc < ticketUsd) {
       showError(new Error(
         state?.tradingProfile?.mode === "demo"
           ? "Demo balance is too low. Reset the season in Me."
@@ -547,12 +558,12 @@ export function useTick(initialSession: Session) {
       if (
         !quote ||
         new Date(quote.expiresAt).getTime() < Date.now() + 650 ||
-        !quoteMatchesSettings(quote, settings.ticketUsd, leverage, maxLossUsd, takeProfitUsd)
+        !quoteMatchesSettings(quote, ticketUsd, leverage, maxLossUsd, takeProfitUsd)
       ) {
         quote = await api.quote(
           activeMarket.market,
           side,
-          settings.ticketUsd,
+          ticketUsd,
           leverage,
           maxLossUsd,
           takeProfitUsd

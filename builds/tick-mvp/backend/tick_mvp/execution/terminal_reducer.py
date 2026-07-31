@@ -8,9 +8,10 @@ from decimal import Decimal
 from sqlalchemy import func
 
 from tick_mvp.core.config import Settings, get_settings
-from tick_mvp.domain.accounting import net_wallet_delta
-from tick_mvp.domain.states import PositionStatus, ReconciliationStatus, VenueEventType
+from tick_mvp.domain.accounting import net_wallet_delta, reconciliation_difference
+from tick_mvp.domain.states import PositionStatus, ReconciliationStatus, VenueEventType, can_transition
 from tick_mvp.infrastructure.database import create_session_factory, session_scope
+from tick_mvp.infrastructure.memory_store import StoreConflict
 from tick_mvp.infrastructure.models import (
     LedgerEvent,
     Position,
@@ -20,6 +21,9 @@ from tick_mvp.infrastructure.models import (
 )
 from tick_mvp.wallets.accounting import platform_gas_complete
 from tick_mvp.venues.base import TerminalPositionEvent
+
+
+RECONCILIATION_TOLERANCE_USD = Decimal("0.02")
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,10 +87,31 @@ class TerminalEventReducer:
                     Position.venue_position_id == event.venue_position_id,
                 )
                 .order_by(Position.created_at.desc())
+                .with_for_update()
                 .first()
             )
             if position is None:
-                return None
+                candidates = (
+                    session.query(Position)
+                    .filter(
+                        Position.wallet_id == wallet.id,
+                        Position.venue == event.venue,
+                        Position.status.in_(
+                            [
+                                PositionStatus.OPENING.value,
+                                PositionStatus.OPEN.value,
+                                PositionStatus.CLOSING.value,
+                                PositionStatus.UNKNOWN.value,
+                            ]
+                        ),
+                    )
+                    .with_for_update()
+                    .all()
+                )
+                if len(candidates) != 1:
+                    return None
+                position = candidates[0]
+                position.venue_position_id = event.venue_position_id
             existing_event = self._existing_event(session, event)
             if existing_event is not None:
                 if position.closed_at is None or event.observed_at < position.closed_at:
@@ -119,7 +144,7 @@ class TerminalEventReducer:
             )
             if use_event_as_terminal_truth:
                 if position.status != PositionStatus.LIQUIDATED.value:
-                    position.status = event.status.value
+                    _transition_position(position, event.status)
                 position.closed_at = event.observed_at
                 position.updated_at = datetime.now(UTC)
                 position.payload = {
@@ -186,15 +211,31 @@ class TerminalEventReducer:
                 Decimal(gas_ledger_total or 0),
             )
             reconciliation.wallet_delta_usd = wallet_delta
-            reconciliation.status = (
-                ReconciliationStatus.WALLET_RECONCILED.value
-                if wallet_delta is not None
-                and (
-                    self._settings.gas_payer_mode != "platform_agent"
-                    or platform_gas_complete(session, position)
-                )
-                else ReconciliationStatus.VENUE_ACCOUNTED.value
+            venue_pnl = (
+                Decimal(reconciliation.venue_realized_pnl_usd)
+                if reconciliation.venue_realized_pnl_usd is not None
+                else None
             )
+            gas_complete = (
+                self._settings.gas_payer_mode != "platform_agent"
+                or platform_gas_complete(session, position)
+            )
+            difference = reconciliation_difference(
+                wallet_delta,
+                venue_pnl,
+                Decimal(gas_ledger_total or 0),
+            )
+            reconciliation.difference_usd = difference
+            if wallet_delta is None:
+                reconciliation.status = ReconciliationStatus.VENUE_ACCOUNTED.value
+            elif venue_pnl is None:
+                reconciliation.status = ReconciliationStatus.WALLET_OBSERVED.value
+            elif not gas_complete:
+                reconciliation.status = ReconciliationStatus.VENUE_ACCOUNTED.value
+            elif abs(difference or Decimal(0)) <= RECONCILIATION_TOLERANCE_USD:
+                reconciliation.status = ReconciliationStatus.WALLET_RECONCILED.value
+            else:
+                reconciliation.status = ReconciliationStatus.MISMATCHED.value
             reconciliation.payload = {
                 **(reconciliation.payload or {}),
                 "accountBalanceAfterTerminalUsd": str(account_balance_after_usd),
@@ -223,6 +264,15 @@ def _reconciliation(session, position_id: str) -> Reconciliation | None:
         .order_by(Reconciliation.created_at.desc())
         .first()
     )
+
+
+def _transition_position(position: Position, target: PositionStatus) -> None:
+    current = PositionStatus(position.status)
+    if current == target:
+        return
+    if not can_transition(current, target):
+        raise StoreConflict(f"invalid position transition: {current.value} -> {target.value}")
+    position.status = target.value
 
 
 def _event_type(reason: str) -> VenueEventType:

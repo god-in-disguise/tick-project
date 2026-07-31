@@ -369,6 +369,72 @@ class GTradeWalletExecutor:
             },
         )
 
+    def recover_execution(
+        self,
+        *,
+        private_key_hex: str,
+        pair: GTradePair,
+        venue_position_id: str | None,
+        tx_hash: str,
+        signed_raw_transaction: str | None,
+    ) -> dict[str, Any]:
+        _, address, web3 = self._account(private_key_hex)
+        receipt = _receipt_or_none(web3, tx_hash)
+        rebroadcast = None
+        if receipt is None and signed_raw_transaction:
+            raw_tx = bytes.fromhex(signed_raw_transaction.removeprefix("0x"))
+            race = self._broadcaster.broadcast(
+                raw_transaction=raw_tx,
+                expected_tx_hash=tx_hash,
+                primary_web3=web3,
+                sequencer_web3=self._sequencer(),
+            )
+            race.wait_for_outcomes(timeout=0.02)
+            rebroadcast = race.payload()
+            try:
+                receipt = web3.eth.wait_for_transaction_receipt(
+                    tx_hash,
+                    timeout=10,
+                    poll_latency=0.2,
+                )
+            except Exception:
+                receipt = None
+
+        tx_result = _recovered_tx_result(web3, receipt, tx_hash, rebroadcast)
+        if tx_result is None:
+            return {
+                "tx": None,
+                "position": None,
+                "txHash": tx_hash,
+                "source": "deterministic_hash",
+                "rebroadcast": rebroadcast,
+            }
+
+        position_index = _parse_venue_position_id(venue_position_id)
+        positions = [
+            item
+            for item in self._open_trades(address)
+            if int(item.get("trade", {}).get("pairIndex", -1)) == pair.pair_index
+            and (
+                position_index is None
+                or int(item.get("trade", {}).get("index", -1)) == position_index
+            )
+        ]
+        position = positions[0] if positions else None
+        return {
+            "tx": tx_result,
+            "position": position,
+            "txHash": tx_hash,
+            "source": "deterministic_hash_and_open_trades",
+            "rebroadcast": rebroadcast,
+            "snapshotPresent": position is not None,
+            "venuePositionId": _venue_position_id(pair.pair_index, position),
+            "entryPrice": _string_or_none(_position_entry_price(position)),
+            "stopLossPrice": _string_or_none(_position_stop_loss_price(position)),
+            "takeProfitPrice": _string_or_none(_position_take_profit_price(position)),
+            "openedAt": _position_opened_at(position),
+        }
+
     def current_liquidation_price(
         self,
         *,
@@ -710,7 +776,11 @@ class GTradeWalletExecutor:
                 precomputed_tx_hash = Web3.keccak(raw_tx).hex()
                 signed_at = time.perf_counter()
                 if on_transaction_prepared is not None:
-                    on_transaction_prepared(precomputed_tx_hash, int(tx["nonce"]))
+                    on_transaction_prepared(
+                        precomputed_tx_hash,
+                        int(tx["nonce"]),
+                        "0x" + bytes(raw_tx).hex(),
+                    )
                 persisted_at = time.perf_counter()
                 try:
                     race = self._broadcaster.broadcast(
@@ -1154,6 +1224,63 @@ def _gas_tx_payload(tx: VenueTxResult) -> dict[str, Any]:
         "operation": tx.payload.get("label") or "wallet",
         "gasPayer": tx.payload.get("gasPayer"),
     }
+
+
+def _receipt_or_none(web3: Any, tx_hash: str) -> Any | None:
+    try:
+        return web3.eth.get_transaction_receipt(tx_hash)
+    except Exception:
+        return None
+
+
+def _recovered_tx_result(
+    web3: Any,
+    receipt: Any | None,
+    tx_hash: str,
+    rebroadcast: dict[str, Any] | None,
+) -> VenueTxResult | None:
+    if receipt is None:
+        return None
+    status = int(_record_value(receipt, "status") or 0)
+    try:
+        transaction = web3.eth.get_transaction(tx_hash)
+    except Exception:
+        transaction = None
+    return VenueTxResult(
+        status="confirmed" if status == 1 else "reverted",
+        tx_hash=tx_hash,
+        nonce=(
+            int(_record_value(transaction, "nonce"))
+            if transaction is not None and _record_value(transaction, "nonce") is not None
+            else None
+        ),
+        block_number=int(_record_value(receipt, "blockNumber")),
+        gas_used=int(_record_value(receipt, "gasUsed")),
+        effective_gas_price=int(_record_value(receipt, "effectiveGasPrice") or 0),
+        payload={
+            "label": "execution_recovery",
+            "status": status,
+            "gasPayer": _string_or_none(_record_value(transaction, "from")),
+            "recoveredBy": "deterministic_hash",
+            "rebroadcast": rebroadcast,
+        },
+    )
+
+
+def _record_value(record: Any, key: str) -> Any:
+    if record is None:
+        return None
+    value = getattr(record, key, None)
+    if value is not None:
+        return value
+    try:
+        return record.get(key)
+    except (AttributeError, TypeError):
+        return None
+
+
+def _string_or_none(value: Any) -> str | None:
+    return str(value) if value is not None else None
 
 
 def _decimal_or_none(value: Any) -> Decimal | None:

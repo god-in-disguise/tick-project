@@ -534,11 +534,15 @@ def test_stale_platform_nonce_is_refreshed_and_retried_once(monkeypatch) -> None
         Function(),
         label="open",
         gas=100,
-        on_transaction_prepared=lambda tx_hash, nonce: prepared.append((tx_hash, nonce)),
+        on_transaction_prepared=lambda tx_hash, nonce, raw_tx: prepared.append((tx_hash, nonce, raw_tx)),
     )
 
     assert broadcaster.nonces == [71, 73]
-    assert [nonce for _tx_hash, nonce in prepared] == [71, 73]
+    assert [nonce for _tx_hash, nonce, _raw_tx in prepared] == [71, 73]
+    assert [raw_tx for _tx_hash, _nonce, raw_tx in prepared] == [
+        "0x7261772d3731",
+        "0x7261772d3733",
+    ]
     assert result.nonce == 73
     assert result.payload["initialNonce"] == 71
     assert result.payload["timingMs"]["staleNonceRetries"] == 1

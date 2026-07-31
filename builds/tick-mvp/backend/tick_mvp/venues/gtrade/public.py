@@ -166,6 +166,7 @@ class GTradePublicClient:
                     "activeTapePct": active_pct,
                     "feeHurdlePct": fee_hurdle_pct,
                     "activitySurplusPct": surplus_pct,
+                    "minPositionSizeUsd": row.min_position_usd,
                     "minLeverage": _minimum_execution_leverage(row),
                     "maxLeverage": row.max_leverage,
                     "suggestedLeverage": _suggested_leverage(row.max_leverage),

@@ -65,6 +65,7 @@ class TradeIntentStatus(StrEnum):
 
 class ExecutionAttemptStatus(StrEnum):
     CREATED = "created"
+    CLAIMED = "claimed"
     SIGNED = "signed"
     BROADCAST_PENDING = "broadcast_pending"
     BROADCAST = "broadcast"
@@ -89,6 +90,7 @@ class PositionStatus(StrEnum):
 class ReconciliationStatus(StrEnum):
     PENDING = "pending"
     VENUE_ACCOUNTED = "venue_accounted"
+    WALLET_OBSERVED = "wallet_observed"
     WALLET_RECONCILED = "wallet_reconciled"
     MISMATCHED = "mismatched"
 
@@ -112,19 +114,48 @@ class VenueEventType(StrEnum):
 
 
 POSITION_TRANSITIONS: dict[PositionStatus, set[PositionStatus]] = {
-    PositionStatus.OPENING: {PositionStatus.OPEN, PositionStatus.CLOSED, PositionStatus.LIQUIDATED, PositionStatus.UNKNOWN},
+    PositionStatus.OPENING: {
+        PositionStatus.OPEN,
+        PositionStatus.CLOSING,
+        PositionStatus.CLOSED,
+        PositionStatus.LIQUIDATED,
+        PositionStatus.UNKNOWN,
+    },
     PositionStatus.OPEN: {PositionStatus.CLOSING, PositionStatus.CLOSED, PositionStatus.LIQUIDATED, PositionStatus.UNKNOWN},
-    PositionStatus.CLOSING: {PositionStatus.CLOSED, PositionStatus.LIQUIDATED, PositionStatus.UNKNOWN},
+    PositionStatus.CLOSING: {PositionStatus.OPEN, PositionStatus.CLOSED, PositionStatus.LIQUIDATED, PositionStatus.UNKNOWN},
     PositionStatus.UNKNOWN: {PositionStatus.OPENING, PositionStatus.OPEN, PositionStatus.CLOSING, PositionStatus.CLOSED, PositionStatus.LIQUIDATED},
-    PositionStatus.CLOSED: set(),
+    # A recovered close can be corrected to liquidation when the authoritative
+    # callback arrives after snapshot-based recovery.
+    PositionStatus.CLOSED: {PositionStatus.LIQUIDATED},
     PositionStatus.LIQUIDATED: set(),
 }
 
 EXECUTION_TRANSITIONS: dict[ExecutionAttemptStatus, set[ExecutionAttemptStatus]] = {
-    ExecutionAttemptStatus.CREATED: {ExecutionAttemptStatus.SIGNED, ExecutionAttemptStatus.FAILED, ExecutionAttemptStatus.TIMED_OUT},
+    ExecutionAttemptStatus.CREATED: {ExecutionAttemptStatus.CLAIMED, ExecutionAttemptStatus.TIMED_OUT},
+    ExecutionAttemptStatus.CLAIMED: {
+        ExecutionAttemptStatus.SIGNED,
+        ExecutionAttemptStatus.BROADCAST_PENDING,
+        ExecutionAttemptStatus.VENUE_EXECUTED,
+        ExecutionAttemptStatus.FAILED,
+        ExecutionAttemptStatus.TIMED_OUT,
+        ExecutionAttemptStatus.UNKNOWN,
+    },
     ExecutionAttemptStatus.SIGNED: {ExecutionAttemptStatus.BROADCAST_PENDING, ExecutionAttemptStatus.FAILED, ExecutionAttemptStatus.UNKNOWN},
-    ExecutionAttemptStatus.BROADCAST_PENDING: {ExecutionAttemptStatus.BROADCAST, ExecutionAttemptStatus.INITIATION_CONFIRMED, ExecutionAttemptStatus.UNKNOWN},
-    ExecutionAttemptStatus.BROADCAST: {ExecutionAttemptStatus.INITIATION_CONFIRMED, ExecutionAttemptStatus.FAILED, ExecutionAttemptStatus.UNKNOWN},
+    ExecutionAttemptStatus.BROADCAST_PENDING: {
+        ExecutionAttemptStatus.BROADCAST,
+        ExecutionAttemptStatus.INITIATION_CONFIRMED,
+        ExecutionAttemptStatus.AWAITING_VENUE_EXECUTION,
+        ExecutionAttemptStatus.VENUE_EXECUTED,
+        ExecutionAttemptStatus.FAILED,
+        ExecutionAttemptStatus.UNKNOWN,
+    },
+    ExecutionAttemptStatus.BROADCAST: {
+        ExecutionAttemptStatus.INITIATION_CONFIRMED,
+        ExecutionAttemptStatus.AWAITING_VENUE_EXECUTION,
+        ExecutionAttemptStatus.VENUE_EXECUTED,
+        ExecutionAttemptStatus.FAILED,
+        ExecutionAttemptStatus.UNKNOWN,
+    },
     ExecutionAttemptStatus.INITIATION_CONFIRMED: {
         ExecutionAttemptStatus.AWAITING_VENUE_EXECUTION,
         ExecutionAttemptStatus.VENUE_EXECUTED,

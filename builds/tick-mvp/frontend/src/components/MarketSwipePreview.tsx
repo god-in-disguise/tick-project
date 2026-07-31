@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 
 import { money, percent, price } from "../format";
 import { themeFor } from "../theme";
+import { effectiveTicketUsd } from "../tradeSettings";
 import type { Market, TradeSettings } from "../types";
 import { MarketCanvas } from "./MarketCanvas";
 import { MarketContext } from "./MarketContext";
@@ -20,6 +21,7 @@ export function MarketSwipePreview({
   settings
 }: Props) {
   const theme = themeFor(market.market);
+  const amount = effectiveTicketUsd(settings, market);
   const style = {
     "--preview-origin": `${offset * 100}vw`
   } as CSSProperties;
@@ -73,9 +75,9 @@ export function MarketSwipePreview({
         />
         <div className="execution-dock preview-execution-dock">
           <div className="terms">
-            <PreviewTerm label="Amount" value={money(settings.ticketUsd)} />
+            <PreviewTerm label="Amount" value={money(amount)} />
             <PreviewTerm label="Leverage" value={`${settings.leverage}x`} />
-            <PreviewTerm label="Exposure" value={money(settings.ticketUsd * settings.leverage)} />
+            <PreviewTerm label="Exposure" value={money(amount * Math.min(settings.leverage, market.maxLeverage))} />
             <PreviewTerm label="Est. cost" value="Quoting" />
           </div>
         </div>

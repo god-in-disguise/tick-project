@@ -2,13 +2,19 @@ import pytest
 from fastapi import HTTPException
 
 from tick_mvp.app import create_app
-from tick_mvp.api.app import _market_snapshot, _session
+from tick_mvp.api.app import (
+    _check_invite_rate_limit,
+    _market_snapshot,
+    _record_invite_failure,
+    _session,
+)
 from tick_mvp.auth import create_session_token, verify_session_token
 from tick_mvp.core.config import get_settings
 from tick_mvp.domain.invitations import InviteAuthError, hash_invite_code
 from tick_mvp.schemas import CloseRequest, OpenRequest, QuoteRequest, WithdrawalRequest
-from tick_mvp.states import AuthProvider, PositionStatus
+from tick_mvp.states import AuthProvider, PositionStatus, UserStatus
 from tick_mvp.store import MemoryStore
+from tick_mvp.venues.router import VenueRouter
 
 
 def test_quote_open_close_contract() -> None:
@@ -242,8 +248,48 @@ def test_production_rejects_missing_session(monkeypatch) -> None:
     get_settings.cache_clear()
     try:
         with pytest.raises(HTTPException) as exc_info:
-            _session(None, None)
+            _session(create_app(), None, None)
         assert exc_info.value.status_code == 401
+    finally:
+        get_settings.cache_clear()
+
+
+def test_production_rejects_disabled_user_with_valid_token(monkeypatch) -> None:
+    monkeypatch.setenv("TICK_ENV", "production")
+    monkeypatch.setenv("JWT_SECRET", "disabled-user-test-secret")
+    get_settings.cache_clear()
+    try:
+        store = MemoryStore(default_venue="gtrade")
+        user, wallet = _test_user(store, "disabled", "Disabled User")
+        store._users[user.id] = user.model_copy(update={"status": UserStatus.DISABLED})
+        app = create_app(store)
+        token = create_session_token(
+            user_id=user.id,
+            wallet_address=wallet.address,
+            secret="disabled-user-test-secret",
+            ttl_seconds=60,
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            _session(app, f"Bearer {token}", None)
+
+        assert exc_info.value.status_code == 403
+    finally:
+        get_settings.cache_clear()
+
+
+def test_invite_login_rate_limits_repeated_failures(monkeypatch) -> None:
+    monkeypatch.setenv("TICK_ENV", "production")
+    get_settings.cache_clear()
+    try:
+        app = create_app(MemoryStore(default_venue="gtrade"))
+        for _ in range(10):
+            _check_invite_rate_limit(app, "test-client")
+            _record_invite_failure(app, "test-client")
+
+        with pytest.raises(HTTPException) as exc_info:
+            _check_invite_rate_limit(app, "test-client")
+        assert exc_info.value.status_code == 429
     finally:
         get_settings.cache_clear()
 
@@ -261,6 +307,21 @@ def test_api_routes_are_present() -> None:
     assert "/api/trade/close" in paths
     assert "/api/state" in paths
     assert "/api/events" in paths
+    assert "/api/tapes" in paths
+
+
+def test_venue_router_forwards_default_feed_health() -> None:
+    class HealthyVenue:
+        def health(self):
+            return {"prices": {"running": True, "marketCount": 13}}
+
+    router = VenueRouter({"gtrade": HealthyVenue()}, default_venue="gtrade")
+
+    health = router.health()
+
+    assert health is not None
+    assert health["prices"]["marketCount"] == 13
+    assert health["venues"]["gtrade"]["prices"]["running"] is True
 
 
 def test_markets_can_include_retained_tape() -> None:

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
 import { distance, money, percent, price, signedMoney } from "../format";
 import { themeFor } from "../theme";
+import { effectiveTicketUsd } from "../tradeSettings";
 import type {
   ClosedResult,
   Market,
@@ -73,7 +74,7 @@ export function TradeView(props: Props) {
   ) ?? null;
   const leverage = props.position?.leverage ?? previewQuote?.leverage ?? props.settings.leverage;
   const cost = previewQuote?.estimatedRoundTripCostUsd ?? 0;
-  const amount = previewQuote?.ticketUsd ?? props.settings.ticketUsd;
+  const amount = previewQuote?.ticketUsd ?? effectiveTicketUsd(props.settings, props.market);
   const exposure = previewQuote?.notionalUsd ?? amount * leverage;
   const costPct = amount > 0 ? cost / amount * 100 : 0;
   const available = props.balances?.spendableUsdc ?? props.balances?.usdc;
@@ -88,8 +89,10 @@ export function TradeView(props: Props) {
     )
     : null;
   const chartObservations = useMemo(
-    () => morphObservations(context, props.market),
-    [context, props.market.market, props.market.price, props.market.sequence]
+    () => chartMode === "live" && chartTransition === null
+      ? props.market.observations
+      : morphObservations(context, props.market),
+    [chartMode, chartTransition, context, props.market.market, props.market.price, props.market.sequence]
   );
   const contextRange = useMemo(
     () => hourRange(context, props.market.price),
@@ -373,7 +376,13 @@ export function TradeView(props: Props) {
               {props.closedResult.pnl === null ? "Finalizing" : signedMoney(props.closedResult.pnl)}
             </strong>
             <small className="result-state">
-              {props.closedResult.pnl === null ? "closed · finalizing result" : "final net"}
+              {props.closedResult.pnl === null
+                ? "closed · finalizing result"
+                : props.closedResult.reconciliationStatus === "wallet_observed"
+                  ? "final wallet result"
+                  : props.closedResult.reconciliationStatus === "mismatched"
+                    ? "wallet result · review"
+                    : "final net"}
             </small>
           </div>
         ) : null}

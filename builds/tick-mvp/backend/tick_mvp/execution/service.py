@@ -55,6 +55,67 @@ class ExecutionService:
             stop()
         self._gas_funding.close()
 
+    def recoverable_execution_ids(self) -> list[str]:
+        return self._repository.recoverable_execution_ids()
+
+    def recover_ambiguous_executions(self) -> dict[str, int]:
+        recover = getattr(self._venue, "recover_execution", None)
+        if recover is None:
+            return {"checked": 0, "resolved": 0}
+        checked = 0
+        resolved = 0
+        for execution_id in self._repository.ambiguous_execution_ids():
+            checked += 1
+            try:
+                context = self._repository.load(execution_id)
+                if (
+                    context.private_key_hex is None
+                    or context.tx_hash is None
+                ):
+                    continue
+                recovery = recover(
+                    private_key_hex=context.private_key_hex,
+                    market=context.market,
+                    venue_position_id=context.venue_position_id,
+                    tx_hash=context.tx_hash,
+                    signed_raw_transaction=context.signed_raw_transaction,
+                )
+                outcome = self._repository.apply_execution_recovery(context, recovery)
+                tx = recovery.get("tx")
+                if tx is not None:
+                    self._charge_result(context, tx)
+                if outcome == "open":
+                    self._adjust_cached_balance(context.user_id, -context.ticket_usd)
+                elif outcome == "closed":
+                    try:
+                        account_balance_after = self._venue.collateral_balance_usd(
+                            private_key_hex=context.private_key_hex
+                        )
+                        self._repository.mark_close_reconciliation(
+                            context,
+                            account_balance_after_usd=account_balance_after,
+                        )
+                        self._remember_balance(context.user_id, account_balance_after)
+                    except Exception:
+                        LOGGER.exception(
+                            "recovered close accounting deferred",
+                            extra={"executionAttemptId": execution_id},
+                        )
+                if outcome in {"open", "closed", "terminal", "reverted", "already_resolved"}:
+                    resolved += 1
+                LOGGER.info(
+                    "execution recovery checked executionAttemptId=%s outcome=%s txHash=%s",
+                    execution_id,
+                    outcome,
+                    context.tx_hash,
+                )
+            except Exception:
+                LOGGER.exception(
+                    "execution recovery failed",
+                    extra={"executionAttemptId": execution_id},
+                )
+        return {"checked": checked, "resolved": resolved}
+
     def prepare_user_wallet(self, user_id: str, required_collateral_usd: Decimal) -> dict[str, object]:
         gas = None
         if self._settings.tick_real_execution_enabled:
@@ -112,7 +173,16 @@ class ExecutionService:
 
     def execute(self, execution_attempt_id: str) -> dict[str, object]:
         started = time.perf_counter()
-        context = self._repository.load(execution_attempt_id)
+        context = self._repository.claim(execution_attempt_id)
+        if context is None:
+            LOGGER.info(
+                "execution already claimed",
+                extra={"executionAttemptId": execution_attempt_id},
+            )
+            return {
+                "executionAttemptId": execution_attempt_id,
+                "status": "already_claimed",
+            }
         loaded_at = time.perf_counter()
         if context.trading_mode == TradingMode.DEMO:
             try:
@@ -210,10 +280,11 @@ class ExecutionService:
                 quote_payload=context.quote_payload,
                 stop_loss_price=context.stop_loss_price,
                 take_profit_price=context.take_profit_price,
-                on_transaction_prepared=lambda tx_hash, nonce: self._repository.mark_broadcast_pending(
+                on_transaction_prepared=lambda tx_hash, nonce, raw_tx: self._repository.mark_broadcast_pending(
                     context,
                     tx_hash=tx_hash,
                     nonce=nonce,
+                    signed_raw_transaction=raw_tx,
                 ),
             )
             self._repository.mark_open_result(context, result)
@@ -236,10 +307,11 @@ class ExecutionService:
             market=context.market,
             side=context.side,
             venue_position_id=context.venue_position_id,
-            on_transaction_prepared=lambda tx_hash, nonce: self._repository.mark_broadcast_pending(
+            on_transaction_prepared=lambda tx_hash, nonce, raw_tx: self._repository.mark_broadcast_pending(
                 context,
                 tx_hash=tx_hash,
                 nonce=nonce,
+                signed_raw_transaction=raw_tx,
             ),
         )
         self._charge_result(context, result.tx)

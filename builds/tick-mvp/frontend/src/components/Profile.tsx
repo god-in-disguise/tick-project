@@ -17,6 +17,7 @@ import { QRCodeSVG } from "qrcode.react";
 
 import { api, idempotencyKey } from "../api";
 import { money, shortAddress, signedMoney } from "../format";
+import { effectiveTicketUsd } from "../tradeSettings";
 import type {
   AccountState,
   Market,
@@ -88,6 +89,7 @@ export function Profile(props: Props) {
   const displayName = props.session?.user?.displayName || "TICK trader";
   const available = props.balances?.spendableUsdc ?? props.balances?.usdc ?? 0;
   const profile = props.state?.tradingProfile;
+  const resolvedTicketUsd = effectiveTicketUsd(props.settings, props.market);
   const demoMode = profile?.mode === "demo";
   const filteredHistory = useMemo(
     () => history.filter(({ position, reconciliation }) => {
@@ -236,7 +238,10 @@ export function Profile(props: Props) {
       <button className="preset-summary" type="button" onClick={() => setEditingPreset(true)}>
         <span className="preset-primary">
           <small>AMOUNT</small>
-          <strong>{money(props.settings.ticketUsd)}</strong>
+          <strong>{props.settings.amountMode === "minimum" ? "Minimum" : money(props.settings.ticketUsd)}</strong>
+          {props.settings.amountMode === "minimum" ? (
+            <em>{money(resolvedTicketUsd)} on {props.market.symbol}</em>
+          ) : null}
         </span>
         <span>
           <small>LEVERAGE</small>
@@ -451,17 +456,54 @@ export function Profile(props: Props) {
               <section className="preset-control-group">
                 <span className="preset-group-label">POSITION</span>
                 <label>Trade amount</label>
-                <div className="segmented">
-                  {[10, 20, 50, 100].map((value) => (
-                    <button
-                      key={value}
-                      className={props.settings.ticketUsd === value ? "active" : ""}
-                      onClick={() => props.onSettings({ ...props.settings, ticketUsd: value })}
-                    >
-                      ${value}
-                    </button>
-                  ))}
+                <div className="segmented amount-segmented">
+                  <button
+                    type="button"
+                    className={props.settings.amountMode === "fixed" ? "active" : ""}
+                    onClick={() => props.onSettings({ ...props.settings, amountMode: "fixed", ticketUsd: 10 })}
+                  >
+                    $10
+                  </button>
+                  <button
+                    type="button"
+                    className={props.settings.amountMode === "minimum" ? "active" : ""}
+                    onClick={() => props.onSettings({ ...props.settings, amountMode: "minimum" })}
+                  >
+                    MIN
+                  </button>
+                  <button
+                    type="button"
+                    className={props.settings.amountMode === "custom" ? "active" : ""}
+                    onClick={() => props.onSettings({ ...props.settings, amountMode: "custom" })}
+                  >
+                    CUSTOM
+                  </button>
                 </div>
+                {props.settings.amountMode === "custom" ? (
+                  <label className="custom-amount-field">
+                    <span>Custom amount</span>
+                    <span className="custom-amount-input">
+                      <span>$</span>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min="0.01"
+                        step="0.01"
+                        value={props.settings.ticketUsd}
+                        onChange={(event) => {
+                          const value = Number(event.currentTarget.value);
+                          if (Number.isFinite(value) && value > 0) {
+                            props.onSettings({
+                              ...props.settings,
+                              amountMode: "custom",
+                              ticketUsd: value
+                            });
+                          }
+                        }}
+                      />
+                    </span>
+                  </label>
+                ) : null}
 
                 <label>Leverage</label>
                 <div className="segmented" role="group" aria-label="Leverage">

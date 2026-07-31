@@ -41,6 +41,10 @@ def test_gtrade_quote_uses_venue_costs_and_stop_loss() -> None:
     assert quote.stop_loss_price == Decimal("99.800")
     assert quote.take_profit_price == Decimal("100.400")
     assert quote.payload["leverageNormalized"] is False
+    assert quote.payload["venueCollateralUsd"] == "10"
+    assert quote.payload["tradeValueAfterOpenFeeUsd"] == "9.0000"
+    assert quote.payload["effectiveNotionalUsd"] == "5000"
+    assert quote.payload["dynamicSpreadIncluded"] is False
 
 
 def test_gtrade_quote_can_disable_stop_loss_and_take_profit() -> None:
@@ -134,3 +138,35 @@ def test_gtrade_standard_pair_preserves_requested_leverage_and_fee() -> None:
     assert quote.leverage == Decimal("100")
     assert quote.notional_usd == Decimal("1000")
     assert quote.estimated_open_cost_usd == Decimal("0.35000")
+
+
+def test_gtrade_minimum_margin_depends_on_selected_leverage() -> None:
+    pair = GTradePair(
+        pair_index=0,
+        pair="BTC-USD",
+        raw_symbol="BTC",
+        symbol="BTC",
+        name="Bitcoin",
+        group="Crypto",
+        asset_class="CRYPTO",
+        max_leverage=Decimal("200"),
+        open_fee_pct=Decimal("0.035"),
+        min_position_usd=Decimal("1459"),
+        min_collateral_usd=Decimal("7.295"),
+        spread_pct=Decimal("0"),
+    )
+
+    try:
+        estimate_open(
+            pair,
+            {"mid": Decimal("65000"), "bid": Decimal("65000"), "ask": Decimal("65000"), "isMarketOpen": True},
+            TradeSide.LONG,
+            ticket_usd=Decimal("14.58"),
+            requested_leverage=Decimal("100"),
+            max_loss_usd=None,
+            take_profit_usd=None,
+        )
+    except GTradeError as exc:
+        assert "min margin is $14.59 at 100x" in str(exc)
+    else:
+        raise AssertionError("expected selected-leverage minimum rejection")

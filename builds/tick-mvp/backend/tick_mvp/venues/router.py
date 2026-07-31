@@ -28,6 +28,16 @@ class VenueRouter:
             if stop is not None:
                 stop()
 
+    def health(self) -> dict[str, Any] | None:
+        venues: dict[str, Any] = {}
+        for name, venue in self._venues.items():
+            health = getattr(venue, "health", None)
+            venues[name] = health() if health is not None else None
+        default_health = venues.get(self._default_venue)
+        if not isinstance(default_health, dict):
+            return None
+        return {**default_health, "venues": venues}
+
     def quote_open(
         self,
         *,

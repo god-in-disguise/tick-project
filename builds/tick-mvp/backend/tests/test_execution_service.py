@@ -16,6 +16,9 @@ from tick_mvp.execution.service import (
 
 
 class FakeRepository:
+    def claim(self, execution_attempt_id: str) -> ExecutionContext | None:
+        return self.load(execution_attempt_id)
+
     def load(self, execution_attempt_id: str) -> ExecutionContext:
         return ExecutionContext(
             execution_id=execution_attempt_id,
@@ -96,6 +99,22 @@ def test_execution_service_dry_run_does_not_trade() -> None:
 
     assert result["executionAttemptId"] == "exec_1"
     assert result["status"] == "dry_run"
+
+
+def test_duplicate_execution_delivery_is_a_noop() -> None:
+    repository = FakeRepository()
+    repository.claim = lambda _execution_attempt_id: None
+    service = ExecutionService(
+        settings=Settings(tick_real_execution_enabled=True),
+        repository=repository,
+    )
+
+    result = service.execute("exec_1")
+
+    assert result == {
+        "executionAttemptId": "exec_1",
+        "status": "already_claimed",
+    }
 
 
 def test_execution_service_prepares_user_wallet_before_swipe() -> None:

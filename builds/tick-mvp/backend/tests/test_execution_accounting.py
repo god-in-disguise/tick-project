@@ -1,6 +1,10 @@
 from decimal import Decimal
 
-from tick_mvp.domain.accounting import net_wallet_delta, whole_trade_wallet_delta
+from tick_mvp.domain.accounting import (
+    net_wallet_delta,
+    reconciliation_difference,
+    whole_trade_wallet_delta,
+)
 
 
 def test_whole_trade_wallet_delta_uses_pre_open_balance() -> None:
@@ -25,3 +29,13 @@ def test_net_wallet_delta_includes_platform_gas_ledger() -> None:
     )
 
     assert result == Decimal("3.221373")
+
+
+def test_reconciliation_compares_venue_pnl_after_platform_gas() -> None:
+    difference = reconciliation_difference(
+        wallet_delta_usd=Decimal("3.221373"),
+        venue_realized_pnl_usd=Decimal("3.326484"),
+        gas_ledger_total_usd=Decimal("-0.105111"),
+    )
+
+    assert difference == Decimal("0.000000")

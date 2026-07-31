@@ -27,6 +27,9 @@ class GTradeVenue:
         self._wallet.stop()
         self._public.stop()
 
+    def health(self) -> dict[str, Any]:
+        return self._public.health()
+
     def quote_open(
         self,
         *,
@@ -117,3 +120,21 @@ class GTradeVenue:
 
     def tape(self, market: str, *, since: int) -> dict[str, Any]:
         return self._public.tape(market, since=since)
+
+    def recover_execution(
+        self,
+        *,
+        private_key_hex: str,
+        market: str,
+        venue_position_id: str | None,
+        tx_hash: str,
+        signed_raw_transaction: str | None,
+    ) -> dict[str, Any]:
+        pair = self._public.pair(market)
+        return self._wallet.recover_execution(
+            private_key_hex=private_key_hex,
+            pair=pair,
+            venue_position_id=venue_position_id,
+            tx_hash=tx_hash,
+            signed_raw_transaction=signed_raw_transaction,
+        )

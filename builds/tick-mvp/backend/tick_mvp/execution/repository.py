@@ -1,18 +1,28 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import func
 
 from tick_mvp.core.config import Settings, get_settings
-from tick_mvp.domain.accounting import net_wallet_delta
-from tick_mvp.domain.states import ExecutionAttemptStatus, PositionStatus, ReconciliationStatus, TradeAction, TradeIntentStatus, TradeSide, TradingMode
-from tick_mvp.infrastructure.custody import PrivateKeyCipher
+from tick_mvp.domain.accounting import net_wallet_delta, reconciliation_difference
+from tick_mvp.domain.states import (
+    ExecutionAttemptStatus,
+    PositionStatus,
+    ReconciliationStatus,
+    TradeAction,
+    TradeIntentStatus,
+    TradeSide,
+    TradingMode,
+    can_execution_transition,
+    can_transition,
+)
+from tick_mvp.infrastructure.custody import PrivateKeyCipher, SecretCipher
 from tick_mvp.infrastructure.database import create_session_factory, session_scope
-from tick_mvp.infrastructure.memory_store import StoreNotFound
+from tick_mvp.infrastructure.memory_store import StoreConflict, StoreNotFound
 from tick_mvp.infrastructure.models import (
     ExecutionAttempt,
     LedgerEvent,
@@ -24,6 +34,9 @@ from tick_mvp.infrastructure.models import (
     WalletAccount,
 )
 from tick_mvp.venues.base import VenueCloseResult, VenueOpenResult
+
+
+RECONCILIATION_TOLERANCE_USD = Decimal("0.02")
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +67,9 @@ class ExecutionContext:
     entry_price: Decimal | None = None
     open_cost_usd: Decimal = Decimal(0)
     account_balance_before_open_usd: Decimal | None = None
+    execution_status: ExecutionAttemptStatus = ExecutionAttemptStatus.CREATED
+    tx_hash: str | None = None
+    signed_raw_transaction: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +152,11 @@ class ExecutionRepository:
                 position_id = position.id
                 venue_position_id = position.venue_position_id
             raw_balance_before_open = (position.payload or {}).get("accountBalanceBeforeOpenUsd")
+            signed_raw_transaction = (
+                self._transaction_cipher().decrypt(execution.raw_tx_ref.encode())
+                if execution.raw_tx_ref
+                else None
+            )
 
             return ExecutionContext(
                 execution_id=execution.id,
@@ -168,7 +189,232 @@ class ExecutionRepository:
                     if raw_balance_before_open is not None
                     else None
                 ),
+                execution_status=ExecutionAttemptStatus(execution.status),
+                tx_hash=execution.tx_hash,
+                signed_raw_transaction=signed_raw_transaction,
             )
+
+    def claim(self, execution_attempt_id: str) -> ExecutionContext | None:
+        """Atomically claim a newly accepted execution before doing economic work."""
+        now = _now()
+        with session_scope(self._session_factory) as session:
+            execution = (
+                session.query(ExecutionAttempt)
+                .filter(ExecutionAttempt.id == execution_attempt_id)
+                .with_for_update()
+                .one_or_none()
+            )
+            if execution is None:
+                raise StoreNotFound("execution attempt not found")
+            if execution.status != ExecutionAttemptStatus.CREATED.value:
+                return None
+            _transition_execution(execution, ExecutionAttemptStatus.CLAIMED)
+            execution.payload = {
+                **(execution.payload or {}),
+                "claimedAt": now.isoformat(),
+            }
+            execution.updated_at = now
+        return self.load(execution_attempt_id)
+
+    def recoverable_execution_ids(
+        self,
+        *,
+        accepted_grace_seconds: float = 1.0,
+        stale_claim_seconds: float = 120.0,
+        limit: int = 100,
+    ) -> list[str]:
+        """Return durable jobs that need queue delivery without replaying signed work."""
+        now = _now()
+        with session_scope(self._session_factory) as session:
+            stale_before = now - timedelta(seconds=stale_claim_seconds)
+            stale_claims = (
+                session.query(ExecutionAttempt)
+                .filter(
+                    ExecutionAttempt.status == ExecutionAttemptStatus.CLAIMED.value,
+                    ExecutionAttempt.tx_hash.is_(None),
+                    ExecutionAttempt.raw_tx_ref.is_(None),
+                    ExecutionAttempt.updated_at <= stale_before,
+                )
+                .with_for_update(skip_locked=True)
+                .all()
+            )
+            for execution in stale_claims:
+                # A stale claim has done no economic work and is safe to release.
+                execution.status = ExecutionAttemptStatus.CREATED.value
+                execution.payload = {
+                    **(execution.payload or {}),
+                    "staleClaimReleasedAt": now.isoformat(),
+                }
+                execution.updated_at = now
+
+            accepted_before = now - timedelta(seconds=accepted_grace_seconds)
+            rows = (
+                session.query(ExecutionAttempt.id)
+                .filter(
+                    ExecutionAttempt.status == ExecutionAttemptStatus.CREATED.value,
+                    ExecutionAttempt.created_at <= accepted_before,
+                )
+                .order_by(ExecutionAttempt.created_at.asc())
+                .limit(limit)
+                .all()
+            )
+            return [str(row[0]) for row in rows]
+
+    def ambiguous_execution_ids(
+        self,
+        *,
+        grace_seconds: float = 4.0,
+        limit: int = 20,
+    ) -> list[str]:
+        before = _now() - timedelta(seconds=grace_seconds)
+        with session_scope(self._session_factory) as session:
+            rows = (
+                session.query(ExecutionAttempt.id)
+                .filter(
+                    ExecutionAttempt.status.in_(
+                        [
+                            ExecutionAttemptStatus.BROADCAST_PENDING.value,
+                            ExecutionAttemptStatus.BROADCAST.value,
+                            ExecutionAttemptStatus.INITIATION_CONFIRMED.value,
+                            ExecutionAttemptStatus.AWAITING_VENUE_EXECUTION.value,
+                            ExecutionAttemptStatus.UNKNOWN.value,
+                        ]
+                    ),
+                    ExecutionAttempt.tx_hash.is_not(None),
+                    ExecutionAttempt.updated_at <= before,
+                )
+                .order_by(ExecutionAttempt.updated_at.asc())
+                .limit(limit)
+                .all()
+            )
+            return [str(row[0]) for row in rows]
+
+    def apply_execution_recovery(
+        self,
+        context: ExecutionContext,
+        recovery: dict[str, Any],
+    ) -> str:
+        now = _now()
+        tx = recovery.get("tx")
+        snapshot = recovery.get("position")
+        with session_scope(self._session_factory) as session:
+            execution = (
+                session.query(ExecutionAttempt)
+                .filter(ExecutionAttempt.id == context.execution_id)
+                .with_for_update()
+                .one()
+            )
+            position = (
+                session.query(Position)
+                .filter(Position.id == context.position_id)
+                .with_for_update()
+                .one()
+            )
+            intent = _intent(session, context.intent_id)
+            if execution.status in {
+                ExecutionAttemptStatus.VENUE_EXECUTED.value,
+                ExecutionAttemptStatus.RECONCILED.value,
+            }:
+                return "already_resolved"
+
+            payload = {
+                key: value
+                for key, value in recovery.items()
+                if key not in {"tx", "position"}
+            }
+            execution.payload = {
+                **(execution.payload or {}),
+                "lastRecovery": payload,
+                "lastRecoveryAt": now.isoformat(),
+            }
+            execution.updated_at = now
+            position_is_terminal = position.status in {
+                PositionStatus.CLOSED.value,
+                PositionStatus.LIQUIDATED.value,
+            }
+
+            if tx is None:
+                _transition_execution(execution, ExecutionAttemptStatus.UNKNOWN)
+                if not position_is_terminal:
+                    _transition_position(position, PositionStatus.UNKNOWN)
+                position.updated_at = now
+                return "unknown"
+
+            _apply_tx_result(execution, tx)
+            if tx.status == "reverted":
+                _transition_execution(execution, ExecutionAttemptStatus.FAILED)
+                execution.error = "initiation transaction reverted"
+                if not position_is_terminal:
+                    _transition_position(
+                        position,
+                        PositionStatus.CLOSED
+                        if context.action == TradeAction.OPEN
+                        else PositionStatus.OPEN,
+                    )
+                position.updated_at = now
+                intent.status = TradeIntentStatus.REJECTED.value
+                intent.updated_at = now
+                return "reverted"
+
+            if context.action == TradeAction.OPEN and snapshot is not None:
+                _transition_execution(execution, ExecutionAttemptStatus.VENUE_EXECUTED)
+                execution.error = None
+                if not position_is_terminal:
+                    _transition_position(position, PositionStatus.OPEN)
+                position.venue_position_id = recovery.get("venuePositionId")
+                position.entry_price = _decimal_or_none(recovery.get("entryPrice"))
+                position.stop_loss_price = (
+                    _decimal_or_none(recovery.get("stopLossPrice"))
+                    or position.stop_loss_price
+                )
+                position.take_profit_price = (
+                    _decimal_or_none(recovery.get("takeProfitPrice"))
+                    or position.take_profit_price
+                )
+                position.opened_at = recovery.get("openedAt") or now
+                position.payload = {
+                    **(position.payload or {}),
+                    "recoveredOpen": payload,
+                }
+                position.updated_at = now
+                intent.status = TradeIntentStatus.CONSUMED.value
+                intent.updated_at = now
+                return "open"
+
+            if context.action == TradeAction.CLOSE and snapshot is None:
+                _transition_execution(execution, ExecutionAttemptStatus.VENUE_EXECUTED)
+                execution.error = None
+                if not position_is_terminal:
+                    _transition_position(position, PositionStatus.CLOSED)
+                    position.closed_at = now
+                position.payload = {
+                    **(position.payload or {}),
+                    "terminalReason": "recovered_close",
+                    "recoveredClose": payload,
+                }
+                position.updated_at = now
+                intent.status = TradeIntentStatus.CONSUMED.value
+                intent.updated_at = now
+                return "closed"
+
+            _transition_execution(
+                execution,
+                ExecutionAttemptStatus.VENUE_EXECUTED
+                if position_is_terminal
+                else ExecutionAttemptStatus.AWAITING_VENUE_EXECUTION,
+            )
+            if not position_is_terminal:
+                _transition_position(
+                    position,
+                    PositionStatus.OPENING
+                    if context.action == TradeAction.OPEN
+                    else PositionStatus.CLOSING,
+                )
+            else:
+                intent.status = TradeIntentStatus.CONSUMED.value
+                intent.updated_at = now
+            position.updated_at = now
+            return "terminal" if position_is_terminal else "awaiting_venue_execution"
 
     def mark_demo_open(
         self,
@@ -186,15 +432,15 @@ class ExecutionRepository:
         now = _now()
         with session_scope(self._session_factory) as session:
             profile = _demo_profile(session, context, for_update=True)
-            execution = _execution(session, context.execution_id)
-            position = _position(session, context.position_id)
+            execution = _execution(session, context.execution_id, for_update=True)
+            position = _position(session, context.position_id, for_update=True)
             intent = _intent(session, context.intent_id)
             available = Decimal(profile.balance_usd or 0)
             if available < context.ticket_usd:
                 raise ValueError(f"insufficient demo balance: {available:.2f} available")
             profile.balance_usd = available - context.ticket_usd
             profile.updated_at = now
-            execution.status = ExecutionAttemptStatus.VENUE_EXECUTED.value
+            _transition_execution(execution, ExecutionAttemptStatus.VENUE_EXECUTED)
             execution.payload = {
                 **(execution.payload or {}),
                 "simulation": {
@@ -204,7 +450,7 @@ class ExecutionRepository:
                 },
             }
             execution.updated_at = now
-            position.status = PositionStatus.OPEN.value
+            _transition_position(position, PositionStatus.OPEN)
             position.venue_position_id = f"demo:{position.id}"
             position.entry_price = entry_price
             position.liquidation_price = liquidation_price
@@ -257,13 +503,13 @@ class ExecutionRepository:
         net_pnl = returned_usd - context.ticket_usd
         with session_scope(self._session_factory) as session:
             profile = _demo_profile(session, context, for_update=True)
-            execution = _execution(session, context.execution_id)
-            position = _position(session, context.position_id)
+            execution = _execution(session, context.execution_id, for_update=True)
+            position = _position(session, context.position_id, for_update=True)
             intent = _intent(session, context.intent_id)
             balance_before = Decimal(profile.balance_usd or 0)
             profile.balance_usd = balance_before + returned_usd
             profile.updated_at = now
-            execution.status = ExecutionAttemptStatus.VENUE_EXECUTED.value
+            _transition_execution(execution, ExecutionAttemptStatus.VENUE_EXECUTED)
             execution.payload = {
                 **(execution.payload or {}),
                 "simulation": {
@@ -273,10 +519,11 @@ class ExecutionRepository:
                 },
             }
             execution.updated_at = now
-            position.status = (
-                PositionStatus.LIQUIDATED.value
+            _transition_position(
+                position,
+                PositionStatus.LIQUIDATED
                 if reason == "liquidation"
-                else PositionStatus.CLOSED.value
+                else PositionStatus.CLOSED,
             )
             position.closed_at = now
             position.payload = {
@@ -459,10 +706,11 @@ class ExecutionRepository:
             )
             profile.balance_usd = Decimal(profile.balance_usd or 0) + returned_usd
             profile.updated_at = now
-            position.status = (
-                PositionStatus.LIQUIDATED.value
+            _transition_position(
+                position,
+                PositionStatus.LIQUIDATED
                 if reason == "liquidation"
-                else PositionStatus.CLOSED.value
+                else PositionStatus.CLOSED,
             )
             position.close_intent_id = intent.id
             position.closed_at = now
@@ -534,10 +782,11 @@ class ExecutionRepository:
         *,
         tx_hash: str,
         nonce: int,
+        signed_raw_transaction: str,
     ) -> None:
         now = _now()
         with session_scope(self._session_factory) as session:
-            execution = _execution(session, context.execution_id)
+            execution = _execution(session, context.execution_id, for_update=True)
             prepared_transaction = {
                 "txHash": tx_hash,
                 "nonce": nonce,
@@ -546,9 +795,12 @@ class ExecutionRepository:
             payload = execution.payload or {}
             prepared_transactions = list(payload.get("preparedTransactions") or [])
             prepared_transactions.append(prepared_transaction)
-            execution.status = ExecutionAttemptStatus.BROADCAST_PENDING.value
+            _transition_execution(execution, ExecutionAttemptStatus.BROADCAST_PENDING)
             execution.tx_hash = tx_hash
             execution.nonce = nonce
+            execution.raw_tx_ref = self._transaction_cipher().encrypt(
+                signed_raw_transaction
+            ).decode()
             execution.payload = {
                 **payload,
                 "preparedTransaction": prepared_transaction,
@@ -556,11 +808,14 @@ class ExecutionRepository:
             }
             execution.updated_at = now
 
+    def _transaction_cipher(self) -> SecretCipher:
+        return SecretCipher(self._settings.custody_private_key_encryption_key)
+
     def mark_open_result(self, context: ExecutionContext, result: VenueOpenResult) -> None:
         now = _now()
         with session_scope(self._session_factory) as session:
-            execution = _execution(session, context.execution_id)
-            position = _position(session, context.position_id)
+            execution = _execution(session, context.execution_id, for_update=True)
+            position = _position(session, context.position_id, for_update=True)
             intent = _intent(session, context.intent_id)
             _apply_tx_result(execution, result.tx)
             execution.payload = {**(execution.payload or {}), "openResult": result.payload}
@@ -569,9 +824,14 @@ class ExecutionRepository:
                     **(position.payload or {}),
                     "accountBalanceBeforeOpenUsd": str(result.account_balance_before_usd),
                 }
+            position_is_terminal = position.status in {
+                PositionStatus.CLOSED.value,
+                PositionStatus.LIQUIDATED.value,
+            }
             if result.status == "open":
-                execution.status = ExecutionAttemptStatus.VENUE_EXECUTED.value
-                position.status = PositionStatus.OPEN.value
+                _transition_execution(execution, ExecutionAttemptStatus.VENUE_EXECUTED)
+                if not position_is_terminal:
+                    _transition_position(position, PositionStatus.OPEN)
                 position.venue_position_id = result.venue_position_id
                 position.entry_price = result.entry_price
                 position.liquidation_price = result.liquidation_price or position.liquidation_price
@@ -580,11 +840,24 @@ class ExecutionRepository:
                 position.opened_at = result.opened_at
                 intent.status = TradeIntentStatus.CONSUMED.value
             elif result.tx.status == "confirmed":
-                execution.status = ExecutionAttemptStatus.AWAITING_VENUE_EXECUTION.value
+                _transition_execution(
+                    execution,
+                    ExecutionAttemptStatus.VENUE_EXECUTED
+                    if position_is_terminal
+                    else ExecutionAttemptStatus.AWAITING_VENUE_EXECUTION,
+                )
+                if position_is_terminal:
+                    intent.status = TradeIntentStatus.CONSUMED.value
             else:
-                execution.status = ExecutionAttemptStatus.FAILED.value
+                _transition_execution(execution, ExecutionAttemptStatus.FAILED)
                 execution.error = "open initiation transaction reverted"
-                position.status = PositionStatus.CLOSED.value
+                if not position_is_terminal:
+                    _transition_position(position, PositionStatus.CLOSED)
+            if position_is_terminal:
+                execution.payload = {
+                    **(execution.payload or {}),
+                    "terminalPositionWonRace": position.status,
+                }
             execution.updated_at = now
             position.updated_at = now
             intent.updated_at = now
@@ -600,7 +873,7 @@ class ExecutionRepository:
             return
         now = _now()
         with session_scope(self._session_factory) as session:
-            position = _position(session, position_id)
+            position = _position(session, position_id, for_update=True)
             position.liquidation_price = liquidation_price
             position.payload = {
                 **(position.payload or {}),
@@ -613,15 +886,21 @@ class ExecutionRepository:
         now = _now()
         wallet_delta_usd: Decimal | None = None
         with session_scope(self._session_factory) as session:
-            execution = _execution(session, context.execution_id)
-            position = _position(session, context.position_id)
+            execution = _execution(session, context.execution_id, for_update=True)
+            position = _position(session, context.position_id, for_update=True)
             intent = _intent(session, context.intent_id)
             _apply_tx_result(execution, result.tx)
             execution.payload = {**(execution.payload or {}), "closeResult": result.payload}
+            position_is_terminal = position.status in {
+                PositionStatus.CLOSED.value,
+                PositionStatus.LIQUIDATED.value,
+            }
             if result.status == "closed":
-                execution.status = ExecutionAttemptStatus.VENUE_EXECUTED.value
-                position.status = PositionStatus.CLOSED.value
-                position.closed_at = result.closed_at
+                _transition_execution(execution, ExecutionAttemptStatus.VENUE_EXECUTED)
+                if not position_is_terminal:
+                    _transition_position(position, PositionStatus.CLOSED)
+                if not position_is_terminal or position.closed_at is None:
+                    position.closed_at = result.closed_at
                 intent.status = TradeIntentStatus.CONSUMED.value
                 reconciliation = (
                     session.query(Reconciliation)
@@ -635,21 +914,35 @@ class ExecutionRepository:
                         position,
                         result.account_balance_after_usd,
                     )
-                    reconciliation.status = (
-                        ReconciliationStatus.WALLET_RECONCILED.value
-                        if wallet_delta_usd is not None
-                        else ReconciliationStatus.VENUE_ACCOUNTED.value
+                    _apply_reconciliation_truth(
+                        reconciliation,
+                        wallet_delta_usd=wallet_delta_usd,
+                        venue_realized_pnl_usd=result.venue_realized_pnl_usd,
+                        gas_ledger_total_usd=_gas_ledger_total(session, position.id),
                     )
                     reconciliation.venue_realized_pnl_usd = result.venue_realized_pnl_usd
                     reconciliation.wallet_delta_usd = wallet_delta_usd
                     reconciliation.payload = {**(reconciliation.payload or {}), "closeResult": result.payload}
                     reconciliation.updated_at = now
             elif result.tx.status == "confirmed":
-                execution.status = ExecutionAttemptStatus.AWAITING_VENUE_EXECUTION.value
+                _transition_execution(
+                    execution,
+                    ExecutionAttemptStatus.VENUE_EXECUTED
+                    if position_is_terminal
+                    else ExecutionAttemptStatus.AWAITING_VENUE_EXECUTION,
+                )
+                if position_is_terminal:
+                    intent.status = TradeIntentStatus.CONSUMED.value
             else:
-                execution.status = ExecutionAttemptStatus.FAILED.value
+                _transition_execution(execution, ExecutionAttemptStatus.FAILED)
                 execution.error = "close initiation transaction reverted"
-                position.status = PositionStatus.UNKNOWN.value
+                if not position_is_terminal:
+                    _transition_position(position, PositionStatus.UNKNOWN)
+            if position_is_terminal:
+                execution.payload = {
+                    **(execution.payload or {}),
+                    "terminalPositionWonRace": position.status,
+                }
             execution.updated_at = now
             position.updated_at = now
             intent.updated_at = now
@@ -663,7 +956,7 @@ class ExecutionRepository:
     ) -> Decimal | None:
         now = _now()
         with session_scope(self._session_factory) as session:
-            position = _position(session, context.position_id)
+            position = _position(session, context.position_id, for_update=True)
             reconciliation = (
                 session.query(Reconciliation)
                 .filter(Reconciliation.position_id == position.id)
@@ -677,10 +970,15 @@ class ExecutionRepository:
                 position,
                 account_balance_after_usd,
             )
-            reconciliation.status = (
-                ReconciliationStatus.WALLET_RECONCILED.value
-                if wallet_delta_usd is not None
-                else ReconciliationStatus.VENUE_ACCOUNTED.value
+            _apply_reconciliation_truth(
+                reconciliation,
+                wallet_delta_usd=wallet_delta_usd,
+                venue_realized_pnl_usd=(
+                    Decimal(reconciliation.venue_realized_pnl_usd)
+                    if reconciliation.venue_realized_pnl_usd is not None
+                    else None
+                ),
+                gas_ledger_total_usd=_gas_ledger_total(session, position.id),
             )
             reconciliation.wallet_delta_usd = wallet_delta_usd
             reconciliation.payload = {
@@ -693,13 +991,60 @@ class ExecutionRepository:
     def mark_failed(self, context: ExecutionContext, error: str) -> None:
         now = _now()
         with session_scope(self._session_factory) as session:
-            execution = _execution(session, context.execution_id)
-            position = _position(session, context.position_id)
-            execution.status = ExecutionAttemptStatus.FAILED.value
-            execution.error = error
+            execution = (
+                session.query(ExecutionAttempt)
+                .filter(ExecutionAttempt.id == context.execution_id)
+                .with_for_update()
+                .one()
+            )
+            position = (
+                session.query(Position)
+                .filter(Position.id == context.position_id)
+                .with_for_update()
+                .one()
+            )
+            current = ExecutionAttemptStatus(execution.status)
+            execution.error = error[:500]
             execution.updated_at = now
-            position.status = PositionStatus.CLOSED.value if context.action == TradeAction.OPEN else PositionStatus.UNKNOWN.value
-            position.payload = {**(position.payload or {}), "lastExecutionError": error}
+            if current in {
+                ExecutionAttemptStatus.VENUE_EXECUTED,
+                ExecutionAttemptStatus.RECONCILED,
+            }:
+                execution.payload = {
+                    **(execution.payload or {}),
+                    "postExecutionError": error[:500],
+                }
+                return
+
+            ambiguous = bool(execution.tx_hash or execution.raw_tx_ref) or current in {
+                ExecutionAttemptStatus.SIGNED,
+                ExecutionAttemptStatus.BROADCAST_PENDING,
+                ExecutionAttemptStatus.BROADCAST,
+                ExecutionAttemptStatus.INITIATION_CONFIRMED,
+                ExecutionAttemptStatus.AWAITING_VENUE_EXECUTION,
+                ExecutionAttemptStatus.UNKNOWN,
+            }
+            _transition_execution(
+                execution,
+                ExecutionAttemptStatus.UNKNOWN
+                if ambiguous
+                else ExecutionAttemptStatus.FAILED,
+            )
+            if position.status not in {
+                PositionStatus.CLOSED.value,
+                PositionStatus.LIQUIDATED.value,
+            }:
+                _transition_position(
+                    position,
+                    PositionStatus.UNKNOWN
+                    if ambiguous or context.action == TradeAction.CLOSE
+                    else PositionStatus.CLOSED,
+                )
+            position.payload = {
+                **(position.payload or {}),
+                "lastExecutionError": error[:500],
+                "executionOutcomeAmbiguous": ambiguous,
+            }
             position.updated_at = now
 
     def _decrypt_wallet_key(self, wallet: WalletAccount) -> str:
@@ -721,10 +1066,37 @@ def _apply_tx_result(execution: ExecutionAttempt, tx: Any) -> None:
     }
 
 
+def _transition_execution(
+    execution: ExecutionAttempt,
+    target: ExecutionAttemptStatus,
+) -> None:
+    current = ExecutionAttemptStatus(execution.status)
+    if current == target:
+        return
+    if not can_execution_transition(current, target):
+        raise StoreConflict(f"invalid execution transition: {current.value} -> {target.value}")
+    execution.status = target.value
+
+
+def _transition_position(position: Position, target: PositionStatus) -> None:
+    current = PositionStatus(position.status)
+    if current == target:
+        return
+    if not can_transition(current, target):
+        raise StoreConflict(f"invalid position transition: {current.value} -> {target.value}")
+    position.status = target.value
+
+
 def _gas_native(gas_used: int | None, effective_gas_price: int | None) -> Decimal | None:
     if gas_used is None or effective_gas_price is None:
         return None
     return Decimal(gas_used * effective_gas_price) / Decimal(10**18)
+
+
+def _decimal_or_none(value: Any) -> Decimal | None:
+    if value is None:
+        return None
+    return Decimal(str(value))
 
 
 def _net_wallet_delta(
@@ -732,20 +1104,52 @@ def _net_wallet_delta(
     position: Position,
     account_balance_after_usd: Decimal | None,
 ) -> Decimal | None:
-    gas_ledger_total = (
+    gas_ledger_total = _gas_ledger_total(session, position.id)
+    return net_wallet_delta(
+        position.payload,
+        account_balance_after_usd,
+        gas_ledger_total,
+    )
+
+
+def _gas_ledger_total(session, position_id: str) -> Decimal:
+    total = (
         session.query(func.coalesce(func.sum(LedgerEvent.amount), 0))
         .filter(
-            LedgerEvent.position_id == position.id,
+            LedgerEvent.position_id == position_id,
             LedgerEvent.event_type == "gas_charge",
             LedgerEvent.asset == "USDC",
         )
         .scalar()
     )
-    return net_wallet_delta(
-        position.payload,
-        account_balance_after_usd,
-        Decimal(gas_ledger_total or 0),
+    return Decimal(total or 0)
+
+
+def _apply_reconciliation_truth(
+    reconciliation: Reconciliation,
+    *,
+    wallet_delta_usd: Decimal | None,
+    venue_realized_pnl_usd: Decimal | None,
+    gas_ledger_total_usd: Decimal,
+) -> None:
+    difference = reconciliation_difference(
+        wallet_delta_usd,
+        venue_realized_pnl_usd,
+        gas_ledger_total_usd,
     )
+    reconciliation.difference_usd = difference
+    if wallet_delta_usd is None:
+        reconciliation.status = (
+            ReconciliationStatus.VENUE_ACCOUNTED.value
+            if venue_realized_pnl_usd is not None
+            else ReconciliationStatus.PENDING.value
+        )
+    elif venue_realized_pnl_usd is None:
+        reconciliation.status = ReconciliationStatus.WALLET_OBSERVED.value
+    elif abs(difference or Decimal(0)) <= RECONCILIATION_TOLERANCE_USD:
+        reconciliation.status = ReconciliationStatus.WALLET_RECONCILED.value
+    else:
+        reconciliation.status = ReconciliationStatus.MISMATCHED.value
 
 
 def _demo_profile(session, context: ExecutionContext, *, for_update: bool) -> TradingProfile:
@@ -768,17 +1172,17 @@ def _id(prefix: str) -> str:
     return f"{prefix}_{uuid4().hex}"
 
 
-def _execution(session, execution_id: str) -> ExecutionAttempt:
-    execution = session.get(ExecutionAttempt, execution_id)
+def _execution(session, execution_id: str, *, for_update: bool = False) -> ExecutionAttempt:
+    execution = session.get(ExecutionAttempt, execution_id, with_for_update=for_update)
     if execution is None:
         raise StoreNotFound("execution attempt not found")
     return execution
 
 
-def _position(session, position_id: str | None) -> Position:
+def _position(session, position_id: str | None, *, for_update: bool = False) -> Position:
     if position_id is None:
         raise StoreNotFound("position not found")
-    position = session.get(Position, position_id)
+    position = session.get(Position, position_id, with_for_update=for_update)
     if position is None:
         raise StoreNotFound("position not found")
     return position

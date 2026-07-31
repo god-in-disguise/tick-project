@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -15,9 +16,15 @@ def test_postgres_open_close_persists_fk_order() -> None:
         pytest.skip("TICK_TEST_DATABASE_URL is not configured")
 
     sqlalchemy = pytest.importorskip("sqlalchemy")
+    from eth_account import Account
+
+    from tick_mvp.core.config import Settings
+    from tick_mvp.execution.repository import ExecutionRepository
+    from tick_mvp.infrastructure.custody import PrivateKeyCipher, SecretCipher
     from tick_mvp.infrastructure.database import create_session_factory, run_sql_migrations
-    from tick_mvp.infrastructure.models import User, WalletAccount
+    from tick_mvp.infrastructure.models import ExecutionAttempt, Position, User, WalletAccount
     from tick_mvp.infrastructure.sqlalchemy_store import SQLAlchemyStore
+    from tick_mvp.venues.base import VenueCloseResult, VenueTxResult
 
     run_sql_migrations(database_url)
 
@@ -26,6 +33,8 @@ def test_postgres_open_close_persists_fk_order() -> None:
     suffix = uuid.uuid4().hex
     user_id = f"user_test_{suffix}"
     wallet_id = f"wallet_test_{suffix}"
+    encryption_key = PrivateKeyCipher.generate_key()
+    account = Account.create()
 
     with session_factory() as session:
         session.add(
@@ -42,12 +51,14 @@ def test_postgres_open_close_persists_fk_order() -> None:
                 id=wallet_id,
                 user_id=user_id,
                 chain_id=42161,
-                address=f"0x{suffix[:40].ljust(40, '0')}",
+                address=account.address,
                 wallet_type="platform_custody",
                 status="active",
                 custody_provider="test",
                 custody_key_ref=f"test:{wallet_id}",
-                encrypted_private_key=None,
+                encrypted_private_key=PrivateKeyCipher(encryption_key).encrypt(
+                    account.key.hex()
+                ),
                 gas_wallet=False,
                 payload={},
             )
@@ -61,6 +72,28 @@ def test_postgres_open_close_persists_fk_order() -> None:
     )
 
     opened = store.accept_open(user_id, OpenRequest(quoteId=quote.quoteId, idempotencyKey=f"open-{suffix}"))
+    repository = ExecutionRepository(
+        Settings(custody_private_key_encryption_key=encryption_key),
+        session_factory=session_factory,
+    )
+    context = repository.claim(opened.executionAttempt.id)
+    assert context is not None
+    assert repository.claim(opened.executionAttempt.id) is None
+    repository.mark_broadcast_pending(
+        context,
+        tx_hash="0x" + "ab" * 32,
+        nonce=7,
+        signed_raw_transaction="0x02cafe",
+    )
+    repository.mark_failed(context, "TimeoutError: response lost after broadcast")
+
+    with session_factory() as session:
+        execution = session.get(ExecutionAttempt, opened.executionAttempt.id)
+        position = session.get(Position, opened.position.id)
+        assert execution.status == "unknown"
+        assert position.status == "unknown"
+        assert SecretCipher(encryption_key).decrypt(execution.raw_tx_ref.encode()) == "0x02cafe"
+
     closed = store.accept_close(user_id, CloseRequest(positionId=opened.position.id, idempotencyKey=f"close-{suffix}"))
 
     assert opened.intent.status == "accepted"
@@ -69,6 +102,48 @@ def test_postgres_open_close_persists_fk_order() -> None:
     assert closed.intent.status == "accepted"
     assert closed.executionAttempt.status == "created"
     assert closed.position.status == "closing"
+
+    close_context = repository.claim(closed.executionAttempt.id)
+    assert close_context is not None
+    repository.mark_broadcast_pending(
+        close_context,
+        tx_hash="0x" + "cd" * 32,
+        nonce=8,
+        signed_raw_transaction="0x02beef",
+    )
+    with session_factory() as session:
+        position = session.get(Position, opened.position.id)
+        position.status = "liquidated"
+        position.closed_at = datetime.now(UTC)
+        position.payload = {**(position.payload or {}), "terminalReason": "liquidation"}
+        session.commit()
+
+    repository.mark_close_result(
+        close_context,
+        VenueCloseResult(
+            status="closed",
+            tx=VenueTxResult(
+                status="confirmed",
+                tx_hash="0x" + "cd" * 32,
+                nonce=8,
+                block_number=123,
+                gas_used=100,
+                effective_gas_price=1,
+                payload={},
+            ),
+            closed_at=datetime.now(UTC),
+            venue_realized_pnl_usd=Decimal("-10"),
+            account_balance_after_usd=None,
+            close_cashflow_usd=Decimal(0),
+            payload={},
+        ),
+    )
+    with session_factory() as session:
+        execution = session.get(ExecutionAttempt, closed.executionAttempt.id)
+        position = session.get(Position, opened.position.id)
+        assert execution.status == "venue_executed"
+        assert position.status == "liquidated"
+        assert execution.payload["terminalPositionWonRace"] == "liquidated"
 
 
 def test_postgres_withdrawal_persists_recoverable_signed_transaction() -> None:
@@ -330,7 +405,8 @@ def test_demo_profile_isolated_and_reset_is_audited() -> None:
         store.switch_trading_mode(user_id, TradingMode.LIVE)
 
     repository = ExecutionRepository(session_factory=session_factory)
-    open_context = repository.load(opened.executionAttempt.id)
+    open_context = repository.claim(opened.executionAttempt.id)
+    assert open_context is not None
     repository.mark_demo_open(
         open_context,
         entry_price=Decimal("100"),
@@ -348,7 +424,8 @@ def test_demo_profile_isolated_and_reset_is_audited() -> None:
         user_id,
         CloseRequest(positionId=opened.position.id, idempotencyKey=f"demo-close-{suffix}"),
     )
-    close_context = repository.load(closed.executionAttempt.id)
+    close_context = repository.claim(closed.executionAttempt.id)
+    assert close_context is not None
     pnl = repository.mark_demo_close(
         close_context,
         exit_price=Decimal("100.10"),

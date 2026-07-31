@@ -7,6 +7,8 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy import text
+
 from tick_mvp.core.config import get_settings
 from tick_mvp.domain.invitations import InviteAuthError
 from tick_mvp.domain.schemas import (
@@ -87,6 +89,15 @@ class SQLAlchemyStore:
         stop = getattr(self._quote_engine, "stop", None)
         if stop is not None:
             stop()
+
+    def readiness(self) -> dict[str, Any]:
+        with session_scope(self._session_factory) as session:
+            session.execute(text("SELECT 1"))
+        health = getattr(self._quote_engine, "health", None)
+        return {
+            "postgres": True,
+            "marketFeed": health() if health is not None else None,
+        }
 
     def markets(self, *, limit: int = 10) -> dict[str, Any]:
         return self._market_method("markets")(limit=limit)

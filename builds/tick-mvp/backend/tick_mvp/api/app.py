@@ -1,5 +1,7 @@
 import asyncio
 import hashlib
+import logging
+import time
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -37,6 +39,9 @@ from tick_mvp.infrastructure.queue import (
 from tick_mvp.venues.base import VenueError
 
 
+LOGGER = logging.getLogger("tick.api")
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     current_settings = get_settings()
@@ -69,6 +74,8 @@ def create_app(store: Any | None = None) -> FastAPI:
             allow_headers=["Authorization", "Content-Type"],
         )
     app.state.store = store or _default_store()
+    app.state.user_status_cache = {}
+    app.state.invite_failures = {}
 
     @app.get("/health")
     def health() -> dict[str, object]:
@@ -81,12 +88,61 @@ def create_app(store: Any | None = None) -> FastAPI:
         }
 
     @app.get("/ready")
-    def ready() -> dict[str, object]:
-        return {"ok": True}
+    async def ready() -> dict[str, object]:
+        current_settings = get_settings()
+        components: dict[str, object] = {"postgres": True, "redis": True}
+        try:
+            readiness = getattr(_store(app), "readiness", None)
+            if readiness is not None:
+                components.update(await asyncio.to_thread(readiness))
+            if current_settings.tick_store_backend == "postgres":
+                from redis.asyncio import Redis
+
+                redis = Redis.from_url(current_settings.redis_url)
+                try:
+                    components["redis"] = bool(await redis.ping())
+                finally:
+                    await redis.aclose()
+        except Exception as exc:
+            LOGGER.exception("readiness check failed")
+            raise HTTPException(
+                status_code=503,
+                detail={"ok": False, "components": components, "error": type(exc).__name__},
+            ) from exc
+
+        feed = components.get("marketFeed")
+        prices = feed.get("prices") if isinstance(feed, dict) else None
+        last_message_at = prices.get("lastMessageAt") if isinstance(prices, dict) else None
+        last_message_age = (
+            max(0.0, time.time() - float(last_message_at))
+            if last_message_at
+            else None
+        )
+        if isinstance(prices, dict):
+            prices["lastMessageAgeSeconds"] = last_message_age
+        feed_ready = (
+            True
+            if prices is None
+            else bool(
+                prices.get("running")
+                and prices.get("marketCount", 0) > 0
+                and last_message_age is not None
+                and last_message_age <= 15.0
+            )
+        )
+        ok = bool(components.get("postgres") and components.get("redis") and feed_ready)
+        if not ok:
+            raise HTTPException(
+                status_code=503,
+                detail={"ok": False, "components": components},
+            )
+        return {"ok": True, "components": components}
 
     @app.post("/api/auth/invite", response_model=SessionResponse)
-    def invite_session(body: InviteSessionRequest) -> SessionResponse:
+    def invite_session(body: InviteSessionRequest, request: Request) -> SessionResponse:
         current_settings = get_settings()
+        client_key = _request_client_key(request)
+        _check_invite_rate_limit(app, client_key)
         try:
             user, wallet = _store(app).redeem_invite_code(
                 code_hash=hash_invite_code(
@@ -97,7 +153,9 @@ def create_app(store: Any | None = None) -> FastAPI:
                 custody_provider=current_settings.custody_provider,
             )
         except InviteAuthError as exc:
+            _record_invite_failure(app, client_key)
             raise HTTPException(status_code=401, detail="invalid or expired invite") from exc
+        app.state.invite_failures.pop(client_key, None)
         token = create_session_token(
             user_id=user.id,
             wallet_address=wallet.address,
@@ -115,7 +173,7 @@ def create_app(store: Any | None = None) -> FastAPI:
 
     @app.get("/api/me", response_model=MeResponse)
     def me(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> MeResponse:
-        session = _session(authorization, x_tick_user)
+        session = _session(app, authorization, x_tick_user)
         try:
             store = _store(app)
             return MeResponse(
@@ -134,7 +192,7 @@ def create_app(store: Any | None = None) -> FastAPI:
     ) -> TradingProfileResponse:
         try:
             return _store(app).switch_trading_mode(
-                _session(authorization, x_tick_user).user_id,
+                _session(app, authorization, x_tick_user).user_id,
                 body.mode,
             )
         except StoreNotFound as exc:
@@ -149,7 +207,7 @@ def create_app(store: Any | None = None) -> FastAPI:
     ) -> DemoResetResponse:
         try:
             return _store(app).reset_demo_profile(
-                _session(authorization, x_tick_user).user_id,
+                _session(app, authorization, x_tick_user).user_id,
             )
         except StoreNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -158,7 +216,7 @@ def create_app(store: Any | None = None) -> FastAPI:
 
     @app.get("/api/state", response_model=StateResponse)
     def state(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> StateResponse:
-        return _store(app).state(_session(authorization, x_tick_user).user_id)
+        return _store(app).state(_session(app, authorization, x_tick_user).user_id)
 
     @app.get("/api/events")
     async def events(
@@ -166,7 +224,7 @@ def create_app(store: Any | None = None) -> FastAPI:
         authorization: str | None = Header(default=None),
         x_tick_user: str | None = Header(default=None),
     ) -> StreamingResponse:
-        user_id = _session(authorization, x_tick_user).user_id
+        user_id = _session(app, authorization, x_tick_user).user_id
 
         async def stream():
             last_version = ""
@@ -200,7 +258,7 @@ def create_app(store: Any | None = None) -> FastAPI:
 
     @app.get("/api/positions")
     def positions(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> dict[str, object]:
-        return {"positions": _store(app).state(_session(authorization, x_tick_user).user_id).positions}
+        return {"positions": _store(app).state(_session(app, authorization, x_tick_user).user_id).positions}
 
     @app.get("/api/markets")
     def markets(
@@ -235,11 +293,28 @@ def create_app(store: Any | None = None) -> FastAPI:
         except StoreNotFound as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 
+    @app.get("/api/tapes")
+    def tapes(
+        market: list[str] = Query(default=[]),
+        since: list[int] = Query(default=[]),
+    ) -> dict[str, Any]:
+        if not market or len(market) > 3 or len(since) not in {0, len(market)}:
+            raise HTTPException(status_code=422, detail="request one to three markets with matching sequences")
+        try:
+            return {
+                "tapes": [
+                    _store(app).tape(market_id, since=since[index] if since else 0)
+                    for index, market_id in enumerate(market)
+                ]
+            }
+        except StoreNotFound as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
     @app.get("/api/wallet/deposit-address", response_model=DepositAddressResponse)
     def deposit_address(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> DepositAddressResponse:
         try:
             store = _store(app)
-            user_id = _session(authorization, x_tick_user).user_id
+            user_id = _session(app, authorization, x_tick_user).user_id
             if store.is_demo_mode(user_id):
                 raise StoreConflict("deposits are unavailable in demo mode")
             return store.deposit_address(user_id)
@@ -250,7 +325,7 @@ def create_app(store: Any | None = None) -> FastAPI:
 
     @app.get("/api/wallet/balances", response_model=WalletBalancesResponse)
     def wallet_balances(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> WalletBalancesResponse:
-        user_id = _session(authorization, x_tick_user).user_id
+        user_id = _session(app, authorization, x_tick_user).user_id
         try:
             store = _store(app)
             demo = store.demo_balances(user_id)
@@ -273,7 +348,7 @@ def create_app(store: Any | None = None) -> FastAPI:
         authorization: str | None = Header(default=None),
         x_tick_user: str | None = Header(default=None),
     ) -> WithdrawalResponse:
-        user_id = _session(authorization, x_tick_user).user_id
+        user_id = _session(app, authorization, x_tick_user).user_id
         try:
             store = _store(app)
             wallet = store.wallet_for_user(user_id)
@@ -301,7 +376,7 @@ def create_app(store: Any | None = None) -> FastAPI:
 
     @app.get("/api/wallet/withdrawals")
     def withdrawals(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> dict[str, object]:
-        return {"withdrawals": _store(app).state(_session(authorization, x_tick_user).user_id).withdrawals}
+        return {"withdrawals": _store(app).state(_session(app, authorization, x_tick_user).user_id).withdrawals}
 
     @app.post("/api/trade/quote", response_model=QuoteResponse)
     def quote(
@@ -310,7 +385,7 @@ def create_app(store: Any | None = None) -> FastAPI:
         authorization: str | None = Header(default=None),
         x_tick_user: str | None = Header(default=None),
     ) -> QuoteResponse:
-        user_id = _session(authorization, x_tick_user).user_id
+        user_id = _session(app, authorization, x_tick_user).user_id
         try:
             response = _store(app).create_quote(user_id, body)
         except VenueError as exc:
@@ -330,7 +405,7 @@ def create_app(store: Any | None = None) -> FastAPI:
         x_tick_user: str | None = Header(default=None),
     ) -> AcceptedTradeResponse:
         try:
-            accepted = _store(app).accept_open(_session(authorization, x_tick_user).user_id, body)
+            accepted = _store(app).accept_open(_session(app, authorization, x_tick_user).user_id, body)
             return await _with_dispatch(accepted)
         except StoreNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -344,7 +419,7 @@ def create_app(store: Any | None = None) -> FastAPI:
         x_tick_user: str | None = Header(default=None),
     ) -> AcceptedTradeResponse:
         try:
-            accepted = _store(app).accept_close(_session(authorization, x_tick_user).user_id, body)
+            accepted = _store(app).accept_close(_session(app, authorization, x_tick_user).user_id, body)
             return await _with_dispatch(accepted)
         except StoreNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -375,7 +450,16 @@ def _default_store() -> Any:
 async def _with_dispatch(accepted: AcceptedTradeResponse) -> AcceptedTradeResponse:
     if not get_settings().tick_enqueue_jobs:
         return accepted
-    dispatch = await enqueue_execution_attempt(accepted.executionAttempt)
+    try:
+        dispatch = await enqueue_execution_attempt(accepted.executionAttempt)
+    except Exception:
+        LOGGER.exception(
+            "execution enqueue failed; durable redispatch will recover",
+            extra={"executionAttemptId": accepted.executionAttempt.id},
+        )
+        from tick_mvp.domain.schemas import JobDispatchResponse
+
+        dispatch = JobDispatchResponse(jobId=None, queued=False)
     return accepted.model_copy(update={"job": dispatch})
 
 
@@ -415,18 +499,54 @@ def _market_snapshot(
     return {**payload, "markets": enriched}
 
 
-def _session(authorization: str | None, dev_user_id: str | None) -> UserSession:
+def _session(app: FastAPI, authorization: str | None, dev_user_id: str | None) -> UserSession:
     settings = get_settings()
     if authorization:
         scheme, _, token = authorization.partition(" ")
         if scheme.lower() != "bearer" or not token:
             raise HTTPException(status_code=401, detail="invalid authorization header")
         try:
-            return verify_session_token(token, secret=settings.jwt_secret)
+            session = verify_session_token(token, secret=settings.jwt_secret)
+            _require_active_user(app, session.user_id)
+            return session
         except AuthError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from exc
     if settings.tick_env.strip().lower() != "production":
         return UserSession(user_id=dev_user_id or "dev-user")
     raise HTTPException(status_code=401, detail="missing bearer token")
+
+
+def _require_active_user(app: FastAPI, user_id: str) -> None:
+    now = time.monotonic()
+    cached = app.state.user_status_cache.get(user_id)
+    if cached is not None and now - cached[0] <= 5.0:
+        status_value = cached[1]
+    else:
+        try:
+            user = _store(app).user(user_id)
+        except StoreNotFound as exc:
+            raise HTTPException(status_code=401, detail="session user not found") from exc
+        status_value = getattr(user.status, "value", user.status)
+        app.state.user_status_cache[user_id] = (now, status_value)
+    if status_value != "active":
+        raise HTTPException(status_code=403, detail="account disabled")
+
+
+def _request_client_key(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "").split(",", 1)[0].strip()
+    return forwarded or (request.client.host if request.client else "unknown")
+
+
+def _check_invite_rate_limit(app: FastAPI, client_key: str) -> None:
+    now = time.monotonic()
+    attempts = [value for value in app.state.invite_failures.get(client_key, []) if now - value <= 60]
+    app.state.invite_failures[client_key] = attempts
+    if len(attempts) >= 10:
+        raise HTTPException(status_code=429, detail="too many invite attempts")
+
+
+def _record_invite_failure(app: FastAPI, client_key: str) -> None:
+    attempts = app.state.invite_failures.setdefault(client_key, [])
+    attempts.append(time.monotonic())
 
 app = create_app()

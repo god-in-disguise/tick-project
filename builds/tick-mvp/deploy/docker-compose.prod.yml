@@ -33,13 +33,6 @@ services:
       redis:
         condition: service_healthy
 
-  market-feed:
-    <<: *backend
-    command: python -m tick_mvp.workers.service market-feed
-    depends_on:
-      redis:
-        condition: service_healthy
-
   venue-events:
     <<: *backend
     command: python -m tick_mvp.workers.service venue-events

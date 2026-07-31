@@ -11,7 +11,7 @@ from sqlalchemy import func
 
 from tick_mvp.core.config import Settings, get_settings
 from tick_mvp.infrastructure.database import create_session_factory, session_scope
-from tick_mvp.domain.accounting import net_wallet_delta
+from tick_mvp.domain.accounting import net_wallet_delta, reconciliation_difference
 from tick_mvp.domain.states import ReconciliationStatus, TradeAction
 from tick_mvp.infrastructure.models import (
     ExecutionAttempt,
@@ -359,11 +359,26 @@ def _refresh_position_reconciliation(
     if wallet_delta is None:
         return
     reconciliation.wallet_delta_usd = wallet_delta
-    reconciliation.status = (
-        ReconciliationStatus.WALLET_RECONCILED.value
-        if platform_gas_complete(session, position)
-        else ReconciliationStatus.VENUE_ACCOUNTED.value
+    venue_pnl = (
+        Decimal(reconciliation.venue_realized_pnl_usd)
+        if reconciliation.venue_realized_pnl_usd is not None
+        else None
     )
+    gas_complete = platform_gas_complete(session, position)
+    difference = reconciliation_difference(
+        wallet_delta,
+        venue_pnl,
+        Decimal(gas_ledger_total or 0),
+    )
+    reconciliation.difference_usd = difference
+    if venue_pnl is None:
+        reconciliation.status = ReconciliationStatus.WALLET_OBSERVED.value
+    elif not gas_complete:
+        reconciliation.status = ReconciliationStatus.VENUE_ACCOUNTED.value
+    elif abs(difference or Decimal(0)) <= Decimal("0.02"):
+        reconciliation.status = ReconciliationStatus.WALLET_RECONCILED.value
+    else:
+        reconciliation.status = ReconciliationStatus.MISMATCHED.value
     reconciliation.updated_at = now
 
 

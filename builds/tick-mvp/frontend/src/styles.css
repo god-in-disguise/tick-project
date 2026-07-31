@@ -2405,6 +2405,63 @@ button:disabled {
     rgba(5, 6, 6, 0.7);
 }
 
+.amount-segmented {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.amount-segmented button {
+  font-size: 12px;
+}
+
+.custom-amount-field {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.custom-amount-field > span:first-child {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.custom-amount-input {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.035);
+  border: 0.5px solid rgba(229, 234, 231, 0.15);
+  border-radius: 8px;
+  display: flex;
+  gap: 7px;
+  min-height: 48px;
+  padding: 0 14px;
+}
+
+.custom-amount-input > span {
+  color: var(--silver-dim);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.custom-amount-input input {
+  appearance: textfield;
+  background: transparent;
+  border: 0;
+  color: var(--silver);
+  flex: 1;
+  font: inherit;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  min-width: 0;
+  outline: none;
+}
+
+.custom-amount-input input::-webkit-inner-spin-button,
+.custom-amount-input input::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+
 .segmented button {
   height: 40px;
   border-right: 0.5px solid rgba(229, 234, 231, 0.08);

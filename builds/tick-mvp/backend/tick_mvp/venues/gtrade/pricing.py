@@ -22,8 +22,9 @@ def estimate_open(
     leverage = gtrade_execution_leverage(pair, requested_leverage)
     if leverage <= 0 or leverage > pair.max_leverage:
         raise GTradeError(f"{pair.pair} max leverage is {pair.max_leverage}x")
-    if ticket_usd < pair.min_collateral_usd:
-        raise GTradeError(f"{pair.pair} min margin is ${pair.min_collateral_usd:.2f}")
+    minimum_collateral = pair.min_position_usd / leverage
+    if ticket_usd * leverage < pair.min_position_usd:
+        raise GTradeError(f"{pair.pair} min margin is ${minimum_collateral:.2f} at {leverage}x")
 
     bid = Decimal(str(live["bid"]))
     ask = Decimal(str(live["ask"]))
@@ -34,8 +35,8 @@ def estimate_open(
     liquidation_fee = ticket_usd * (pair.liquidation_fee_pct / Decimal(100))
     spread_cost = notional * (pair.spread_pct / Decimal(100))
     round_trip = open_fee + close_fee + spread_cost
-    active_collateral = ticket_usd - open_fee
-    if active_collateral <= 0:
+    trade_value_after_open_fee = ticket_usd - open_fee
+    if trade_value_after_open_fee <= 0:
         raise GTradeError("ticket is too small for gTrade fee at selected leverage")
 
     liquidation = _liquidation_estimate(
@@ -74,13 +75,22 @@ def estimate_open(
             "ask": str(ask),
             "spreadPct": str(pair.spread_pct),
             "openFeePct": str(pair.open_fee_pct),
-            "activeCollateralUsd": str(active_collateral),
+            "requestedCollateralUsd": str(ticket_usd),
+            "venueCollateralUsd": str(ticket_usd),
+            "tradeValueAfterOpenFeeUsd": str(trade_value_after_open_fee),
             "effectiveNotionalUsd": str(notional),
+            "realizedOpeningFeeUsd": str(open_fee),
+            "estimatedClosingFeeUsd": str(close_fee),
             "estimatedSpreadCostUsd": str(spread_cost),
+            "dynamicSpreadIncluded": False,
+            "holdingFeesIncluded": False,
+            "quoteModelVersion": "gtrade-v10-fixed-costs-v1",
             "estimatedLiquidationFeeUsd": str(liquidation_fee),
             "liquidationEstimateSource": "fee_aware_quote",
             "feeHurdlePct": str((round_trip / notional) * Decimal(100) if notional else Decimal(999)),
             "maxVenueLeverage": str(pair.max_leverage),
+            "minPositionSizeUsd": str(pair.min_position_usd),
+            "minCollateralUsd": str(minimum_collateral),
             "slippageBps": 100,
             "marketOpen": bool(live.get("isMarketOpen", True)),
         },

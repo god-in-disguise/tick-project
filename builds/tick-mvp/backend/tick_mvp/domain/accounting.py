@@ -28,3 +28,14 @@ def net_wallet_delta(
     if wallet_delta is None:
         return None
     return wallet_delta + gas_ledger_total_usd
+
+
+def reconciliation_difference(
+    wallet_delta_usd: Decimal | None,
+    venue_realized_pnl_usd: Decimal | None,
+    gas_ledger_total_usd: Decimal = Decimal(0),
+) -> Decimal | None:
+    if wallet_delta_usd is None or venue_realized_pnl_usd is None:
+        return None
+    expected_net = venue_realized_pnl_usd + gas_ledger_total_usd
+    return wallet_delta_usd - expected_net
