@@ -137,7 +137,9 @@ function activitySamples(
   nowSeconds: number
 ): number[] {
   const bucketSeconds = 2;
-  const end = Math.floor(nowSeconds / bucketSeconds) * bucketSeconds + bucketSeconds;
+  // Only display completed buckets. Including the in-progress bucket made the
+  // newest segment repeatedly collapse to zero at every two-second boundary.
+  const end = Math.floor(nowSeconds / bucketSeconds) * bucketSeconds;
   const byStart = new Map(bars.map((bar) => [bar.startTs, bar]));
   const raw = Array.from({ length: 5 }, (_, index) => {
     const start = end - (5 - index) * bucketSeconds;

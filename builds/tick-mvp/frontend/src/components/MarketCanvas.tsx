@@ -70,6 +70,9 @@ export function MarketCanvas(props: Props) {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
+    // A hidden preview can retain an older slowly-contracting domain. Reset it
+    // before exposure so the preview and committed canvas use the same scale.
+    domainRef.current = null;
     draw(
       context,
       canvas,

@@ -57,7 +57,7 @@ export function MarketContext({
   return (
     <div className="market-context">
       <div className={`market-story ${storyTone}`}>
-        <strong key={story}>{story}</strong>
+        <strong>{story}</strong>
       </div>
       <TapeHeat
         pulse={pulse}
