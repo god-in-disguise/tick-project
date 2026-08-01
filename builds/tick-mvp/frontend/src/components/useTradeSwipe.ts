@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 
 import type { Side } from "../types";
@@ -172,10 +172,10 @@ export function useTradeSwipe(options: Options): {
     finishReset();
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     resetImmediately();
     lastChartTap.current = null;
-    // The market ID is the state boundary for a completed horizontal page.
+    // Reset the completed page before the newly selected market is painted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.marketId]);
 
@@ -370,18 +370,8 @@ export function useTradeSwipe(options: Options): {
     }, true);
     haptic(4);
     settleTimer.current = window.setTimeout(() => {
+      settleTimer.current = window.setTimeout(resetImmediately, 120);
       options.onShift(offset);
-      requestAnimationFrame(() => {
-        motion.current = {
-          x: 0,
-          y: 0,
-          progress: 0,
-          pageProgress: 0,
-          scale: 1
-        };
-        applyMotion();
-        finishReset();
-      });
     }, durationMs);
   };
 
