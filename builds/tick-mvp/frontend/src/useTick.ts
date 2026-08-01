@@ -6,6 +6,7 @@ import type {
   AccountState,
   ClosedResult,
   Market,
+  MarketBar,
   MarketObservation,
   Position,
   Quote,
@@ -151,7 +152,13 @@ export function useTick(initialSession: Session) {
         markBackgroundSuccess();
         sequences.current[marketId] = Math.max(sequences.current[marketId] ?? 0, chart.sequence);
         setMarkets((markets) =>
-          updateMarketTape(markets, marketId, chart.observations, chart.sequence, chart.feedStatus)
+          updateMarketTape(
+            markets,
+            marketId,
+            chartTapeObservations(chart.bars, chart.observations),
+            chart.sequence,
+            chart.feedStatus
+          )
         );
       })
       .finally(() => {
@@ -702,6 +709,25 @@ function tapeNeedsHydration(market: Market, now = Date.now() / 1_000): boolean {
   return (
     now - latest.receivedTs > MAX_LIVE_TICK_AGE_SECONDS
     || coverageSeconds < MIN_LIVE_TAPE_COVERAGE_SECONDS
+  );
+}
+
+function chartTapeObservations(
+  bars: MarketBar[],
+  observations: MarketObservation[]
+): MarketObservation[] {
+  const bySequence = new Map<number, MarketObservation>();
+  for (const bar of bars) {
+    bySequence.set(bar.lastSeq, {
+      seq: bar.lastSeq,
+      receivedTs: bar.bucketTs,
+      price: bar.close,
+      unchanged: bar.open === bar.close && bar.high === bar.low
+    });
+  }
+  for (const observation of observations) bySequence.set(observation.seq, observation);
+  return [...bySequence.values()].sort(
+    (left, right) => left.receivedTs - right.receivedTs || left.seq - right.seq
   );
 }
 
