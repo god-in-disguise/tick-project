@@ -51,15 +51,14 @@ export function MarketSwipePreview({
       </header>
 
       <section className="chart-stage">
-        {active ? (
-          <MarketContext
-            market={market}
-            position={null}
-            quote={null}
-            estimatedNetPnl={null}
-            theme={theme}
-          />
-        ) : null}
+        <MarketContext
+          market={market}
+          position={null}
+          quote={null}
+          estimatedNetPnl={null}
+          theme={theme}
+          active={active}
+        />
         <MarketCanvas
           market={market}
           theme={theme}
