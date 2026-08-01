@@ -188,12 +188,23 @@ assert.equal(
   1,
   "A small reversal should not chatter across the vertical arm threshold"
 );
-await page.mouse.move(gestureStart.x, gestureStart.y - 40, { steps: 5 });
-assert.equal(await page.locator(".swipe-action-layer.is-armed").count(), 0);
-assert.match(await page.locator(".swipe-action-layer.swipe-action-up").innerText(), /PULL TO/);
+let accidentalTradeRequests = 0;
+const accidentalTradePattern = /\/api\/trade\/(quote|open)$/;
+const accidentalTradeRoute = async (route) => {
+  accidentalTradeRequests += 1;
+  await route.abort("blockedbyclient");
+};
+await page.route(accidentalTradePattern, accidentalTradeRoute);
 await page.mouse.up();
 await page.waitForTimeout(320);
 assert.equal(await page.locator(".swipe-action-content").count(), 0);
+assert.equal(accidentalTradeRequests, 0, "A canceled vertical pull submitted a trade request");
+assert.equal(
+  await page.getByRole("heading", { name: "Deposit USDC" }).count(),
+  0,
+  "A canceled vertical pull opened the funding sheet"
+);
+await page.unroute(accidentalTradePattern, accidentalTradeRoute);
 
 const originalMarket = await page.locator(".trade-scene .market-name-row strong").innerText();
 await page.mouse.move(gestureStart.x, gestureStart.y);

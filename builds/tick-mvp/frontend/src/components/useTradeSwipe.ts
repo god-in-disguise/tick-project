@@ -305,11 +305,19 @@ export function useTradeSwipe(options: Options): {
     }
 
     if (current.axis === "vertical") {
-      const completedAction = actionRef.current;
+      const releaseCommitted = verticalReleaseCommitted(
+        rootRef.current,
+        horizontal,
+        vertical
+      );
+      const direction = dy < 0 ? "up" : "down";
+      const side: Side = direction === "up" ? "long" : "short";
+      const completedAction = verticalAction(options, side, direction, releaseCommitted);
       reset(VERTICAL_SETTLE_MS);
-      if (!completedAction?.armed || completedAction.blocked) {
-        if (completedAction?.label === "WAIT") options.onCue("WAIT");
-        if (completedAction?.label === "POSITION LOCKED") options.onCue("LOCKED");
+      if (!releaseCommitted) return;
+      if (completedAction.blocked) {
+        if (completedAction.label === "WAIT") options.onCue("WAIT");
+        if (completedAction.label === "POSITION LOCKED") options.onCue("LOCKED");
         return;
       }
       executeAction(completedAction);
@@ -456,6 +464,14 @@ function pointerVelocity(pointer: Pointer): { x: number; y: number } {
 function verticalThreshold(root: HTMLElement | null): number {
   const height = root?.clientHeight ?? window.innerHeight;
   return clamp(height * 0.12, 90, 120);
+}
+
+function verticalReleaseCommitted(
+  root: HTMLElement | null,
+  horizontal: number,
+  vertical: number
+): boolean {
+  return vertical >= verticalThreshold(root) && vertical > horizontal * AXIS_DOMINANCE;
 }
 
 function rubberBand(distance: number, cap: number): number {
