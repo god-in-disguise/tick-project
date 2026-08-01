@@ -211,6 +211,9 @@ button:disabled {
   min-height: 0;
   overflow: hidden;
   background: transparent;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  contain: layout paint;
   will-change: transform;
 }
 
