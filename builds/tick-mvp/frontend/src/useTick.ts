@@ -22,7 +22,10 @@ import { positionNetPnl } from "./positionPnl";
 const SETTINGS_KEY = "tick.trade.settings.v2";
 const LEGACY_SETTINGS_KEY = "tick.trade.settings";
 const QUOTES_KEY = "tick.trade.quotes";
-const ACTIVE_STATUSES = new Set(["opening", "open", "closing", "unknown"]);\nconst LIVE_TAPE_WINDOW_SECONDS = 90;\nconst MIN_LIVE_TAPE_COVERAGE_SECONDS = 75;\nconst MAX_LIVE_TICK_AGE_SECONDS = 1.5;
+const ACTIVE_STATUSES = new Set(["opening", "open", "closing", "unknown"]);
+const LIVE_TAPE_WINDOW_SECONDS = 90;
+const MIN_LIVE_TAPE_COVERAGE_SECONDS = 75;
+const MAX_LIVE_TICK_AGE_SECONDS = 1.5;
 const DEFAULT_SETTINGS: TradeSettings = {
   amountMode: "fixed",
   ticketUsd: 10,
@@ -56,7 +59,8 @@ export function useTick(initialSession: Session) {
   const [closedResult, setClosedResult] = useState<ClosedResult | null>(null);
   const [profileBusy, setProfileBusy] = useState(false);
   const sequences = useRef<Record<string, number>>({});
-  const chartRequests = useRef(new Map<string, Promise<void>>());\n  const tapeHydrationAt = useRef<Record<string, number>>({});
+  const chartRequests = useRef(new Map<string, Promise<void>>());
+  const tapeHydrationAt = useRef<Record<string, number>>({});
   const tapeBusy = useRef(new Set<string>());
   const stateBusy = useRef(false);
   const actionBusy = useRef(false);
