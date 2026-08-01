@@ -33,6 +33,7 @@ type WindowAnimation = {
 };
 
 const WINDOW_SECONDS = 90;
+const MAX_CANVAS_DPR = 2;
 
 export function MarketCanvas(props: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -102,7 +103,7 @@ export function MarketCanvas(props: Props) {
     };
   }, [props.windowSeconds, props.windowTransitionMs]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const context = canvas.getContext("2d");
@@ -110,10 +111,20 @@ export function MarketCanvas(props: Props) {
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
-      const dpr = Math.min(window.devicePixelRatio || 1, 3);
+      const dpr = Math.min(window.devicePixelRatio || 1, MAX_CANVAS_DPR);
       canvas.width = Math.max(1, Math.round(rect.width * dpr));
       canvas.height = Math.max(1, Math.round(rect.height * dpr));
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const current = propsRef.current;
+      draw(
+        context,
+        canvas,
+        current,
+        current.market.price,
+        visualWindowSeconds.current,
+        windowAnimation.current !== null,
+        domainRef
+      );
     };
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
@@ -182,7 +193,7 @@ function draw(
   windowAnimating: boolean,
   domainRef: React.MutableRefObject<Domain | null>
 ) {
-  const dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const dpr = Math.min(window.devicePixelRatio || 1, MAX_CANVAS_DPR);
   const width = canvas.width / dpr;
   const height = canvas.height / dpr;
   if (width <= 1 || height <= 1) return;
@@ -200,11 +211,13 @@ function draw(
   const points = observations.filter(
     (point) => point.receivedTs >= start && Number.isFinite(point.price) && point.price > 0
   );
-  const source = points.length ? points : [{ seq: 0, receivedTs: now, price: props.market.price, unchanged: true }];
+  const source = points.length
+    ? compactLineObservations(points, windowSeconds <= WINDOW_SECONDS * 1.5 ? 1 : Math.max(1, windowSeconds / 240))
+    : [{ seq: 0, receivedTs: now, price: props.market.price, unchanged: true }];
   const microBars = windowSeconds > WINDOW_SECONDS * 1.5 && props.bars?.length
     ? compactContextBars(props.bars, start, Math.max(54, Math.floor((right - left) / 4)))
     : buildMicroBars(observations, now, 2, windowSeconds);
-  const values = source.map((point) => point.price);
+  const values = points.length ? points.map((point) => point.price) : source.map((point) => point.price);
   if (microBars.length) {
     values.push(
       Math.min(...microBars.map((bar) => bar.low)),
@@ -364,6 +377,25 @@ function drawMicrostructure(
   context.textBaseline = "bottom";
   context.fillText("ACTIVITY", 8, bottom - 1);
   context.restore();
+}
+
+function compactLineObservations(
+  observations: MarketObservation[],
+  bucketSeconds: number
+): MarketObservation[] {
+  if (observations.length < 2 || bucketSeconds <= 0) return observations;
+  const compacted: MarketObservation[] = [];
+  let bucket = Number.NaN;
+  let close: MarketObservation | null = null;
+
+  for (const observation of observations) {
+    const nextBucket = Math.floor(observation.receivedTs / bucketSeconds);
+    if (nextBucket !== bucket && close) compacted.push(close);
+    bucket = nextBucket;
+    close = observation;
+  }
+  if (close) compacted.push(close);
+  return compacted;
 }
 
 function compactContextBars(

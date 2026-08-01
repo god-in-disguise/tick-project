@@ -2,7 +2,11 @@ import type { CSSProperties } from "react";
 
 import { money, percent, price } from "../format";
 import { themeFor } from "../theme";
-import { effectiveTicketUsd } from "../tradeSettings";
+import {
+  effectiveLeverage,
+  effectiveTicketUsd,
+  estimatedRouteCostUsd
+} from "../tradeSettings";
 import type { Market, TradeSettings } from "../types";
 import { MarketCanvas } from "./MarketCanvas";
 import { MarketContext } from "./MarketContext";
@@ -22,6 +26,8 @@ export function MarketSwipePreview({
 }: Props) {
   const theme = themeFor(market.market);
   const amount = effectiveTicketUsd(settings, market);
+  const leverage = effectiveLeverage(settings, market);
+  const cost = estimatedRouteCostUsd(market, amount, leverage);
   const style = {
     "--preview-origin": `${offset * 100}vw`
   } as CSSProperties;
@@ -37,7 +43,7 @@ export function MarketSwipePreview({
           <div className="market-name">
             <div className="market-name-row">
               <strong>{market.symbol}</strong>
-              <b className="leverage-chip">{settings.leverage}x</b>
+              <b className="leverage-chip">{leverage}x</b>
             </div>
             <span className="market-full-name">{market.name}</span>
             <div className="market-price-row">
@@ -76,9 +82,9 @@ export function MarketSwipePreview({
         <div className="execution-dock preview-execution-dock">
           <div className="terms">
             <PreviewTerm label="Amount" value={money(amount)} />
-            <PreviewTerm label="Leverage" value={`${settings.leverage}x`} />
-            <PreviewTerm label="Exposure" value={money(amount * Math.min(settings.leverage, market.maxLeverage))} />
-            <PreviewTerm label="Est. cost" value="Quoting" />
+            <PreviewTerm label="Leverage" value={`${leverage}x`} />
+            <PreviewTerm label="Exposure" value={money(amount * leverage)} />
+            <PreviewTerm label="Est. cost" value={money(cost)} />
           </div>
         </div>
       </section>

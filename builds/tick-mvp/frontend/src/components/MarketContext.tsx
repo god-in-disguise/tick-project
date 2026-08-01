@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 
 import { buildMicroBars, describeMarket } from "../marketActivity";
@@ -24,7 +24,7 @@ export function MarketContext({
   active = true
 }: Props) {
   const [now, setNow] = useState(Date.now() / 1_000);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!active) return;
     setNow(Date.now() / 1_000);
     const timer = window.setInterval(() => setNow(Date.now() / 1_000), 1_000);
@@ -129,7 +129,7 @@ function PositionContext({
 
 function useStableStory(market: string, nextStory: string): string {
   const [story, setStory] = useState(nextStory);
-  useEffect(() => {
+  useLayoutEffect(() => {
     setStory(nextStory);
   }, [market]);
   useEffect(() => {

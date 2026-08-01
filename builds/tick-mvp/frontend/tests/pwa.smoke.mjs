@@ -226,6 +226,13 @@ assert.equal(
   "Canceled horizontal gesture changed market"
 );
 const nextMarket = await page.locator(".market-swipe-preview").nth(1).locator(".market-name-row strong").innerText();
+const nextPreview = page.locator(".market-swipe-preview").nth(1);
+const previewTerms = (await nextPreview.locator(".preview-execution-dock .term").allTextContents())
+  .map((value) => value.replace(/\s+/g, ""));
+assert.doesNotMatch(previewTerms.join(" "), /Quoting|\$0\.00/);
+await page.locator(".trade-scene .market-canvas").evaluate((canvas) => {
+  canvas.dataset.smokePersistentCanvas = "true";
+});
 await page.evaluate(() => {
   const frames = [];
   const startedAt = performance.now();
@@ -250,6 +257,20 @@ await page.mouse.up();
 await page.locator(".trade-scene .market-name-row strong", { hasText: nextMarket }).waitFor();
 await page.waitForFunction(() => !document.querySelector(".market-swipe-preview.is-active"));
 assert.equal(await page.locator(".market-swipe-preview.is-active").count(), 0);
+assert.equal(
+  await page.locator(".trade-scene .market-canvas").getAttribute("data-smoke-persistent-canvas"),
+  "true",
+  "The live chart canvas remounted during the market handoff"
+);
+const committedTerms = (await page.locator(".trade-scene .execution-dock .term").allInnerTexts())
+  .map((value) => value.replace(/\s+/g, ""));
+assert.deepEqual(
+  committedTerms.slice(0, 3),
+  previewTerms.slice(0, 3),
+  "Amount, leverage, or exposure changed when the quote arrived"
+);
+assert.doesNotMatch(committedTerms.join(" "), /Quoting|\$0\.00/);
+assert.doesNotMatch(await page.locator(".trade-scene .chart-mode-button").innerText(), /LOADING/);
 const swipeFrames = await page.evaluate(() => window.__tickSwipeFrames ?? []);
 assert.equal(
   swipeFrames.some((frame) => frame.scene === nextMarket && Math.abs(frame.sceneLeft ?? 0) > 1),

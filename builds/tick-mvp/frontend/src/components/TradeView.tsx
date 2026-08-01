@@ -1,10 +1,14 @@
 import { Maximize2, Minimize2, WalletCards } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "../api";
 import { distance, money, percent, price, signedMoney } from "../format";
 import { themeFor } from "../theme";
-import { effectiveTicketUsd } from "../tradeSettings";
+import {
+  effectiveLeverage,
+  effectiveTicketUsd,
+  estimatedRouteCostUsd
+} from "../tradeSettings";
 import { liquidationThresholdCrossed } from "../positionPnl";
 import type {
   ClosedResult,
@@ -67,16 +71,20 @@ export function TradeView(props: Props) {
   const [context, setContext] = useState<ContextSnapshot | null>(
     () => contextCache.get(props.market.market) ?? null
   );
-  const [contextLoading, setContextLoading] = useState(false);
   const cueTimer = useRef<number | null>(null);
   const chartTransitionTimer = useRef<number | null>(null);
-  const previewQuote = [props.quotes.long, props.quotes.short].find(
-    (quote) => quote?.market === props.market.market
-  ) ?? null;
-  const leverage = props.position?.leverage ?? previewQuote?.leverage ?? props.settings.leverage;
-  const cost = previewQuote?.estimatedRoundTripCostUsd ?? 0;
-  const amount = previewQuote?.ticketUsd ?? effectiveTicketUsd(props.settings, props.market);
-  const exposure = previewQuote?.notionalUsd ?? amount * leverage;
+  const configuredLeverage = effectiveLeverage(props.settings, props.market);
+  const configuredAmount = effectiveTicketUsd(props.settings, props.market);
+  const previewQuote = [props.quotes.long, props.quotes.short].find((quote) => (
+    quote?.market === props.market.market
+    && quote.leverage === configuredLeverage
+    && Math.abs(quote.ticketUsd - configuredAmount) < 0.005
+  )) ?? null;
+  const leverage = props.position?.leverage ?? configuredLeverage;
+  const amount = props.position?.ticketUsd ?? configuredAmount;
+  const exposure = props.position?.notionalUsd ?? amount * leverage;
+  const cost = previewQuote?.estimatedRoundTripCostUsd
+    ?? estimatedRouteCostUsd(props.market, configuredAmount, configuredLeverage);
   const costPct = amount > 0 ? cost / amount * 100 : 0;
   const available = props.balances?.spendableUsdc ?? props.balances?.usdc;
   const needsFunding = available !== null && available !== undefined && available < amount;
@@ -103,16 +111,17 @@ export function TradeView(props: Props) {
     [context, props.market.price]
   );
 
-  useEffect(() => {
-    let canceled = false;
+  useLayoutEffect(() => {
     setChartMode("live");
     setChartTransition(null);
     if (chartTransitionTimer.current) window.clearTimeout(chartTransitionTimer.current);
-    const cached = contextCache.get(props.market.market) ?? null;
-    setContext(cached);
+    setContext(contextCache.get(props.market.market) ?? null);
+  }, [props.market.market]);
 
+  useEffect(() => {
+    let canceled = false;
+    const cached = contextCache.get(props.market.market) ?? null;
     const load = async () => {
-      if (!cached || Date.now() - cached.fetchedAt > 30_000) setContextLoading(true);
       try {
         const chart = await api.chart(props.market.market, CONTEXT_SECONDS);
         if (canceled) return;
@@ -127,8 +136,6 @@ export function TradeView(props: Props) {
         setContext(next);
       } catch {
         // LIVE remains usable if context history has not finished loading.
-      } finally {
-        if (!canceled) setContextLoading(false);
       }
     };
     void load();
@@ -267,7 +274,7 @@ export function TradeView(props: Props) {
               : chartTransition === "collapsing"
                 ? "COLLAPSING"
                 : chartMode === "live"
-                  ? contextLoading ? "LOADING" : "ZOOM OUT"
+                  ? "ZOOM OUT"
                   : "ZOOM IN"}
           </span>
           <small>
@@ -282,7 +289,6 @@ export function TradeView(props: Props) {
         </button>
         {chartMode === "live" && !chartTransition ? (
           <MarketContext
-            key={`context-${props.market.market}`}
             market={props.market}
             position={props.position}
             quote={props.quote}
@@ -299,7 +305,6 @@ export function TradeView(props: Props) {
           </>
         ) : null}
         <MarketCanvas
-          key={`chart-${props.market.market}`}
           market={props.market}
           theme={theme}
           entry={props.position?.entryPrice ?? null}
