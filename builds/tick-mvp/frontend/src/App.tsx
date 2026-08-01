@@ -79,6 +79,20 @@ function TickApp({
     setDepositRequested(true);
     setTab("profile");
   };
+  const demoProgress = tick.state?.tradingProfile?.mode === "demo"
+    ? {
+        season: tick.state.tradingProfile.season,
+        completedTrades: tick.state.positions.filter(
+          (position) => position.status === "closed" || position.status === "liquidated"
+        ).length
+      }
+    : null;
+  const requestLiveFunding = async () => {
+    const switched = await tick.switchTradingMode("live");
+    if (!switched) return;
+    setDepositRequested(true);
+    setTab("profile");
+  };
 
   return (
     <div className="app-shell">
@@ -103,10 +117,12 @@ function TickApp({
             busyAction={tick.busyAction}
             error={tick.error}
             closedResult={tick.closedResult}
+            demoProgress={demoProgress}
             onOpen={tick.open}
             onClose={tick.close}
             onShift={tick.shiftMarket}
             onFund={requestFunding}
+            onStartLive={() => void requestLiveFunding()}
           />
         ) : null}
         {tab === "dashboard" ? <Dashboard markets={tick.markets} onMarket={selectMarket} /> : null}

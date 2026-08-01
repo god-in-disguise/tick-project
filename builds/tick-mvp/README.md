@@ -41,6 +41,8 @@ The PWA is a distribution choice for the first deployable MVP. The product refer
 - chart must use truthful market data only.
 - users should not manage ETH gas;
 - platform pays gas and records USDC gas charges.
+- new accounts begin with a separate $1,000 demo profile; live mode and USDC
+  funding remain explicit user actions.
 
 ## Current Implementation Status
 
@@ -52,6 +54,9 @@ The PWA is a distribution choice for the first deployable MVP. The product refer
 - invite/session JWTs, per-user encrypted wallets, USDC deposits, automatic
   withdrawals, idempotent trade intents, venue-native SL/TP, terminal events,
   and final wallet reconciliation are wired.
+- Demo and live balances, history, performance, and seasons remain isolated.
+  After three completed demo trades, the PWA offers a dismissible path to
+  switch to live mode and deposit USDC.
 - Platform gas is converted to USDC and included in the final per-position net
   result. The app holds a terminal result in `finalizing` until that charge is
   in the ledger.

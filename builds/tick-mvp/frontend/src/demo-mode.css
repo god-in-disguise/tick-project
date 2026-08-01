@@ -18,6 +18,73 @@
   -webkit-backdrop-filter: blur(14px);
 }
 
+.demo-live-prompt {
+  position: absolute;
+  z-index: 7;
+  right: 12px;
+  bottom: 82px;
+  left: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 30px;
+  align-items: center;
+  gap: 9px;
+  min-height: 62px;
+  padding: 9px 8px 9px 13px;
+  border: 0.5px solid rgb(255 157 54 / 32%);
+  border-radius: 10px;
+  background: rgb(18 17 15 / 94%);
+  box-shadow: 0 14px 34px rgb(0 0 0 / 34%), inset 0 1px 0 rgb(255 255 255 / 8%);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.demo-live-prompt > span,
+.demo-live-prompt strong,
+.demo-live-prompt small {
+  display: block;
+  min-width: 0;
+}
+
+.demo-live-prompt strong {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 15px;
+}
+
+.demo-live-prompt small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 12px;
+}
+
+.demo-live-action,
+.demo-live-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+}
+
+.demo-live-action {
+  gap: 6px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: var(--silver);
+  color: #070909;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.demo-live-dismiss {
+  width: 30px;
+  height: 38px;
+  background: transparent;
+  color: var(--muted);
+}
+
 .demo-season-summary {
   display: flex;
   align-items: center;

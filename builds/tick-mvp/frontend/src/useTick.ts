@@ -523,13 +523,16 @@ export function useTick(initialSession: Session) {
   }, []);
 
   const switchTradingMode = useCallback(async (mode: TradingMode) => {
-    if (profileBusy || state?.tradingProfile?.mode === mode) return;
+    if (profileBusy) return false;
+    if (state?.tradingProfile?.mode === mode) return true;
     setProfileBusy(true);
     try {
       await api.switchTradingMode(mode);
       await reloadProfileState();
+      return true;
     } catch (cause) {
       showError(cause);
+      return false;
     } finally {
       setProfileBusy(false);
     }

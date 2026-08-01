@@ -225,6 +225,7 @@ class SQLAlchemyStore:
                     display_name=display_name,
                     avatar_url=avatar_url,
                     status=UserStatus.ACTIVE.value,
+                    active_trading_mode=TradingMode.DEMO.value,
                     created_at=now,
                     updated_at=now,
                     last_login_at=now,

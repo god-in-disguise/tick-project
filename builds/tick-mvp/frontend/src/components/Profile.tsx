@@ -41,7 +41,7 @@ type Props = {
   onSignOut: () => void;
   onBalances: () => Promise<void>;
   profileBusy: boolean;
-  onTradingMode: (mode: TradingMode) => Promise<void>;
+  onTradingMode: (mode: TradingMode) => Promise<boolean>;
   onResetDemo: () => Promise<void>;
 };
 

@@ -128,6 +128,7 @@ class MemoryStore:
                 )
                 self._users[user.id] = user
                 self._user_by_provider[key] = user.id
+                self._active_modes[user.id] = TradingMode.DEMO
             else:
                 previous = self._users[existing_user_id]
                 user = previous.model_copy(

@@ -12,6 +12,7 @@ from tick_mvp.auth import create_session_token, verify_session_token
 from tick_mvp.core.config import get_settings
 from tick_mvp.domain.invitations import InviteAuthError, hash_invite_code
 from tick_mvp.schemas import CloseRequest, OpenRequest, QuoteRequest, WithdrawalRequest
+from tick_mvp.domain.states import TradingMode
 from tick_mvp.states import AuthProvider, PositionStatus, UserStatus
 from tick_mvp.store import MemoryStore
 from tick_mvp.venues.router import VenueRouter
@@ -102,6 +103,7 @@ def test_invite_user_gets_platform_wallet_and_deposit_address() -> None:
     assert wallet.userId == user.id
     assert wallet.chainId == 42161
     assert wallet.address.startswith("0x")
+    assert store.trading_profile(user.id).mode == TradingMode.DEMO
 
     deposit = store.deposit_address(user.id)
     assert deposit.address == wallet.address
@@ -123,6 +125,7 @@ def test_invite_code_creates_and_reuses_one_wallet() -> None:
         chain_id=42161,
         custody_provider="encrypted_postgres",
     )
+    store.switch_trading_mode(first_user.id, TradingMode.LIVE)
     second_user, second_wallet = store.redeem_invite_code(
         code_hash=code_hash,
         chain_id=42161,
@@ -135,6 +138,7 @@ def test_invite_code_creates_and_reuses_one_wallet() -> None:
     assert first_user.email.endswith("@pending.tick.local")
     assert second_wallet.id == first_wallet.id
     assert second_wallet.address == first_wallet.address
+    assert store.trading_profile(second_user.id).mode == TradingMode.LIVE
 
 
 def test_unknown_invite_code_is_rejected() -> None:
@@ -158,6 +162,7 @@ def test_unknown_invite_code_is_rejected() -> None:
 def test_withdrawal_request_is_idempotent() -> None:
     store = MemoryStore(default_venue="gtrade")
     user, _ = _test_user(store, "withdrawal", "Bob")
+    store.switch_trading_mode(user.id, TradingMode.LIVE)
 
     request = WithdrawalRequest(
         amount="12.50",
@@ -175,6 +180,7 @@ def test_withdrawal_request_is_idempotent() -> None:
 def test_pending_withdrawal_blocks_a_new_position() -> None:
     store = MemoryStore(default_venue="gtrade")
     user, _ = _test_user(store, "withdrawal-lock", "Withdrawal Lock")
+    store.switch_trading_mode(user.id, TradingMode.LIVE)
     store.request_withdrawal(
         user.id,
         WithdrawalRequest(
@@ -207,6 +213,7 @@ def test_pending_withdrawal_blocks_a_new_position() -> None:
 def test_active_position_blocks_withdrawal() -> None:
     store = MemoryStore(default_venue="gtrade")
     user, _ = _test_user(store, "position-lock", "Position Lock")
+    store.switch_trading_mode(user.id, TradingMode.LIVE)
     quote = store.create_quote(
         user.id,
         QuoteRequest(

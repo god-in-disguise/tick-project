@@ -1,4 +1,4 @@
-import { Maximize2, Minimize2, WalletCards } from "lucide-react";
+import { Maximize2, Minimize2, WalletCards, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { api } from "../api";
@@ -42,10 +42,12 @@ type Props = {
   busyAction: Side | "close" | null;
   error: string | null;
   closedResult: ClosedResult | null;
+  demoProgress: { season: number; completedTrades: number } | null;
   onOpen: (side: Side) => void;
   onClose: () => void;
   onShift: (offset: number) => void;
   onFund: () => void;
+  onStartLive: () => void;
 };
 
 type Cue = SwipeCue;
@@ -70,6 +72,12 @@ export function TradeView(props: Props) {
   const [chartTransition, setChartTransition] = useState<ChartTransition | null>(null);
   const [context, setContext] = useState<ContextSnapshot | null>(
     () => contextCache.get(props.market.market) ?? null
+  );
+  const livePromptKey = props.demoProgress
+    ? `tick.demo-live-prompt.v1.${props.userId}.${props.demoProgress.season}`
+    : null;
+  const [livePromptDismissed, setLivePromptDismissed] = useState(
+    () => livePromptKey ? localStorage.getItem(livePromptKey) === "dismissed" : false
   );
   const cueTimer = useRef<number | null>(null);
   const chartTransitionTimer = useRef<number | null>(null);
@@ -116,6 +124,12 @@ export function TradeView(props: Props) {
     if (chartTransitionTimer.current) window.clearTimeout(chartTransitionTimer.current);
     setContext(contextCache.get(props.market.market) ?? null);
   }, [props.market.market]);
+
+  useEffect(() => {
+    setLivePromptDismissed(
+      livePromptKey ? localStorage.getItem(livePromptKey) === "dismissed" : false
+    );
+  }, [livePromptKey]);
 
   useEffect(() => {
     let canceled = false;
@@ -415,6 +429,45 @@ export function TradeView(props: Props) {
             </div>
           ) : <div className="error-toast">{props.error}</div>
         ) : null}
+
+        {props.demoProgress
+          && props.demoProgress.completedTrades >= 3
+          && !props.position
+          && !props.busy
+          && !props.closedResult
+          && !livePromptDismissed ? (
+            <div
+              className="demo-live-prompt"
+              role="status"
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              <span>
+                <strong>Ready for live?</strong>
+                <small>Deposit USDC and use the same preset with real execution.</small>
+              </span>
+              <button
+                className="demo-live-action"
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={props.onStartLive}
+              >
+                <WalletCards size={15} />
+                Trade live
+              </button>
+              <button
+                className="demo-live-dismiss"
+                type="button"
+                aria-label="Keep using demo"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => {
+                  if (livePromptKey) localStorage.setItem(livePromptKey, "dismissed");
+                  setLivePromptDismissed(true);
+                }}
+              >
+                <X size={15} />
+              </button>
+            </div>
+          ) : null}
 
         {!props.position && !props.busy ? (
           <GestureGuide userId={props.userId} />
