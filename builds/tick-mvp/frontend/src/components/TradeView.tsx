@@ -310,6 +310,7 @@ export function TradeView(props: Props) {
           side={props.position?.side ?? null}
           mode="live"
           active
+          animate={swipe.previewOffset === null}
           windowSeconds={
             chartMode === "context" && context
               ? contextWindowSeconds(context)

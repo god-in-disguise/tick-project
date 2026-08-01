@@ -226,6 +226,23 @@ assert.equal(
   "Canceled horizontal gesture changed market"
 );
 const nextMarket = await page.locator(".market-swipe-preview").nth(1).locator(".market-name-row strong").innerText();
+await page.evaluate(() => {
+  const frames = [];
+  const startedAt = performance.now();
+  const sample = (now) => {
+    const scene = document.querySelector(".trade-scene");
+    const activePreview = document.querySelector(".market-swipe-preview.is-active");
+    frames.push({
+      scene: scene?.querySelector(".market-name-row strong")?.textContent?.trim() ?? null,
+      sceneLeft: scene?.getBoundingClientRect().left ?? null,
+      preview: activePreview?.querySelector(".market-name-row strong")?.textContent?.trim() ?? null,
+      previewLeft: activePreview?.getBoundingClientRect().left ?? null
+    });
+    window.__tickSwipeFrames = frames;
+    if (now - startedAt < 1_500) requestAnimationFrame(sample);
+  };
+  requestAnimationFrame(sample);
+});
 await page.mouse.move(gestureStart.x, gestureStart.y);
 await page.mouse.down();
 await page.mouse.move(gestureStart.x - 150, gestureStart.y, { steps: 8 });
@@ -233,6 +250,22 @@ await page.mouse.up();
 await page.locator(".trade-scene .market-name-row strong", { hasText: nextMarket }).waitFor();
 await page.waitForFunction(() => !document.querySelector(".market-swipe-preview.is-active"));
 assert.equal(await page.locator(".market-swipe-preview.is-active").count(), 0);
+const swipeFrames = await page.evaluate(() => window.__tickSwipeFrames ?? []);
+assert.equal(
+  swipeFrames.some((frame) => frame.scene === nextMarket && Math.abs(frame.sceneLeft ?? 0) > 1),
+  false,
+  "The selected market was painted offscreen during the swipe handoff"
+);
+assert.equal(
+  swipeFrames.some((frame) => (
+    frame.scene === nextMarket
+    && frame.preview !== null
+    && frame.preview !== nextMarket
+    && Math.abs(frame.previewLeft ?? tradeBox.width) < tradeBox.width
+  )),
+  false,
+  "A different market preview flashed during the swipe handoff"
+);
 const balanceButton = page.getByRole("button", { name: /Available balance/ });
 await balanceButton.click();
 await page.getByRole("heading", { name: "Deposit USDC" }).waitFor();

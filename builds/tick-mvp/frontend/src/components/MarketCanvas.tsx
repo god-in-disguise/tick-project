@@ -21,6 +21,7 @@ type Props = {
   ariaWindowLabel?: string;
   mode?: "live" | "context";
   active?: boolean;
+  animate?: boolean;
 };
 
 type Domain = { min: number; max: number; market: string; lastExtremeAt: number };
@@ -63,6 +64,22 @@ export function MarketCanvas(props: Props) {
     }
   }, [props.market.market, props.mode]);
 
+  useLayoutEffect(() => {
+    if (props.active === false || props.animate !== false) return;
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    draw(
+      context,
+      canvas,
+      props,
+      props.market.price,
+      visualWindowSeconds.current,
+      false,
+      domainRef
+    );
+  }, [props.active, props.animate]);
+
   useEffect(() => {
     const target = props.windowSeconds ?? WINDOW_SECONDS;
     if (Math.abs(target - visualWindowSeconds.current) < 0.5) {
@@ -104,7 +121,7 @@ export function MarketCanvas(props: Props) {
 
     const render = () => {
       const current = propsRef.current;
-      if (current.active === false) {
+      if (current.active === false || current.animate === false) {
         frameRef.current = requestAnimationFrame(render);
         return;
       }
