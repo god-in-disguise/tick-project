@@ -85,7 +85,6 @@ export function TradeView(props: Props) {
   const exposure = props.position?.notionalUsd ?? amount * leverage;
   const cost = previewQuote?.estimatedRoundTripCostUsd
     ?? estimatedRouteCostUsd(props.market, configuredAmount, configuredLeverage);
-  const costPct = amount > 0 ? cost / amount * 100 : 0;
   const available = props.balances?.spendableUsdc ?? props.balances?.usdc;
   const needsFunding = available !== null && available !== undefined && available < amount;
   const positionOpening = props.position?.status === "opening";
@@ -435,11 +434,7 @@ export function TradeView(props: Props) {
                 <Term label="Amount" value={money(amount)} />
                 <Term label="Leverage" value={`${leverage}x`} />
                 <Term label="Exposure" value={money(exposure)} />
-                <Term
-                  label="Est. cost"
-                  value={money(cost)}
-                  detail={cost > 0 ? `${costPct.toFixed(1)}% of amount` : undefined}
-                />
+                <Term label="Est. cost" value={money(cost)} />
               </>
             )}
           </div>
