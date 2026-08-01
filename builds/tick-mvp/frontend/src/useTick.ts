@@ -6,6 +6,7 @@ import type {
   AccountState,
   ClosedResult,
   Market,
+  MarketBar,
   MarketObservation,
   Position,
   Quote,
@@ -22,6 +23,9 @@ const SETTINGS_KEY = "tick.trade.settings.v2";
 const LEGACY_SETTINGS_KEY = "tick.trade.settings";
 const QUOTES_KEY = "tick.trade.quotes";
 const ACTIVE_STATUSES = new Set(["opening", "open", "closing", "unknown"]);
+const LIVE_TAPE_WINDOW_SECONDS = 90;
+const MIN_LIVE_TAPE_COVERAGE_SECONDS = 75;
+const MAX_LIVE_TICK_AGE_SECONDS = 1.5;
 const DEFAULT_SETTINGS: TradeSettings = {
   amountMode: "fixed",
   ticketUsd: 10,
@@ -56,6 +60,7 @@ export function useTick(initialSession: Session) {
   const [profileBusy, setProfileBusy] = useState(false);
   const sequences = useRef<Record<string, number>>({});
   const chartRequests = useRef(new Map<string, Promise<void>>());
+  const tapeHydrationAt = useRef<Record<string, number>>({});
   const tapeBusy = useRef(new Set<string>());
   const stateBusy = useRef(false);
   const actionBusy = useRef(false);
@@ -151,7 +156,13 @@ export function useTick(initialSession: Session) {
         markBackgroundSuccess();
         sequences.current[marketId] = Math.max(sequences.current[marketId] ?? 0, chart.sequence);
         setMarkets((markets) =>
-          updateMarketTape(markets, marketId, chart.observations, chart.sequence, chart.feedStatus)
+          updateMarketTape(
+            markets,
+            marketId,
+            chartTapeObservations(chart.bars, chart.observations),
+            chart.sequence,
+            chart.feedStatus
+          )
         );
       })
       .finally(() => {
@@ -348,9 +359,16 @@ export function useTick(initialSession: Session) {
   }, [refreshState]);
 
   useEffect(() => {
-    if (!activeMarket || activeMarket.observations.length) return;
-    void loadMarketChart(activeMarket.market).catch(showBackgroundError);
-  }, [activeMarket?.market, activeMarket?.observations.length, loadMarketChart, showBackgroundError]);
+    const now = Date.now();
+    for (const marketId of watchedMarketIds) {
+      const market = markets.find((candidate) => candidate.market === marketId);
+      const lastHydration = tapeHydrationAt.current[marketId] ?? 0;
+      if (market && tapeNeedsHydration(market) && now - lastHydration >= 15_000) {
+        tapeHydrationAt.current[marketId] = now;
+        void loadMarketChart(marketId).catch(showBackgroundError);
+      }
+    }
+  }, [watchedMarketIds.join("|"), loadMarketChart, markets, showBackgroundError]);
 
   useEffect(() => {
     if (!watchedMarketIds.length) return;
@@ -619,8 +637,7 @@ export function useTick(initialSession: Session) {
     setClosedResult(null);
     setActiveMarketId(target.market);
 
-    const latest = target.observations.at(-1);
-    if (!latest || latest.receivedTs < Date.now() / 1_000 - 1.5) {
+    if (tapeNeedsHydration(target)) {
       void loadMarketChart(target.market).catch(showBackgroundError);
     }
   }, [activePosition, busy, loadMarketChart, routedMarkets, showBackgroundError]);
@@ -673,7 +690,7 @@ function updateMarketTape(
     if (market.market !== marketId) return market;
     const bySequence = new Map(market.observations.map((point) => [point.seq, point]));
     for (const point of observations) bySequence.set(point.seq, point);
-    const cutoff = Date.now() / 1000 - 95;
+    const cutoff = Date.now() / 1000 - (LIVE_TAPE_WINDOW_SECONDS + 5);
     const merged = [...bySequence.values()]
       .filter((point) => point.receivedTs >= cutoff)
       .sort((left, right) => left.receivedTs - right.receivedTs || left.seq - right.seq);
@@ -686,6 +703,36 @@ function updateMarketTape(
       feedStatus: feedStatus as Market["feedStatus"]
     };
   });
+}
+
+function tapeNeedsHydration(market: Market, now = Date.now() / 1_000): boolean {
+  const first = market.observations[0];
+  const latest = market.observations.at(-1);
+  if (!first || !latest) return true;
+  const coverageSeconds = Math.max(0, latest.receivedTs - first.receivedTs);
+  return (
+    now - latest.receivedTs > MAX_LIVE_TICK_AGE_SECONDS
+    || coverageSeconds < MIN_LIVE_TAPE_COVERAGE_SECONDS
+  );
+}
+
+function chartTapeObservations(
+  bars: MarketBar[],
+  observations: MarketObservation[]
+): MarketObservation[] {
+  const bySequence = new Map<number, MarketObservation>();
+  for (const bar of bars) {
+    bySequence.set(bar.lastSeq, {
+      seq: bar.lastSeq,
+      receivedTs: bar.bucketTs,
+      price: bar.close,
+      unchanged: bar.open === bar.close && bar.high === bar.low
+    });
+  }
+  for (const observation of observations) bySequence.set(observation.seq, observation);
+  return [...bySequence.values()].sort(
+    (left, right) => left.receivedTs - right.receivedTs || left.seq - right.seq
+  );
 }
 
 function mergeMarketSummaries(current: Market[], incoming: Market[]): Market[] {

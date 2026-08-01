@@ -12,14 +12,24 @@ type Props = {
   quote: Quote | null;
   estimatedNetPnl: number | null;
   theme: Theme;
+  active?: boolean;
 };
 
-export function MarketContext({ market, position, quote, estimatedNetPnl, theme }: Props) {
+export function MarketContext({
+  market,
+  position,
+  quote,
+  estimatedNetPnl,
+  theme,
+  active = true
+}: Props) {
   const [now, setNow] = useState(Date.now() / 1_000);
   useEffect(() => {
+    if (!active) return;
+    setNow(Date.now() / 1_000);
     const timer = window.setInterval(() => setNow(Date.now() / 1_000), 1_000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [active]);
   const bars = useMemo(
     () => buildMicroBars(market.observations, now),
     [market.observations, now]
