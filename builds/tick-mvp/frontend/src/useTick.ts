@@ -26,6 +26,7 @@ const ACTIVE_STATUSES = new Set(["opening", "open", "closing", "unknown"]);
 const LIVE_TAPE_WINDOW_SECONDS = 90;
 const MIN_LIVE_TAPE_COVERAGE_SECONDS = 75;
 const MAX_LIVE_TICK_AGE_SECONDS = 1.5;
+const MAX_BOOTSTRAP_RETRY_DELAY_MS = 2_000;
 const DEFAULT_SETTINGS: TradeSettings = {
   amountMode: "fixed",
   ticketUsd: 10,
@@ -275,34 +276,33 @@ export function useTick(initialSession: Session) {
   useEffect(() => {
     let alive = true;
     const bootstrap = async () => {
-      let lastError: unknown = null;
-      for (let attempt = 0; attempt < 4 && alive; attempt += 1) {
+      let failures = 0;
+      while (alive) {
         try {
           const nextMarkets = await api.markets({ includeTape: true });
           if (!alive) return;
+          const firstMarket = routeMarkets(nextMarkets, settings.leverage)[0]?.market;
+          if (!firstMarket) throw new Error("No tradeable markets are available");
           markBackgroundSuccess();
           for (const market of nextMarkets) {
             sequences.current[market.market] = market.sequence;
           }
           setMarkets(nextMarkets);
-          const firstMarket = routeMarkets(nextMarkets, settings.leverage)[0]?.market;
-          if (firstMarket) {
-            setActiveMarketId(firstMarket);
-            const selected = nextMarkets.find((market) => market.market === firstMarket);
-            if (!selected?.observations.length) {
-              void loadMarketChart(firstMarket).catch(showBackgroundError);
-            }
+          setActiveMarketId(firstMarket);
+          const selected = nextMarkets.find((market) => market.market === firstMarket);
+          if (!selected?.observations.length) {
+            void loadMarketChart(firstMarket).catch(showBackgroundError);
           }
           await Promise.all([refreshState(), refreshBalances()]);
+          setError(null);
           return;
         } catch (cause) {
-          lastError = cause;
-          if (attempt < 3) {
-            await new Promise((resolve) => window.setTimeout(resolve, 500 * (attempt + 1)));
-          }
+          failures += 1;
+          if (failures >= 4) showError(cause);
+          const delay = Math.min(500 * 2 ** (failures - 1), MAX_BOOTSTRAP_RETRY_DELAY_MS);
+          await new Promise((resolve) => window.setTimeout(resolve, delay));
         }
       }
-      if (alive && lastError) showError(lastError);
     };
     void bootstrap();
     return () => {

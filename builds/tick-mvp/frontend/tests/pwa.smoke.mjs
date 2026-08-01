@@ -99,11 +99,11 @@ assert.equal(
   ))),
   true
 );
-let wakeFailureInjected = false;
+let wakeFailureAttempts = 0;
 const wakeFailurePattern = /\/api\/markets\?[^#]*includeTape=true/;
 const wakeFailureRoute = async (route) => {
-  if (!wakeFailureInjected) {
-    wakeFailureInjected = true;
+  wakeFailureAttempts += 1;
+  if (wakeFailureAttempts <= 5) {
     await route.abort("connectionreset");
     return;
   }
@@ -128,7 +128,7 @@ await page.route(liveStateFailurePattern, liveStateFailureRoute);
 await page.reload({ waitUntil: "domcontentloaded" });
 await page.locator(".trade-view").waitFor({ timeout: 20_000 });
 await page.waitForTimeout(1_250);
-assert.equal(wakeFailureInjected, true);
+assert.ok(wakeFailureAttempts >= 6, "App did not recover after startup retry exhaustion");
 assert.ok(liveStateAttempts >= 2);
 assert.equal(await page.locator(".error-toast").count(), 0);
 await page.unroute(wakeFailurePattern, wakeFailureRoute);
