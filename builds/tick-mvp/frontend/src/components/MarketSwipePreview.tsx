@@ -71,6 +71,7 @@ export function MarketSwipePreview({
           side={null}
           mode="live"
           active={active}
+          animate={false}
           windowSeconds={90}
         />
         <div className="execution-dock preview-execution-dock">
