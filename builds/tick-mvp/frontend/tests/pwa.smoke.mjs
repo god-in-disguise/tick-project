@@ -3,6 +3,7 @@ import { chromium } from "playwright";
 
 const inviteCode = process.env.TICK_SMOKE_INVITE_CODE;
 assert.ok(inviteCode, "TICK_SMOKE_INVITE_CODE is required");
+const appUrl = process.env.TICK_SMOKE_APP_URL ?? "http://127.0.0.1:5173";
 
 const browser = await chromium.launch({
   executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -20,7 +21,7 @@ page.on("console", (message) => {
 });
 page.on("pageerror", (error) => errors.push(error.message));
 
-await page.goto("http://127.0.0.1:5173/", { waitUntil: "domcontentloaded" });
+await page.goto(`${appUrl}/`, { waitUntil: "domcontentloaded" });
 await page.locator(".install-landing").waitFor();
 assert.match(await page.locator("h1").innerText(), /Catch what is moving now/);
 await page.locator(".tick-wordmark").first().waitFor();
@@ -75,7 +76,7 @@ const desktopContext = await browser.newContext({
   hasTouch: false
 });
 const desktopPage = await desktopContext.newPage();
-await desktopPage.goto("http://127.0.0.1:5173/", { waitUntil: "domcontentloaded" });
+await desktopPage.goto(`${appUrl}/`, { waitUntil: "domcontentloaded" });
 await desktopPage.locator(".desktop-handoff").waitFor();
 await desktopPage.locator(".landing-live-identity > span").first().waitFor({ timeout: 10_000 });
 assert.match(await desktopPage.locator(".desktop-handoff").innerText(), /CONTINUE ON IPHONE/);
@@ -83,7 +84,7 @@ assert.equal(await desktopPage.getByRole("button", { name: "Add TICK to iPhone" 
 await desktopPage.screenshot({ path: "/tmp/tick-desktop.png", fullPage: true });
 await desktopContext.close();
 
-await page.goto("http://127.0.0.1:5173/?app=1", { waitUntil: "domcontentloaded" });
+await page.goto(`${appUrl}/?app=1`, { waitUntil: "domcontentloaded" });
 await authenticate(page);
 await page.locator(".trade-view").waitFor({ timeout: 20_000 });
 const gestureGuide = page.locator(".gesture-guide");
@@ -357,9 +358,16 @@ await page.getByRole("button", { name: "Me" }).click();
 await page.locator(".profile-page").waitFor();
 assert.notEqual(await page.locator(".profile-page .page-header h1").innerText(), "Me");
 assert.equal(await page.locator(".profile-page .page-header > svg").count(), 0);
+assert.match(await page.locator(".wallet-summary").innerText(), /Demo balance[\s\S]*\$1,000\.00/);
+assert.ok(
+  (await page.getByRole("button", { name: "demo", exact: true }).getAttribute("class"))?.includes("active"),
+  "A fresh invited account did not start in demo mode"
+);
 await page.getByRole("button", { name: "Refresh balance" }).click();
 await page.getByRole("button", { name: "Refresh balance" }).waitFor({ state: "attached" });
 await page.screenshot({ path: "/tmp/tick-profile.png", fullPage: true });
+await page.getByRole("button", { name: "live", exact: true }).click();
+await page.getByRole("button", { name: "Deposit" }).waitFor();
 await page.getByRole("button", { name: "Deposit" }).click();
 await page.getByRole("heading", { name: "Deposit USDC" }).waitFor();
 const depositAddress = page.locator(".wallet-address-full > span");
@@ -435,7 +443,7 @@ for (const device of iphonePortraitViewports) {
     });
   });
   const devicePage = await context.newPage();
-  await devicePage.goto("http://127.0.0.1:5173/", { waitUntil: "domcontentloaded" });
+  await devicePage.goto(`${appUrl}/`, { waitUntil: "domcontentloaded" });
   await authenticate(devicePage);
   await devicePage.locator(".trade-view").waitFor({ timeout: 20_000 });
   if (await devicePage.locator(".gesture-guide").isVisible()) {
