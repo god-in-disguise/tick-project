@@ -17,31 +17,40 @@ Every venue page is dated because fees, leverage, APIs, rewards, and access rule
 
 ## Working Matrix
 
-Snapshot: 2026-07-30.
+Snapshot: 2026-08-03.
 
 | Venue | Evidence | Best TICK use | Execution model | Useful leverage | Baseline trading cost | Rewards | Current view |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| [Avantis](avantis.md) | Documented | Small-ticket high leverage and cross-asset | Base transaction plus oracle execution; SDK and delegation | ZFP majors documented at 75x-500x | ZFP has no fixed open/close fee; winning closes pay variable profit share; spread and execution still apply | Avantis XP exists; not a routing reason | Strongest new high-leverage canary candidate |
+| [Paradex](paradex.md) | Documented + public measured | Small-ticket crypto | Starknet CLOB with EVM onboarding and trading subkeys | BTC/ETH/SOL 50x, HYPE 20x in current public config | Interactive retail orders are zero fee with a 300 ms speed bump | Rewards are secondary | Strong immediate canary if TICK qualifies for interactive classification |
 | [Aark](aark.md) | Live tested | Small-ticket high-leverage crypto | Gasless API/relayer with per-user delegated signer and venue balance | BTC 500x/750x/1000x in current live config | 1 bp open fee plus $0.60 execution fee in the live canary; losing close charged no trading fee | Existing AARK/VIP programs; not a routing reason | Full round trip works with Aark-origin challenge and live EIP-712 signing; TICK-origin challenges and documented EIP-191 opens are currently rejected |
 | [GMTrade](gmtrade.md) | Live tested | High-leverage crypto and cross-asset feed | Solana order transaction followed by keeper/oracle execution; pool based | Live BTC 500x, ETH ~294x, SOL 250x; 54 markets at 100x+ | Crypto/stock/commodity: 1.0-1.2 bps per fill | GT points explicitly qualify users for its TGE | Public keeper path too slow; viable only with private/order-keeper lane |
 | [Perpl](perpl.md) | Documented | Farming/upside research venue | Fully on-chain CLOB perps on Monad | Unknown from current docs | Unknown from current docs | Likely early-stage upside; exact points/builder program needs confirmation | Likely what partner meant by "Purple"; worth contacting, not accepted as execution rail yet |
-| [Pacifica](pacifica.md) | Public measured | Fast crypto execution | Hybrid off-chain CLOB on Solana; signed REST/WS | BTC/ETH 50x, SOL 20x | Tier-1 taker 4 bps per fill | 10M points weekly; builder program | Best next live crypto test |
-| [Lighter](lighter.md) | Documented + public measured | Fast prototype route | Off-chain sequencer with ZK settlement on Ethereum | BTC/ETH 50x, SOL 25x; selected RWAs/indices 20-50x | Standard account: zero maker/taker, 300 ms taker delay | Season 2 points, but not the core reason to use it | Strongest next investor-demo candidate if API-key model is acceptable |
+| [Pacifica](pacifica.md) | Public measured | Fast crypto execution | Hybrid off-chain CLOB on Solana; signed REST/WS | BTC/ETH 50x, SOL 20x | Tier-1 taker 4 bps per fill | 10M points weekly; builder program | Viable 50x fallback; fee drag puts it behind zero-fee canary routes for $10 tickets |
+| [Lighter](lighter.md) | Documented + public measured | Fast prototype route | Off-chain sequencer with ZK settlement on Ethereum | BTC/ETH 50x, SOL 25x; selected RWAs/indices 20-50x | Standard account: zero maker/taker, 300 ms taker delay | Season 2 points, but not the core reason to use it | Top signed-canary candidate alongside Paradex and Avantis |
+| [Hyperliquid](hyperliquid.md) | Documented + public measured | Serious crypto and future pro terminal | HyperCore CLOB with agent/API wallets | BTC 40x, ETH 25x, SOL 20x, HYPE 10x in current config | Base taker 4.5 bps before discounts | Points are not the route thesis | Strong API/liquidity route at moderate leverage, not a 500x replacement |
+| [Orderly](orderly.md) | Documented + public measured | White-label crypto routing | Shared CLOB infrastructure with broker-owned UX and trading keys | BTC/ETH/SOL documented up to 100x | Base taker 3 bps; optional builder fee | Secondary | Strong strategic architecture fit; requires builder onboarding and signed canary |
+| [Extended](extended.md) | Documented + public measured | Cross-asset and lower-leverage pro | Starknet CLOB/RFQ with REST, WS, and API keys | Crypto majors 50x, XAU 25x, EUR/USD 100x in current config | 2.5 bps taker, zero maker | Secondary | Best newly found broad cross-asset API candidate |
 | [Aster](aster.md) | Documented + public measured | Higher leverage, liquidity, points | Aster Perpetuals V3 API-agent path; separate 1001x direct-contract path on BNB/Arbitrum | Perps market-specific; Arbitrum 1001x config returned 500BTC at 1000x, BTC/ETH at 250x | Perps docs show 4 bps taker; 1001x live config returned $0.20-$0.50 execution fee and zero open fee on tested high-leverage pairs | Stage 6 points; Aster Code builder fees | V3 is usable API route; 1001x wallet route is currently reduce-only, so opens are blocked |
 | [gTrade / Gains](gtrade.md) | Live tested | First live MVP route | Arbitrum direct contract or delegated trading, oracle fulfillment | Forex 1000x, degen crypto 500x, BTC/ETH 200x, commodities 250x | Pair-specific; live backend exposes fee groups and minimum notional | Credits/revenue programs exist, but not core for TICK | Selected first rail; harden execution, PnL, stops, events, and reconciliation before adding second live venue |
 | [Ostium](ostium.md) | Live tested | Stocks, indices, commodities, FX | Arbitrum transaction plus oracle callback | Pair-specific, up to 200x | 3-10 bps open plus oracle and possible early-close cost | Points/rewards need current verification | Keep for cross-asset; weak first crypto rail |
+| [Variational Omni](variational.md) | Documented | Future broad RFQ route | Gasless Arbitrum account with off-chain RFQ | Up to 50x | Zero explicit trading fee; spread-priced | Secondary | Attractive future route; public trading API is not available yet |
 
 Costs above are venue schedules, not all-in TICK costs. Spread, slippage, funding or rollover, builder fees, gas, reserves, and liquidation mechanics still apply.
 
 ## Current Test Order
 
 1. Harden the gTrade live route inside `builds/tick-mvp/`: quote truth, native stop, direct events, reducer, reconciliation, and deterministic transaction recovery.
-2. Send Aark the measured compatibility matrix: TICK-origin challenge returns `9999`, documented EIP-191 returns `Invalid Signature`, and Aark-origin EIP-712 succeeds. Ask them to authorize TICK's origins or register a partner address, confirm EIP-712 as canonical, and provide the staging site key.
-3. Keep the current private/provider Arbitrum RPC as default write path until a benchmark beats it by p95; direct sequencer remains a measured fallback candidate.
-4. Ask Kairos whether public intake is allowlisted or requires an integrator setup before spending more time on Timeboost.
-5. Lighter signed latency/cost probe if API-key execution remains acceptable.
-6. Ask Aster whether the tested 1001x BNB/Arbitrum contracts are the active production trading path, and why direct opens revert as temporarily unavailable.
-7. Pacifica only if 50x leverage is acceptable for a specific fallback route.
-8. Keep Ostium as the live-tested wallet-native cross-asset connector and accounting benchmark.
+2. Run a Paradex Retail signed canary and verify interactive classification, effective fees, the 300 ms speed bump, and private-event latency.
+3. Run an Avantis ZFP signed canary covering one losing close, one winning close, delegated execution, spread, execution ETH, and native stop behavior.
+4. Run Lighter Standard in the same signed harness as Paradex.
+5. Probe Hyperliquid and Orderly as moderate-leverage serious-crypto routes.
+6. Probe Extended for crypto plus one RWA/FX market and measure depth, trading-hour behavior, signing, and fill lifecycle.
+7. Continue Aark partner authorization; the live route works only with an accepted Aark-origin challenge today.
+8. Keep Pacifica as a 50x fallback candidate and Ostium as the live-tested cross-asset accounting benchmark.
+
+The full lane analysis and normalized cost formula are in
+[`router-rescreen-2026-08-03.md`](router-rescreen-2026-08-03.md).
 
 This is a research order, not a final routing decision. Production routing should be chosen from measured fill latency, all-in cost, state consistency, market coverage, user eligibility, and operational control. Points are secondary.
 
