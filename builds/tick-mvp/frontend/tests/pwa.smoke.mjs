@@ -388,6 +388,8 @@ assert.ok((await minimumAmount.getAttribute("class"))?.includes("active"));
 await customAmount.click();
 assert.ok((await customAmount.getAttribute("class"))?.includes("active"));
 const customAmountInput = page.getByRole("spinbutton", { name: "Custom amount" });
+await customAmountInput.fill("");
+assert.equal(await customAmountInput.inputValue(), "");
 await customAmountInput.fill("12.34");
 assert.equal(await customAmountInput.inputValue(), "12.34");
 await fixedAmount.click();

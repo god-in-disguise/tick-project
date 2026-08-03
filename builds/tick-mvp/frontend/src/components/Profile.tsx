@@ -54,6 +54,7 @@ export function Profile(props: Props) {
   const [walletMessage, setWalletMessage] = useState<string | null>(null);
   const [addressCopied, setAddressCopied] = useState(false);
   const [editingPreset, setEditingPreset] = useState(false);
+  const [customAmountText, setCustomAmountText] = useState(String(props.settings.ticketUsd));
   const [confirmingDemoReset, setConfirmingDemoReset] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<"all" | "wins" | "losses" | "liquidations">("all");
   const leverageOptions = [25, 50, 100, 500];
@@ -107,6 +108,10 @@ export function Profile(props: Props) {
     setWalletAction("deposit");
     props.onDepositRequestHandled();
   }, [props.depositRequested, props.onDepositRequestHandled]);
+
+  useEffect(() => {
+    setCustomAmountText(String(props.settings.ticketUsd));
+  }, [props.settings.ticketUsd]);
 
   const withdraw = async (event: FormEvent) => {
     event.preventDefault();
@@ -489,15 +494,22 @@ export function Profile(props: Props) {
                         inputMode="decimal"
                         min="0.01"
                         step="0.01"
-                        value={props.settings.ticketUsd}
+                        value={customAmountText}
                         onChange={(event) => {
-                          const value = Number(event.currentTarget.value);
+                          const nextText = event.currentTarget.value;
+                          setCustomAmountText(nextText);
+                          const value = Number(nextText);
                           if (Number.isFinite(value) && value > 0) {
                             props.onSettings({
                               ...props.settings,
                               amountMode: "custom",
                               ticketUsd: value
                             });
+                          }
+                        }}
+                        onBlur={() => {
+                          if (!Number.isFinite(Number(customAmountText)) || Number(customAmountText) <= 0) {
+                            setCustomAmountText(String(props.settings.ticketUsd));
                           }
                         }}
                       />
