@@ -49,16 +49,17 @@ function terminalLabel(position: Position, pnl: number | null = null): string {
 }
 
 export function useTick(initialSession: Session) {
+  const initialVenue = initialSession.user?.activeVenue ?? "gtrade";
   const [session] = useState<Session>(initialSession);
   const [state, setState] = useState<AccountState | null>(null);
   const [balances, setBalances] = useState<WalletBalances | null>(null);
   const [markets, setMarkets] = useState<Market[]>([]);
   const [activeMarketId, setActiveMarketId] = useState("");
   const [quotes, setQuotes] = useState<Quotes>({ long: null, short: null });
-  const [settings, setSettingsState] = useState<TradeSettings>(readSettings);
-  const [activeVenue, setActiveVenue] = useState<VenueMode>(
-    initialSession.user?.activeVenue ?? "gtrade"
+  const [settings, setSettingsState] = useState<TradeSettings>(
+    () => settingsForVenue(readSettings(), initialVenue)
   );
+  const [activeVenue, setActiveVenue] = useState<VenueMode>(initialVenue);
   const [busyAction, setBusyAction] = useState<Side | "close" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [closedResult, setClosedResult] = useState<ClosedResult | null>(null);
@@ -556,14 +557,7 @@ export function useTick(initialSession: Session) {
     if (activeVenue === venue) return true;
     const previousVenue = activeVenue;
     const previousSettings = settings;
-    const nextSettings = venue === "flash"
-      ? {
-          ...settings,
-          leverage: settings.leverage >= 500 ? 500 : 100,
-          stopLossEnabled: false,
-          takeProfitEnabled: false
-        }
-      : settings;
+    const nextSettings = settingsForVenue(settings, venue);
     venueSwitchTarget.current = venue;
     setActiveVenue(venue);
     if (nextSettings !== settings) setSettings(nextSettings);
@@ -855,6 +849,24 @@ function routeMarkets(
     })
     .filter((market): market is Market => Boolean(market))
     .sort((left, right) => right.score - left.score);
+}
+
+function settingsForVenue(settings: TradeSettings, venue: VenueMode): TradeSettings {
+  if (venue !== "flash") return settings;
+  const leverage = settings.leverage >= 500 ? 500 : 100;
+  if (
+    settings.leverage === leverage
+    && !settings.stopLossEnabled
+    && !settings.takeProfitEnabled
+  ) {
+    return settings;
+  }
+  return {
+    ...settings,
+    leverage,
+    stopLossEnabled: false,
+    takeProfitEnabled: false
+  };
 }
 
 function applyAccepted(
