@@ -98,3 +98,4 @@ class TerminalPositionEvent:
     log_index: int | None
     returned_collateral_usd: Decimal | None
     payload: dict[str, Any]
+    chain_id: int | None = None

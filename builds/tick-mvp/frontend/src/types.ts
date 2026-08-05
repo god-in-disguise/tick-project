@@ -163,6 +163,7 @@ export type Position = {
   stopLossPrice: number | null;
   takeProfitPrice: number | null;
   liquidationPrice: number | null;
+  venueEstimatedNetPnlUsd?: number | null;
   terminalReason: "manual_close" | "external_close" | "take_profit" | "stop_loss" | "liquidation" | null;
   createdAt: string;
   updatedAt: string;

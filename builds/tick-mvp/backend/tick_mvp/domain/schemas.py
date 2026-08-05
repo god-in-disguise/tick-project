@@ -244,6 +244,7 @@ class PositionResponse(BaseModel):
     stopLossPrice: Decimal | None
     takeProfitPrice: Decimal | None
     liquidationPrice: Decimal | None
+    venueEstimatedNetPnlUsd: Decimal | None = None
     terminalReason: str | None = None
     createdAt: datetime
     updatedAt: datetime

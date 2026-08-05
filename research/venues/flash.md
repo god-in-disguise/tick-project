@@ -5,9 +5,10 @@ Snapshot: 2026-08-05.
 Status: the production TICK adapter has completed live `$10 x 500` BTC/ETH
 open/close canaries and a live `$10 x 100` BTC cycle. A separate funded canary
 also opened and closed XAU at `100x`. Flash quotes, market data, per-user Solana
-wallets, account preparation, and BTC/ETH execution are connected to the local
-venue router. Production activation remains blocked on always-on terminal-event
-monitoring, withdrawal wiring, and repeated per-user recovery tests.
+wallets, sponsored account preparation, BTC/ETH execution, USDC withdrawals,
+fee-aware live PnL, and always-on raw-basket terminal monitoring are deployed as
+a selectable production canary. Repeated funded cycles through newly generated
+production-user wallets remain the next certification step.
 
 ## Bottom Line
 
@@ -15,7 +16,8 @@ Flash Trade V2 has the strongest measured fast path among TICK's gTrade
 alternatives. Its public ER path is usable through the guarded connector, but
 the API currently reports a development deployment. The local TICK account
 model now provisions an encrypted Solana wallet and isolated Flash basket per
-user; this path has not been deployed to production.
+user. The production PWA exposes that path as a venue mode while gTrade remains
+the default.
 
 The documented Degen product supports BTC, ETH, and SOL from 125x through 500x.
 The current public API accepted an unsigned `$10 x 500` quote for all three
@@ -153,16 +155,20 @@ execution, liquidation, and recovery canaries are pending. BTC and ETH remain
 the only currently certified Flash execution markets; SOL remains disabled
 after two transitions exceeded the bounded observation window.
 
-## TICK Activation Boundary
+## TICK Production Boundary
 
 The venue adapter, production per-user wallet split, setup sponsorship, custody
-deposit, and wallet withdrawal paths are wired. Broader activation still requires:
+deposit, wallet withdrawal, continuous position monitoring, restart recovery,
+and fee-aware venue metrics are wired. The terminal monitor checks normalized
+owner metrics first, verifies disappearance against the authoritative raw
+basket twice, defers to an active close worker, and immediately reconciles the
+post-trade basket balance. Broader activation still requires:
 
 ```text
-owner WebSocket terminal events for liquidation/external close
-restart backfill from the authoritative raw basket
-venue cash-flow versus TICK ledger reconciliation
 funded end-to-end cycles through newly generated TICK user wallets
+repeated liquidation and external-close classification canaries
+venue-reported terminal reason and cash flow versus wallet reconciliation
+owner-stream terminal events to reduce the current 200 ms polling interval
 ```
 
 TICK does not route user money through the shared canary basket. The production

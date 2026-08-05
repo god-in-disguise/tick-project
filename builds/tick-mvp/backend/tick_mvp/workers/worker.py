@@ -6,6 +6,8 @@ import time
 
 from tick_mvp.core.config import get_settings
 from tick_mvp.execution.service import ExecutionService
+from tick_mvp.execution.terminal_reducer import TerminalEventReducer
+from tick_mvp.venues.flash.terminal_monitor import FlashTerminalMonitor
 from tick_mvp.wallets.accounting import GasAccountingService
 from tick_mvp.wallets.gas import GasFundingService
 from tick_mvp.wallets.service import WithdrawalService
@@ -36,6 +38,12 @@ async def startup(ctx: dict) -> None:
     ctx["execution_recovery_task"] = asyncio.create_task(
         _run_execution_recovery(ctx, service)
     )
+    flash_monitor = FlashTerminalMonitor(
+        settings,
+        reducer=TerminalEventReducer(settings),
+    )
+    ctx["flash_terminal_monitor"] = flash_monitor
+    ctx["flash_terminal_task"] = asyncio.create_task(flash_monitor.run())
     ctx["withdrawal_service"] = WithdrawalService(
         gas_funding=gas_funding,
         gas_accounting=gas_accounting,
@@ -44,7 +52,11 @@ async def startup(ctx: dict) -> None:
 
 
 async def shutdown(ctx: dict) -> None:
-    for task_name in ("demo_monitor_task", "execution_recovery_task"):
+    for task_name in (
+        "demo_monitor_task",
+        "execution_recovery_task",
+        "flash_terminal_task",
+    ):
         task: asyncio.Task | None = ctx.get(task_name)
         if task is not None:
             task.cancel()
@@ -52,6 +64,9 @@ async def shutdown(ctx: dict) -> None:
                 await task
             except asyncio.CancelledError:
                 pass
+    flash_monitor: FlashTerminalMonitor | None = ctx.get("flash_terminal_monitor")
+    if flash_monitor is not None:
+        flash_monitor.close()
     service: ExecutionService | None = ctx.get("execution_service")
     if service is not None:
         service.stop()

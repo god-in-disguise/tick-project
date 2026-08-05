@@ -9,13 +9,22 @@ from sqlalchemy import func
 
 from tick_mvp.core.config import Settings, get_settings
 from tick_mvp.domain.accounting import net_wallet_delta, reconciliation_difference
-from tick_mvp.domain.states import PositionStatus, ReconciliationStatus, VenueEventType, can_transition
+from tick_mvp.domain.states import (
+    ExecutionAttemptStatus,
+    PositionStatus,
+    ReconciliationStatus,
+    TradeAction,
+    VenueEventType,
+    can_transition,
+)
 from tick_mvp.infrastructure.database import create_session_factory, session_scope
 from tick_mvp.infrastructure.memory_store import StoreConflict
 from tick_mvp.infrastructure.models import (
+    ExecutionAttempt,
     LedgerEvent,
     Position,
     Reconciliation,
+    TradeIntent,
     VenueEvent,
     WalletAccount,
 )
@@ -31,6 +40,13 @@ class TrackedPosition:
     id: str
     owner: str
     venue_position_id: str
+    venue: str
+    market: str
+    side: str
+    status: PositionStatus
+    ticket_usd: Decimal
+    liquidation_price: Decimal | None
+    account_balance_before_usd: Decimal | None
 
 
 class TerminalEventReducer:
@@ -42,13 +58,13 @@ class TerminalEventReducer:
         with session_scope(self._session_factory) as session:
             return [str(row[0]) for row in session.query(WalletAccount.address).all()]
 
-    def active_positions(self) -> list[TrackedPosition]:
+    def active_positions(self, venue: str = "gtrade") -> list[TrackedPosition]:
         with session_scope(self._session_factory) as session:
             rows = (
                 session.query(Position, WalletAccount)
                 .join(WalletAccount, WalletAccount.id == Position.wallet_id)
                 .filter(
-                    Position.venue == "gtrade",
+                    Position.venue == venue,
                     Position.status.in_(
                         [
                             PositionStatus.OPENING.value,
@@ -66,11 +82,70 @@ class TerminalEventReducer:
                     id=position.id,
                     owner=wallet.address,
                     venue_position_id=str(position.venue_position_id),
+                    venue=position.venue,
+                    market=position.market,
+                    side=position.side,
+                    status=PositionStatus(position.status),
+                    ticket_usd=Decimal(position.ticket_usd),
+                    liquidation_price=(
+                        Decimal(position.liquidation_price)
+                        if position.liquidation_price is not None
+                        else None
+                    ),
+                    account_balance_before_usd=_decimal_or_none(
+                        (position.payload or {}).get("accountBalanceBeforeOpenUsd")
+                    ),
                 )
                 for position, wallet in rows
             ]
 
-    def apply(self, event: TerminalPositionEvent) -> str | None:
+    def observe_live_position(
+        self,
+        position_id: str,
+        *,
+        venue: str,
+        metrics: dict[str, str | None],
+        liquidation_price: Decimal | None,
+    ) -> bool:
+        """Persist changed venue metrics without creating synthetic market history."""
+        with session_scope(self._session_factory) as session:
+            position = (
+                session.query(Position)
+                .filter(Position.id == position_id, Position.venue == venue)
+                .with_for_update()
+                .one_or_none()
+            )
+            if position is None or position.status in {
+                PositionStatus.CLOSED.value,
+                PositionStatus.LIQUIDATED.value,
+            }:
+                return False
+            payload = position.payload or {}
+            if (
+                payload.get("venueLiveMetrics") == metrics
+                and (
+                    liquidation_price is None
+                    or position.liquidation_price == liquidation_price
+                )
+            ):
+                return False
+            now = datetime.now(UTC)
+            position.payload = {
+                **payload,
+                "venueLiveMetrics": metrics,
+                "venueLiveMetricsAt": now.isoformat(),
+            }
+            if liquidation_price is not None:
+                position.liquidation_price = liquidation_price
+            position.updated_at = now
+            return True
+
+    def apply(
+        self,
+        event: TerminalPositionEvent,
+        *,
+        defer_to_active_close: bool = False,
+    ) -> str | None:
         with session_scope(self._session_factory) as session:
             wallet = (
                 session.query(WalletAccount)
@@ -124,10 +199,10 @@ class TerminalEventReducer:
                         id=f"event_{uuid.uuid4().hex}",
                         position_id=position.id,
                         execution_attempt_id=None,
-                        venue="gtrade",
+                        venue=event.venue,
                         event_type=event_type.value,
                         source=event.source,
-                        chain_id=self._settings.arb_chain_id,
+                        chain_id=event.chain_id or self._settings.arb_chain_id,
                         block_number=event.block_number,
                         block_hash=None,
                         transaction_hash=event.transaction_hash,
@@ -136,6 +211,9 @@ class TerminalEventReducer:
                         observed_at=event.observed_at,
                     )
                 )
+
+            if defer_to_active_close and _active_close_exists(session, position.id):
+                return None
 
             existing_reason = str((position.payload or {}).get("terminalReason") or "")
             use_event_as_terminal_truth = _prefer_terminal_reason(
@@ -249,7 +327,7 @@ class TerminalEventReducer:
         return (
             session.query(VenueEvent)
             .filter(
-                VenueEvent.chain_id == self._settings.arb_chain_id,
+                VenueEvent.chain_id == (event.chain_id or self._settings.arb_chain_id),
                 VenueEvent.transaction_hash == event.transaction_hash,
                 VenueEvent.log_index == event.log_index,
             )
@@ -263,6 +341,30 @@ def _reconciliation(session, position_id: str) -> Reconciliation | None:
         .filter(Reconciliation.position_id == position_id)
         .order_by(Reconciliation.created_at.desc())
         .first()
+    )
+
+
+def _active_close_exists(session, position_id: str) -> bool:
+    active_statuses = [
+        ExecutionAttemptStatus.CREATED.value,
+        ExecutionAttemptStatus.CLAIMED.value,
+        ExecutionAttemptStatus.SIGNED.value,
+        ExecutionAttemptStatus.BROADCAST_PENDING.value,
+        ExecutionAttemptStatus.BROADCAST.value,
+        ExecutionAttemptStatus.INITIATION_CONFIRMED.value,
+        ExecutionAttemptStatus.AWAITING_VENUE_EXECUTION.value,
+        ExecutionAttemptStatus.UNKNOWN.value,
+    ]
+    return (
+        session.query(ExecutionAttempt.id)
+        .join(TradeIntent, TradeIntent.id == ExecutionAttempt.trade_intent_id)
+        .filter(
+            TradeIntent.position_id == position_id,
+            ExecutionAttempt.action == TradeAction.CLOSE.value,
+            ExecutionAttempt.status.in_(active_statuses),
+        )
+        .first()
+        is not None
     )
 
 
@@ -293,3 +395,9 @@ def _prefer_terminal_reason(*, current: str, candidate: str) -> bool:
         "liquidation": 4,
     }
     return priority.get(candidate, 0) >= priority.get(current, 0)
+
+
+def _decimal_or_none(value: object) -> Decimal | None:
+    if value is None:
+        return None
+    return Decimal(str(value))

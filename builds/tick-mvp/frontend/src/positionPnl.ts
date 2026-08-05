@@ -19,6 +19,16 @@ export function positionNetPnl(
   market: Market | null,
   quote: Quote | null
 ): number | null {
+  if (
+    position?.venue === "flash"
+    && typeof position.venueEstimatedNetPnlUsd === "number"
+    && Number.isFinite(position.venueEstimatedNetPnlUsd)
+  ) {
+    return Math.max(
+      -Math.abs(position.ticketUsd),
+      position.venueEstimatedNetPnlUsd
+    );
+  }
   if (!position?.entryPrice || !market || position.market !== market.market) return null;
   const estimatedCost = quote?.estimatedRoundTripCostUsd ?? 0;
   const latestObservation = market.observations.at(-1);

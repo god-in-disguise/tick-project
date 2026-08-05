@@ -143,7 +143,7 @@ def sign_open_eip191(
         encode_defunct(primitive=digest),
         private_key=private_key,
     )
-    return f"0x{signed.signature.hex()}"
+    return _signature_hex(signed.signature)
 
 
 def sign_close(
@@ -184,7 +184,7 @@ def sign_close_eip191(
         encode_defunct(primitive=digest),
         private_key=private_key,
     )
-    return f"0x{signed.signature.hex()}"
+    return _signature_hex(signed.signature)
 
 
 def sign_withdraw(
@@ -290,7 +290,7 @@ def sign_usdc_permit(
             "deadline": deadline,
         },
     )
-    return f"0x{signed.signature.hex()}"
+    return _signature_hex(signed.signature)
 
 
 def partner_headers(private_key: str) -> dict[str, str]:
@@ -301,7 +301,7 @@ def partner_headers(private_key: str) -> dict[str, str]:
     )
     return {
         "x-partner-timestamp": timestamp,
-        "x-partner-signature": f"0x{signed.signature.hex()}",
+        "x-partner-signature": _signature_hex(signed.signature),
     }
 
 
@@ -319,4 +319,8 @@ def _typed_signature(
         message_types={primary_type: fields},
         message_data=values,
     )
-    return f"0x{signed.signature.hex()}"
+    return _signature_hex(signed.signature)
+
+
+def _signature_hex(signature: bytes) -> str:
+    return f"0x{signature.hex().removeprefix('0x')}"

@@ -163,6 +163,11 @@ def position_response(position: Position) -> PositionResponse:
         stopLossPrice=position.stop_loss_price,
         takeProfitPrice=position.take_profit_price,
         liquidationPrice=position.liquidation_price,
+        venueEstimatedNetPnlUsd=(
+            (position.payload or {}).get("venueLiveMetrics", {}).get(
+                "pnlWithFeeUsdUi"
+            )
+        ),
         terminalReason=(position.payload or {}).get("terminalReason"),
         createdAt=position.created_at,
         updatedAt=position.updated_at,

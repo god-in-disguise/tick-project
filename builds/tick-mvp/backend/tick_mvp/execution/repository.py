@@ -927,6 +927,11 @@ class ExecutionRepository:
                     _transition_position(position, PositionStatus.CLOSED)
                 if not position_is_terminal or position.closed_at is None:
                     position.closed_at = result.closed_at
+                position.payload = {
+                    **(position.payload or {}),
+                    "terminalReason": (position.payload or {}).get("terminalReason")
+                    or "manual_close",
+                }
                 intent.status = TradeIntentStatus.CONSUMED.value
                 reconciliation = (
                     session.query(Reconciliation)
