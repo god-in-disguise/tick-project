@@ -60,7 +60,9 @@ export function Profile(props: Props) {
   const [customAmountText, setCustomAmountText] = useState(String(props.settings.ticketUsd));
   const [confirmingDemoReset, setConfirmingDemoReset] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<"all" | "wins" | "losses" | "liquidations">("all");
-  const leverageOptions = [25, 50, 100, 500];
+  const leverageOptions = props.activeVenue === "flash"
+    ? [100, 500]
+    : [25, 50, 100, 500];
   const address = props.balances?.address ?? props.state?.wallet?.address ?? props.session?.walletAddress;
   const activePosition = props.state?.positions.find(
     (position) =>
@@ -370,7 +372,11 @@ export function Profile(props: Props) {
       <section className="trading-mode-setting venue-mode-setting">
         <div>
           <strong>Venue</strong>
-          <span>Testing balances and wallets stay separate.</span>
+          <span>
+            {props.activeVenue === "flash"
+              ? "Fast BTC and ETH execution. Separate Solana USDC balance."
+              : "Broader markets with venue stop loss and take profit."}
+          </span>
         </div>
         <div className="trading-mode-control" role="group" aria-label="Venue">
           {(["gtrade", "flash"] as const).map((venue) => (
@@ -570,7 +576,10 @@ export function Profile(props: Props) {
                 <ProtectionSelector
                   label="Stop loss"
                   enabled={props.settings.stopLossEnabled}
-                  helper="Loss budget · placed on venue"
+                  disabled={props.activeVenue === "flash"}
+                  helper={props.activeVenue === "flash"
+                    ? "Unavailable on the Flash canary"
+                    : "Loss budget · placed on venue"}
                   value={props.settings.maxLossUsd}
                   onOff={() =>
                     props.onSettings({
@@ -590,7 +599,10 @@ export function Profile(props: Props) {
                 <ProtectionSelector
                   label="Take profit"
                   enabled={props.settings.takeProfitEnabled}
-                  helper="Profit target · placed on venue"
+                  disabled={props.activeVenue === "flash"}
+                  helper={props.activeVenue === "flash"
+                    ? "Unavailable on the Flash canary"
+                    : "Profit target · placed on venue"}
                   value={props.settings.takeProfitUsd}
                   onOff={() =>
                     props.onSettings({
@@ -753,6 +765,7 @@ async function copyText(value: string): Promise<void> {
 function ProtectionSelector({
   label,
   enabled,
+  disabled = false,
   helper,
   value,
   onOff,
@@ -760,6 +773,7 @@ function ProtectionSelector({
 }: {
   label: string;
   enabled: boolean;
+  disabled?: boolean;
   helper: string;
   value: number;
   onOff: () => void;
@@ -775,6 +789,7 @@ function ProtectionSelector({
         <button
           className={!enabled ? "active" : ""}
           type="button"
+          disabled={disabled}
           aria-pressed={!enabled}
           onClick={onOff}
         >
@@ -785,6 +800,7 @@ function ProtectionSelector({
             key={option}
             className={enabled && value === option ? "active" : ""}
             type="button"
+            disabled={disabled}
             aria-label={`${label} $${option}`}
             aria-pressed={enabled && value === option}
             onClick={() => onValue(option)}

@@ -550,8 +550,17 @@ export function useTick(initialSession: Session) {
     setProfileBusy(true);
     try {
       await api.switchVenue(venue);
+      const nextSettings = venue === "flash"
+        ? {
+            ...settings,
+            leverage: settings.leverage >= 500 ? 500 : 100,
+            stopLossEnabled: false,
+            takeProfitEnabled: false
+          }
+        : settings;
+      if (nextSettings !== settings) setSettings(nextSettings);
       const nextMarkets = await api.markets({ includeTape: true, venue });
-      const firstMarket = routeMarkets(nextMarkets, settings.leverage)[0]?.market;
+      const firstMarket = routeMarkets(nextMarkets, nextSettings.leverage)[0]?.market;
       if (!firstMarket) throw new Error(`No ${venue} markets are available`);
       sequences.current = {};
       for (const market of nextMarkets) sequences.current[market.market] = market.sequence;
@@ -566,7 +575,7 @@ export function useTick(initialSession: Session) {
     } finally {
       setProfileBusy(false);
     }
-  }, [activeVenue, profileBusy, reloadProfileState, settings.leverage, showError]);
+  }, [activeVenue, profileBusy, reloadProfileState, setSettings, settings, showError]);
 
   const resetDemo = useCallback(async () => {
     if (profileBusy) return;
