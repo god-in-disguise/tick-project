@@ -14,6 +14,7 @@ import type {
   Side,
   TradeSettings,
   TradingMode,
+  VenueMode,
   WalletBalances
 } from "./types";
 import { effectiveTicketUsd, minimumTicketUsd, ticketMeetsMarketMinimum } from "./tradeSettings";
@@ -55,6 +56,9 @@ export function useTick(initialSession: Session) {
   const [activeMarketId, setActiveMarketId] = useState("");
   const [quotes, setQuotes] = useState<Quotes>({ long: null, short: null });
   const [settings, setSettingsState] = useState<TradeSettings>(readSettings);
+  const [activeVenue, setActiveVenue] = useState<VenueMode>(
+    initialSession.user?.activeVenue ?? "gtrade"
+  );
   const [busyAction, setBusyAction] = useState<Side | "close" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [closedResult, setClosedResult] = useState<ClosedResult | null>(null);
@@ -180,6 +184,7 @@ export function useTick(initialSession: Session) {
       const next = await api.state();
       markBackgroundSuccess();
       setState(next);
+      if (next.user?.activeVenue) setActiveVenue(next.user.activeVenue);
       if (
         next.tradingProfile?.mode === "demo"
         && typeof next.tradingProfile.balanceUsd === "number"
@@ -279,7 +284,7 @@ export function useTick(initialSession: Session) {
       let failures = 0;
       while (alive) {
         try {
-          const nextMarkets = await api.markets({ includeTape: true });
+          const nextMarkets = await api.markets({ includeTape: true, venue: activeVenue });
           if (!alive) return;
           const firstMarket = routeMarkets(nextMarkets, settings.leverage)[0]?.market;
           if (!firstMarket) throw new Error("No tradeable markets are available");
@@ -315,6 +320,7 @@ export function useTick(initialSession: Session) {
     markBackgroundSuccess,
     refreshBalances,
     refreshState,
+    activeVenue,
     showBackgroundError,
     showError
   ]);
@@ -322,7 +328,7 @@ export function useTick(initialSession: Session) {
   useEffect(() => {
     const marketTimer = window.setInterval(async () => {
       try {
-        const incoming = await api.markets();
+        const incoming = await api.markets({ venue: activeVenue });
         markBackgroundSuccess();
         setMarkets((current) => mergeMarketSummaries(current, incoming));
       } catch (cause) {
@@ -334,7 +340,7 @@ export function useTick(initialSession: Session) {
       window.clearInterval(marketTimer);
       window.clearInterval(balanceTimer);
     };
-  }, [markBackgroundSuccess, refreshBalances, showBackgroundError]);
+  }, [activeVenue, markBackgroundSuccess, refreshBalances, showBackgroundError]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -486,7 +492,7 @@ export function useTick(initialSession: Session) {
       resumeGraceUntil.current = Date.now() + 4_000;
       backgroundFailures.current = 0;
       setError(null);
-      void api.markets({ includeTape: true })
+      void api.markets({ includeTape: true, venue: activeVenue })
         .then((nextMarkets) => {
           for (const market of nextMarkets) {
             sequences.current[market.market] = market.sequence;
@@ -500,7 +506,7 @@ export function useTick(initialSession: Session) {
     };
     document.addEventListener("visibilitychange", resume);
     return () => document.removeEventListener("visibilitychange", resume);
-  }, [markBackgroundSuccess, refreshBalances, refreshState, showBackgroundError]);
+  }, [activeVenue, markBackgroundSuccess, refreshBalances, refreshState, showBackgroundError]);
 
   const setSettings = useCallback((next: TradeSettings) => {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
@@ -537,6 +543,30 @@ export function useTick(initialSession: Session) {
       setProfileBusy(false);
     }
   }, [profileBusy, reloadProfileState, showError, state?.tradingProfile?.mode]);
+
+  const switchVenue = useCallback(async (venue: VenueMode) => {
+    if (profileBusy) return false;
+    if (activeVenue === venue) return true;
+    setProfileBusy(true);
+    try {
+      await api.switchVenue(venue);
+      const nextMarkets = await api.markets({ includeTape: true, venue });
+      const firstMarket = routeMarkets(nextMarkets, settings.leverage)[0]?.market;
+      if (!firstMarket) throw new Error(`No ${venue} markets are available`);
+      sequences.current = {};
+      for (const market of nextMarkets) sequences.current[market.market] = market.sequence;
+      setActiveVenue(venue);
+      setMarkets(nextMarkets);
+      setActiveMarketId(firstMarket);
+      await reloadProfileState();
+      return true;
+    } catch (cause) {
+      showError(cause);
+      return false;
+    } finally {
+      setProfileBusy(false);
+    }
+  }, [activeVenue, profileBusy, reloadProfileState, settings.leverage, showError]);
 
   const resetDemo = useCallback(async () => {
     if (profileBusy) return;
@@ -612,6 +642,7 @@ export function useTick(initialSession: Session) {
     refreshState,
     rememberQuote,
     settings,
+    activeVenue,
     state?.tradingProfile?.mode,
     showError
   ]);
@@ -664,6 +695,7 @@ export function useTick(initialSession: Session) {
     activeQuote,
     quotes,
     settings,
+    activeVenue,
     setSettings,
     estimatedNetPnl,
     busy,
@@ -673,6 +705,7 @@ export function useTick(initialSession: Session) {
     profileBusy,
     refreshBalances,
     switchTradingMode,
+    switchVenue,
     resetDemo,
     open,
     close,
@@ -760,11 +793,13 @@ function routeMarkets(markets: Market[], desiredLeverage: number): Market[] {
   }
   return [...bySymbol.values()]
     .map((routes) => {
-      const eligible = routes.filter(
+      const leverageEligible = routes.filter(
         (route) =>
           desiredLeverage >= (route.minLeverage ?? 1)
           && desiredLeverage <= route.maxLeverage
       );
+      const executable = leverageEligible.filter((route) => route.openingAllowed);
+      const eligible = executable.length ? executable : leverageEligible;
       return [...eligible].sort((left, right) => {
         if (left.feeHurdlePct !== right.feeHurdlePct) {
           return left.feeHurdlePct - right.feeHurdlePct;

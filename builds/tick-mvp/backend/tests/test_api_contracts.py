@@ -12,7 +12,7 @@ from tick_mvp.auth import create_session_token, verify_session_token
 from tick_mvp.core.config import get_settings
 from tick_mvp.domain.invitations import InviteAuthError, hash_invite_code
 from tick_mvp.schemas import CloseRequest, OpenRequest, QuoteRequest, WithdrawalRequest
-from tick_mvp.domain.states import TradingMode
+from tick_mvp.domain.states import TradingMode, VenueMode
 from tick_mvp.states import AuthProvider, PositionStatus, UserStatus
 from tick_mvp.store import MemoryStore
 from tick_mvp.venues.router import VenueRouter
@@ -108,6 +108,21 @@ def test_invite_user_gets_platform_wallet_and_deposit_address() -> None:
     deposit = store.deposit_address(user.id)
     assert deposit.address == wallet.address
     assert deposit.asset == "USDC"
+
+
+def test_venue_switch_keeps_separate_wallets_per_user() -> None:
+    store = MemoryStore(default_venue="gtrade")
+    user, gtrade_wallet = _test_user(store, "venue-wallets", "Venue Wallets")
+
+    flash = store.switch_venue(user.id, VenueMode.FLASH)
+    selected_flash = store.wallet_for_user(user.id)
+    back_to_gtrade = store.switch_venue(user.id, VenueMode.GTRADE)
+
+    assert flash.venue == VenueMode.FLASH
+    assert flash.wallet.chainId == 501
+    assert selected_flash.id == flash.wallet.id
+    assert flash.wallet.id != gtrade_wallet.id
+    assert back_to_gtrade.wallet.id == gtrade_wallet.id
 
 
 def test_invite_code_creates_and_reuses_one_wallet() -> None:

@@ -21,6 +21,7 @@ from tick_mvp.domain.schemas import (
     QuoteResponse,
     StateResponse,
     TradingProfileResponse,
+    VenueModeResponse,
     WalletBalancesResponse,
     WithdrawalRequest,
 )
@@ -34,6 +35,7 @@ from tick_mvp.domain.states import (
     TradeSide,
     TradingMode,
     UserStatus,
+    VenueMode,
     WalletStatus,
     WalletType,
     WithdrawalStatus,
@@ -67,6 +69,7 @@ from tick_mvp.infrastructure.models import (
     WalletAccount,
     Withdrawal,
 )
+from tick_mvp.venues.flash.constants import SOLANA_MAINNET_CHAIN_ID
 
 
 class SQLAlchemyStore:
@@ -99,8 +102,8 @@ class SQLAlchemyStore:
             "marketFeed": health() if health is not None else None,
         }
 
-    def markets(self, *, limit: int = 10) -> dict[str, Any]:
-        return self._market_method("markets")(limit=limit)
+    def markets(self, *, limit: int = 10, venue: str | None = None) -> dict[str, Any]:
+        return self._market_method("markets")(limit=limit, venue=venue)
 
     def chart(self, market: str, *, window_seconds: int = 90) -> dict[str, Any]:
         return self._market_method("chart")(market, window_seconds=window_seconds)
@@ -226,6 +229,7 @@ class SQLAlchemyStore:
                     avatar_url=avatar_url,
                     status=UserStatus.ACTIVE.value,
                     active_trading_mode=TradingMode.DEMO.value,
+                    active_venue=VenueMode.GTRADE.value,
                     created_at=now,
                     updated_at=now,
                     last_login_at=now,
@@ -274,12 +278,35 @@ class SQLAlchemyStore:
             identity = _primary_identity(session, user.id)
             return user_response(user, identity)
 
-    def wallet_for_user(self, user_id: str):
+    def wallet_for_user(self, user_id: str, venue: VenueMode | str | None = None):
         with session_scope(self._session_factory) as session:
-            wallet = _primary_wallet(session, user_id)
+            selected = _active_venue(session, user_id) if venue is None else VenueMode(venue)
+            wallet = _venue_wallet(session, user_id, selected, self.chain_id)
             if wallet is None:
                 raise StoreNotFound("wallet not found")
             return wallet_response(wallet)
+
+    def switch_venue(self, user_id: str, venue: VenueMode) -> VenueModeResponse:
+        now = _now()
+        with session_scope(self._session_factory) as session:
+            user = session.get(User, user_id, with_for_update=True)
+            if user is None:
+                raise StoreNotFound("user not found")
+            if _active_position_exists(session, user_id):
+                raise StoreConflict("finish the active trade before switching venue")
+            chain_id = _chain_id_for_venue(venue, self.chain_id)
+            wallet = self._wallet_for_user(
+                session,
+                user_id,
+                chain_id=chain_id,
+                custody_provider=self.custody_provider,
+                now=now,
+                venue=venue,
+            )
+            user.active_venue = venue.value
+            user.updated_at = now
+            session.flush()
+            return VenueModeResponse(venue=venue, wallet=wallet_response(wallet))
 
     def trading_profile(self, user_id: str) -> TradingProfileResponse:
         with session_scope(self._session_factory) as session:
@@ -443,13 +470,15 @@ class SQLAlchemyStore:
                 raise StoreNotFound("user not found")
             if user.active_trading_mode == TradingMode.DEMO.value:
                 raise StoreConflict("withdrawals are unavailable in demo mode")
+            if user.active_venue != VenueMode.GTRADE.value:
+                raise StoreConflict("Flash withdrawals are not wired into TICK testing mode yet")
             if request.asset.upper() != "USDC":
                 raise StoreConflict("only Arbitrum USDC withdrawals are supported")
             if _active_position_exists(session, user_id):
                 raise StoreConflict("withdrawal unavailable while a position is active")
             if _pending_withdrawal_exists(session, user_id):
                 raise StoreConflict("user already has a pending withdrawal")
-            wallet = _primary_wallet(session, user_id)
+            wallet = _venue_wallet(session, user_id, VenueMode.GTRADE, self.chain_id)
             if wallet is None:
                 raise StoreNotFound("wallet not found")
             withdrawal = Withdrawal(
@@ -472,8 +501,11 @@ class SQLAlchemyStore:
 
     def create_quote(self, user_id: str, request: QuoteRequest) -> QuoteResponse:
         now = _now()
+        with session_scope(self._session_factory) as session:
+            active_venue = _active_venue(session, user_id)
         if self._quote_engine is not None:
             venue_quote = self._quote_engine.quote_open(
+                venue=active_venue.value,
                 market=request.market,
                 side=request.side,
                 ticket_usd=request.ticketUsd,
@@ -502,7 +534,7 @@ class SQLAlchemyStore:
                 "takeProfitPrice": str(take_profit_price) if take_profit_price is not None else None,
             }
         else:
-            venue = self.default_venue
+            venue = active_venue.value
             market = _market(request.market)
             side = request.side.value
             ticket_usd = request.ticketUsd
@@ -541,6 +573,8 @@ class SQLAlchemyStore:
         )
         with session_scope(self._session_factory) as session:
             profile = _active_profile(session, user_id)
+            if _active_venue(session, user_id).value != quote.venue:
+                raise StoreConflict("venue changed while the quote was being created")
             quote.trading_mode = profile.mode
             quote.profile_season = profile.current_season
             session.add(quote)
@@ -575,9 +609,15 @@ class SQLAlchemyStore:
                 raise StoreConflict("quote belongs to another trading profile")
             if quote.expires_at <= now:
                 raise StoreConflict("quote expired")
+            if not quote.opening_allowed:
+                reason = (quote.payload or {}).get("openingBlockedReason")
+                detail = f": {reason}" if reason else ""
+                raise StoreConflict(f"quote is not executable{detail}")
             user = session.get(User, user_id, with_for_update=True)
             if user is None:
                 raise StoreNotFound("user not found")
+            if quote.venue != user.active_venue:
+                raise StoreConflict("quote belongs to another venue")
             if _active_position_exists(
                 session,
                 user_id,
@@ -594,7 +634,11 @@ class SQLAlchemyStore:
                 raise StoreConflict(
                     f"insufficient demo balance: {Decimal(profile.balance_usd or 0):.2f} available"
                 )
-            wallet = _primary_wallet(session, user_id) if profile.mode == TradingMode.LIVE.value else None
+            wallet = (
+                _venue_wallet(session, user_id, VenueMode(user.active_venue), self.chain_id)
+                if profile.mode == TradingMode.LIVE.value
+                else None
+            )
             if profile.mode == TradingMode.LIVE.value and wallet is None:
                 raise StoreNotFound("wallet not found")
 
@@ -760,7 +804,8 @@ class SQLAlchemyStore:
         with session_scope(self._session_factory) as session:
             user = session.get(User, user_id) if user_id else None
             identity = _primary_identity(session, user_id) if user_id else None
-            wallet = _primary_wallet(session, user_id) if user_id else None
+            active_venue = _active_venue(session, user_id) if user_id else VenueMode.GTRADE
+            wallet = _venue_wallet(session, user_id, active_venue, self.chain_id) if user_id else None
             profile = _active_profile(session, user_id) if user_id else None
             positions_query = session.query(Position)
             intents_query = session.query(TradeIntent)
@@ -771,6 +816,7 @@ class SQLAlchemyStore:
                     Position.user_id == user_id,
                     Position.trading_mode == profile.mode,
                     Position.profile_season == profile.current_season,
+                    Position.venue == active_venue.value,
                 )
                 intents_query = intents_query.filter(
                     TradeIntent.user_id == user_id,
@@ -781,6 +827,7 @@ class SQLAlchemyStore:
                     ExecutionAttempt.user_id == user_id,
                     ExecutionAttempt.trading_mode == profile.mode,
                     ExecutionAttempt.profile_season == profile.current_season,
+                    ExecutionAttempt.venue == active_venue.value,
                 )
                 withdrawals_query = withdrawals_query.filter(
                     Withdrawal.user_id == user_id
@@ -830,11 +877,20 @@ class SQLAlchemyStore:
             position=position_response(position) if position else None,
         )
 
-    def _wallet_for_user(self, session, user_id: str, *, chain_id: int, custody_provider: str, now: datetime) -> WalletAccount:
-        wallet = _primary_wallet(session, user_id)
+    def _wallet_for_user(
+        self,
+        session,
+        user_id: str,
+        *,
+        chain_id: int,
+        custody_provider: str,
+        now: datetime,
+        venue: VenueMode = VenueMode.GTRADE,
+    ) -> WalletAccount:
+        wallet = _venue_wallet(session, user_id, venue, self.chain_id)
         if wallet is not None:
             return wallet
-        address, encrypted_private_key = self._new_wallet()
+        address, encrypted_private_key = self._new_wallet(venue)
         wallet = WalletAccount(
             id=_id("wallet"),
             user_id=user_id,
@@ -843,10 +899,10 @@ class SQLAlchemyStore:
             wallet_type=WalletType.PLATFORM_CUSTODY.value,
             status=WalletStatus.ACTIVE.value,
             custody_provider=custody_provider,
-            custody_key_ref=f"encrypted_postgres:{user_id}",
+            custody_key_ref=f"encrypted_postgres:{user_id}:{venue.value}",
             encrypted_private_key=encrypted_private_key,
             gas_wallet=False,
-            payload={},
+            payload={"venue": venue.value},
             created_at=now,
             updated_at=now,
         )
@@ -888,12 +944,17 @@ class SQLAlchemyStore:
                 )
             )
 
-    def _new_wallet(self) -> tuple[str, bytes | None]:
+    def _new_wallet(self, venue: VenueMode) -> tuple[str, bytes | None]:
         if self.custody_provider == "development":
             seed = uuid.uuid4().hex
             return _dev_address(seed), None
         cipher = PrivateKeyCipher(self._settings.custody_private_key_encryption_key)
-        generated = PlatformWalletFactory(cipher).create_arbitrum_wallet()
+        factory = PlatformWalletFactory(cipher)
+        generated = (
+            factory.create_solana_wallet()
+            if venue == VenueMode.FLASH
+            else factory.create_arbitrum_wallet()
+        )
         return generated.address, generated.encrypted_private_key
 
     def _market_method(self, name: str):
@@ -909,6 +970,35 @@ def _primary_identity(session, user_id: str) -> AuthIdentity | None:
 
 def _primary_wallet(session, user_id: str) -> WalletAccount | None:
     return session.query(WalletAccount).filter(WalletAccount.user_id == user_id, WalletAccount.status == WalletStatus.ACTIVE.value).order_by(WalletAccount.created_at.asc()).first()
+
+
+def _active_venue(session, user_id: str) -> VenueMode:
+    user = session.get(User, user_id)
+    if user is None:
+        raise StoreNotFound("user not found")
+    return VenueMode(user.active_venue)
+
+
+def _chain_id_for_venue(venue: VenueMode, arbitrum_chain_id: int) -> int:
+    return SOLANA_MAINNET_CHAIN_ID if venue == VenueMode.FLASH else arbitrum_chain_id
+
+
+def _venue_wallet(
+    session,
+    user_id: str,
+    venue: VenueMode,
+    arbitrum_chain_id: int,
+) -> WalletAccount | None:
+    return (
+        session.query(WalletAccount)
+        .filter(
+            WalletAccount.user_id == user_id,
+            WalletAccount.chain_id == _chain_id_for_venue(venue, arbitrum_chain_id),
+            WalletAccount.status == WalletStatus.ACTIVE.value,
+        )
+        .order_by(WalletAccount.created_at.asc())
+        .first()
+    )
 
 
 def _profile_for_mode(session, user_id: str, mode: str) -> TradingProfile:

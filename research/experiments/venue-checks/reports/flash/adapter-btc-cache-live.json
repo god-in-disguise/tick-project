@@ -1,0 +1,119 @@
+{
+  "amountUsd": "10",
+  "close": {
+    "account_balance_after_usd": null,
+    "close_cashflow_usd": "8.33",
+    "closed_at": "2026-08-04 10:27:28.557203+00:00",
+    "payload": {
+      "buildMs": 181.042,
+      "detectionSource": "flash_raw_basket",
+      "hedged": false,
+      "quote": {
+        "discountPercentage": "0",
+        "entryPrice": "63431.7935",
+        "existingCollateral": "9.16",
+        "existingLeverage": "500.02",
+        "existingLiquidationPrice": "63495.2252",
+        "existingSize": "4165.79",
+        "feeDiscount": "0.00",
+        "fees": "0.83",
+        "feesBeforeDiscount": "0.83",
+        "markPrice": "63431.7992",
+        "newCollateral": "0.00",
+        "newLeverage": "0.00",
+        "newLiquidationPrice": "0.0000",
+        "newSize": "0.00",
+        "receiveTokenAmountUi": "8.33",
+        "receiveTokenAmountUsdUi": "8.33",
+        "receiveTokenSymbol": "USDC",
+        "settledPnl": "-0.83",
+        "swapPossible": false,
+        "swapRequired": false
+      },
+      "signMs": 0.16,
+      "submitRequestMs": 443.284,
+      "visibleMs": 623.607
+    },
+    "status": "closed",
+    "tx": {
+      "hedged": false,
+      "status": "confirmed",
+      "txHash": "5Ug4anusuN4a9t3KzBQCN2tUKyE3JqnA8uZwwFzGuLNpd1KBEzfbqAR4sNp9wkxVQRCsRxnVm4i2TLyVVytXjdRq"
+    },
+    "venue_realized_pnl_usd": null
+  },
+  "closeFullMs": 805.115,
+  "completedAt": "2026-08-04T10:27:28.557317+00:00",
+  "leverage": "500",
+  "market": "FLASH-BTC-USD",
+  "open": {
+    "account_balance_before_usd": null,
+    "entry_price": "63431.79353459",
+    "liquidation_price": "63495.1752",
+    "opened_at": "2026-08-04 10:27:27+00:00",
+    "payload": {
+      "buildMs": 182.863,
+      "detectionSource": "flash_raw_basket",
+      "hedged": false,
+      "quote": {
+        "availableLiquidity": "2333667.68",
+        "discountPercentage": "0",
+        "entryFee": "0.83",
+        "entryFeeBeforeDiscount": "0.83",
+        "entryFeeDiscount": "0.00",
+        "marginFeePercentage": "0.00032",
+        "maxPositionSizeUsd": "250000.00",
+        "newEntryPrice": "63431.7435",
+        "newLeverage": "500.00",
+        "newLiquidationPrice": "63495.1752",
+        "openPositionFeePercent": "0.02000",
+        "outputAmount": "6567354",
+        "outputAmountUi": "0.065673",
+        "passesMaxExposure": true,
+        "passesMaxPositionSize": true,
+        "passesMaxUtilization": true,
+        "youPayUsdUi": "9.99",
+        "youRecieveUsdUi": "4165.78"
+      },
+      "signMs": 1.286,
+      "submitRequestMs": 428.88,
+      "visibleMs": 608.56
+    },
+    "status": "open",
+    "stop_loss_price": null,
+    "take_profit_price": null,
+    "tx": {
+      "hedged": false,
+      "status": "confirmed",
+      "txHash": "5oXpvnevnXkoitvCHFQeDK7yUwMcShyo9PSsr5wVa72gQrAG24ZJ5mikUEHzGmgG5kYr4UNLkmYNQ4bS9TT3UNzR"
+    },
+    "venue_position_id": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3:AAHFmCVd4JXXrLFmGBataeCJ6CwrYs4cYMiebXmBFvPE"
+  },
+  "openFullMs": 793.301,
+  "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+  "prepared": [
+    {
+      "nonce": null,
+      "txHash": "5oXpvnevnXkoitvCHFQeDK7yUwMcShyo9PSsr5wVa72gQrAG24ZJ5mikUEHzGmgG5kYr4UNLkmYNQ4bS9TT3UNzR"
+    },
+    {
+      "nonce": null,
+      "txHash": "5Ug4anusuN4a9t3KzBQCN2tUKyE3JqnA8uZwwFzGuLNpd1KBEzfbqAR4sNp9wkxVQRCsRxnVm4i2TLyVVytXjdRq"
+    }
+  ],
+  "quote": {
+    "effectiveNotionalUsd": "4165.78",
+    "estimatedCloseCostUsd": "0.8331560",
+    "liquidationPrice": "63495.1752",
+    "openCostUsd": "0.83",
+    "openingAllowed": true
+  },
+  "side": "short",
+  "startedAt": "2026-08-04T10:27:25.263422+00:00",
+  "wallet": {
+    "allowanceReady": true,
+    "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+    "delegationReady": true,
+    "rawSource": "er"
+  }
+}

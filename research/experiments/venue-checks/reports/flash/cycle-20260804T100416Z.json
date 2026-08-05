@@ -1,0 +1,152 @@
+{
+  "amountUsdc": "10",
+  "error": "FlashTransitionTimeout: Flash raw basket did not reach the authoritative state; owner={'owner': '3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U', 'basketPubkey': '2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3', 'basketDataBase64Bytes': 236, 'positionMetrics': {}, 'orderMetrics': {}} submission={'submitMs': 489.146, 'response': {'signature': '5nRQqmHYrRSKBKDUzU9RpYY6JfYVedPhG5vuhcEFjwnu3c7S993NT2nXZyz73ChikMaKh18qgsp6AVcsrhSG5PnG', 'rpc': 'er'}, 'error': None, 'attempts': [{'attempt': 1, 'ms': 489.125, 'response': {'signature': '5nRQqmHYrRSKBKDUzU9RpYY6JfYVedPhG5vuhcEFjwnu3c7S993NT2nXZyz73ChikMaKh18qgsp6AVcsrhSG5PnG', 'rpc': 'er'}, 'error': None}]} hedge={'submitMs': 951.084, 'response': None, 'error': 'RuntimeError: Flash /transaction-builder/submit-transaction failed (500): RPC response error -32003: transaction verification error: This transaction has already been processed; ', 'attempts': [{'attempt': 1, 'ms': 451.615, 'response': None, 'error': 'RuntimeError: Flash /transaction-builder/submit-transaction failed (500): RPC response error -32003: transaction verification error: This transaction has already been processed; '}, {'attempt': 2, 'ms': 499.45, 'response': None, 'error': 'RuntimeError: Flash /transaction-builder/submit-transaction failed (500): RPC response error -32003: transaction verification error: This transaction has already been processed; '}]}",
+  "failedAt": "2026-08-04T10:04:43.321571+00:00",
+  "initial": {
+    "at": "2026-08-04T10:04:13.389348+00:00",
+    "flashOwner": {
+      "basketDataBase64Bytes": 236,
+      "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "orderMetrics": {},
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "positionMetrics": {}
+    },
+    "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+    "sol": "0.491304707",
+    "walletUsdc": "13.176259"
+  },
+  "initialRawBasket": {
+    "account": {
+      "basketBump": 254,
+      "debits": [
+        {
+          "amount": 220000000,
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        }
+      ],
+      "delegate": "11111111111111111111111111111111",
+      "orders": [],
+      "ordersActive": false,
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "pendingCredits": [
+        {
+          "amount": 174844877,
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        }
+      ],
+      "positions": [],
+      "positionsActive": false
+    },
+    "dataBase64": "209rh+fz2vgi0qOnOdPB1gNM53qPepDKBH+drW45zoaMG5Dknm5CDQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/gAAAAAAAAABAAAAxvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWEA7xwNAAAAAAEAAADG+nrzvtutOj1l82qryXQxsbvkwtL24OR8pgIDRS9dYc3rawoAAAAAAAAAAAAAAAA=",
+    "pubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+    "source": "er"
+  },
+  "leverage": 200.0,
+  "market": "XAU",
+  "open": {
+    "authoritativeRawBasket": {
+      "account": {
+        "basketBump": 254,
+        "debits": [
+          {
+            "amount": 220000000,
+            "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+          }
+        ],
+        "delegate": "11111111111111111111111111111111",
+        "orders": [],
+        "ordersActive": false,
+        "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+        "pendingCredits": [
+          {
+            "amount": 174844877,
+            "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+          }
+        ],
+        "positions": [],
+        "positionsActive": false
+      },
+      "dataBase64": "209rh+fz2vgi0qOnOdPB1gNM53qPepDKBH+drW45zoaMG5Dknm5CDQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/gAAAAAAAAABAAAAxvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWEA7xwNAAAAAAEAAADG+nrzvtutOj1l82qryXQxsbvkwtL24OR8pgIDRS9dYc3rawoAAAAAAAAAAAAAAAA=",
+      "pubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "source": "er"
+    },
+    "buildMs": 179.004,
+    "detectionSource": "raw_basket_timeout",
+    "quote": {
+      "availableLiquidity": "225986.55",
+      "discountPercentage": "0",
+      "entryFee": "0.37",
+      "entryFeeBeforeDiscount": "0.37",
+      "entryFeeDiscount": "0.00",
+      "marginFeePercentage": "0.00002",
+      "maxPositionSizeUsd": "500000.00",
+      "newEntryPrice": "4049.4300",
+      "newLeverage": "200.48",
+      "newLiquidationPrice": "4033.2330",
+      "openPositionFeePercent": "0.02000",
+      "outputAmount": "457214",
+      "outputAmountUi": "0.457214",
+      "passesMaxExposure": true,
+      "passesMaxPositionSize": true,
+      "passesMaxUtilization": true,
+      "youPayUsdUi": "9.99",
+      "youRecieveUsdUi": "1851.45"
+    },
+    "rawBasketWaitMs": 20292.495,
+    "requestToVisibleMs": null,
+    "signMs": 3.903,
+    "signature": "5nRQqmHYrRSKBKDUzU9RpYY6JfYVedPhG5vuhcEFjwnu3c7S993NT2nXZyz73ChikMaKh18qgsp6AVcsrhSG5PnG",
+    "stateHedgeSubmission": {
+      "attempts": [
+        {
+          "attempt": 1,
+          "error": "RuntimeError: Flash /transaction-builder/submit-transaction failed (500): RPC response error -32003: transaction verification error: This transaction has already been processed; ",
+          "ms": 451.615,
+          "response": null
+        },
+        {
+          "attempt": 2,
+          "error": "RuntimeError: Flash /transaction-builder/submit-transaction failed (500): RPC response error -32003: transaction verification error: This transaction has already been processed; ",
+          "ms": 499.45,
+          "response": null
+        }
+      ],
+      "error": "RuntimeError: Flash /transaction-builder/submit-transaction failed (500): RPC response error -32003: transaction verification error: This transaction has already been processed; ",
+      "response": null,
+      "submitMs": 951.084
+    },
+    "submission": {
+      "attempts": [
+        {
+          "attempt": 1,
+          "error": null,
+          "ms": 489.125,
+          "response": {
+            "rpc": "er",
+            "signature": "5nRQqmHYrRSKBKDUzU9RpYY6JfYVedPhG5vuhcEFjwnu3c7S993NT2nXZyz73ChikMaKh18qgsp6AVcsrhSG5PnG"
+          }
+        }
+      ],
+      "error": null,
+      "response": {
+        "rpc": "er",
+        "signature": "5nRQqmHYrRSKBKDUzU9RpYY6JfYVedPhG5vuhcEFjwnu3c7S993NT2nXZyz73ChikMaKh18qgsp6AVcsrhSG5PnG"
+      },
+      "submitMs": 489.146
+    }
+  },
+  "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+  "reportPath": "research/experiments/venue-checks/reports/flash/cycle-20260804T100416Z.json",
+  "side": "LONG",
+  "startedAt": "2026-08-04T10:04:16.644490+00:00",
+  "wsInitial": {
+    "data": {
+      "basketDataBase64Bytes": 236,
+      "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "orderMetrics": {},
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "positionMetrics": {}
+    },
+    "type": "basket"
+  }
+}

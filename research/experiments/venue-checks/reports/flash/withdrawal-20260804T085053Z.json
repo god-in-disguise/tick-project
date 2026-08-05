@@ -1,0 +1,36 @@
+{
+  "amountUsdc": "13.330000",
+  "callback": {
+    "blockTime": "2026-08-04T08:50:57Z",
+    "feeLamports": 30150,
+    "signature": "4wSMVBG3hP8VHjLtRfsqFwrBpbynJZYT7TV13ALYjc74orJo6jV3Tr9fHSuz3kZbHumGRGqY8CNkdHVcU7WRmcRk",
+    "slot": 437144045,
+    "type": "WithdrawalSettle"
+  },
+  "failedAttempts": [
+    {
+      "error": "withdrawal sponsor had 1329600 lamports and needed 6438000",
+      "signature": "2VAZNW8eKytjYEZFiqV8HEsgUq9MrJqNKkudM2o68okpM74q1acDkbz1wt4vDEvwAcHHoNiRrBUMnR2hZrwaVvve"
+    },
+    {
+      "error": "withdrawal sponsor had 1891600 lamports and needed 1962720",
+      "signature": "3iX44tWP4p8LjAfXRtSNzuViL6UtzGBa5QxfRd13GbDDEuF3P5AxEYyMpXSgmxrABz8v9pyRGjYhVRXHCH6HFoWm"
+    }
+  ],
+  "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+  "pendingCreditAfterMicroUsdc": 0,
+  "request": {
+    "blockTime": "2026-08-04T08:50:53Z",
+    "feeLamports": 10000,
+    "signature": "Wo7NuXdwJaUThKHki1FHjRCfBuYdZakeeS8AbHLQDmaNhNxhCCxiFj29D94XbADqGqgyrNpWXRNoLiJ1g2LE3U5",
+    "slot": 437144037,
+    "sponsorTopUpLamports": 11000000,
+    "type": "WithdrawalWithAction"
+  },
+  "settlementBlockTimeSeconds": 4,
+  "sponsor": "64nVkhRzRPWu25kapqkCbGKe6NjB3sP6TxdpYFMFn85b",
+  "sponsorFinalLamports": 9029600,
+  "walletSolAfter": "0.091319851",
+  "walletUsdcAfter": "29.620278",
+  "walletUsdcBefore": "16.290278"
+}

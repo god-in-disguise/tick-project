@@ -8,6 +8,7 @@ alembic>=1.13,<2.0
 cryptography>=42.0,<47.0
 eth-account>=0.13,<0.14
 requests>=2.32,<3.0
+solders==0.28.0
 web3>=7.0,<8.0
 websockets>=15.0,<16.0
 python-socketio[client]>=5.11,<6.0

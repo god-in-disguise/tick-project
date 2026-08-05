@@ -1,0 +1,344 @@
+{
+  "amountUsdc": "10",
+  "close": {
+    "authoritativeRawBasket": {
+      "account": {
+        "basketBump": 254,
+        "debits": [
+          {
+            "amount": 190000000,
+            "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+          }
+        ],
+        "delegate": "11111111111111111111111111111111",
+        "orders": [],
+        "ordersActive": false,
+        "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+        "pendingCredits": [
+          {
+            "amount": 149845126,
+            "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+          }
+        ],
+        "positions": [],
+        "positionsActive": false
+      },
+      "dataBase64": "209rh+fz2vgi0qOnOdPB1gNM53qPepDKBH+drW45zoaMG5Dknm5CDQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/gAAAAAAAAABAAAAxvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWGAK1MLAAAAAAEAAADG+nrzvtutOj1l82qryXQxsbvkwtL24OR8pgIDRS9dYYZ07ggAAAAAAAAAAAAAAAA=",
+      "pubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "source": "er"
+    },
+    "buildMs": 191.548,
+    "detectionSource": "raw_basket",
+    "event": {
+      "data": {
+        "basketDataBase64Bytes": 236,
+        "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+        "orderMetrics": {},
+        "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+        "positionMetrics": {}
+      },
+      "type": "basket"
+    },
+    "eventWaitMs": 434.207,
+    "quote": {
+      "discountPercentage": "0",
+      "entryPrice": "1854.3645",
+      "existingCollateral": "9.16",
+      "existingLeverage": "500.57",
+      "existingLiquidationPrice": "1856.2189",
+      "existingSize": "4165.87",
+      "feeDiscount": "0.00",
+      "fees": "0.83",
+      "feesBeforeDiscount": "0.83",
+      "markPrice": "1854.3687",
+      "newCollateral": "0.00",
+      "newLeverage": "0.00",
+      "newLiquidationPrice": "0.0000",
+      "newSize": "0.00",
+      "receiveTokenAmountUi": "8.32",
+      "receiveTokenAmountUsdUi": "8.32",
+      "receiveTokenSymbol": "USDC",
+      "settledPnl": "-0.84",
+      "swapPossible": false,
+      "swapRequired": false
+    },
+    "rawBasketWaitMs": 182.782,
+    "requestToVisibleMs": 614.467,
+    "signMs": 0.315,
+    "signature": "2nkZ75dMW6Td9XkLWfwmnzaJBNCXQcn3QZhMz8L3kwx1XPgWJXbUTXPS7uYCKs9PwQiSxEDHbL5Sxk1ynYLyx37k",
+    "stateHedgeSubmission": null,
+    "submission": {
+      "attempts": [
+        {
+          "attempt": 1,
+          "error": null,
+          "ms": 431.652,
+          "response": {
+            "rpc": "er",
+            "signature": "2nkZ75dMW6Td9XkLWfwmnzaJBNCXQcn3QZhMz8L3kwx1XPgWJXbUTXPS7uYCKs9PwQiSxEDHbL5Sxk1ynYLyx37k"
+          }
+        }
+      ],
+      "error": null,
+      "response": {
+        "rpc": "er",
+        "signature": "2nkZ75dMW6Td9XkLWfwmnzaJBNCXQcn3QZhMz8L3kwx1XPgWJXbUTXPS7uYCKs9PwQiSxEDHbL5Sxk1ynYLyx37k"
+      },
+      "submitMs": 431.66
+    },
+    "wsMessages": 9
+  },
+  "final": {
+    "at": "2026-08-04T09:43:39.355520+00:00",
+    "flashOwner": {
+      "basketDataBase64Bytes": 236,
+      "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "orderMetrics": {},
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "positionMetrics": {}
+    },
+    "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+    "sol": "0.491304707",
+    "walletUsdc": "13.176259"
+  },
+  "finalRawBasket": {
+    "account": {
+      "basketBump": 254,
+      "debits": [
+        {
+          "amount": 190000000,
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        }
+      ],
+      "delegate": "11111111111111111111111111111111",
+      "orders": [],
+      "ordersActive": false,
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "pendingCredits": [
+        {
+          "amount": 149845126,
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        }
+      ],
+      "positions": [],
+      "positionsActive": false
+    },
+    "dataBase64": "209rh+fz2vgi0qOnOdPB1gNM53qPepDKBH+drW45zoaMG5Dknm5CDQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/gAAAAAAAAABAAAAxvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWGAK1MLAAAAAAEAAADG+nrzvtutOj1l82qryXQxsbvkwtL24OR8pgIDRS9dYYZ07ggAAAAAAAAAAAAAAAA=",
+    "pubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+    "source": "er"
+  },
+  "finishedAt": "2026-08-04T09:43:39.355317+00:00",
+  "initial": {
+    "at": "2026-08-04T09:43:31.090739+00:00",
+    "flashOwner": {
+      "basketDataBase64Bytes": 236,
+      "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "orderMetrics": {},
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "positionMetrics": {}
+    },
+    "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+    "sol": "0.491304707",
+    "walletUsdc": "13.176259"
+  },
+  "initialRawBasket": {
+    "account": {
+      "basketBump": 254,
+      "debits": [
+        {
+          "amount": 180000000,
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        }
+      ],
+      "delegate": "11111111111111111111111111111111",
+      "orders": [],
+      "ordersActive": false,
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "pendingCredits": [
+        {
+          "amount": 141533756,
+          "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        }
+      ],
+      "positions": [],
+      "positionsActive": false
+    },
+    "dataBase64": "209rh+fz2vgi0qOnOdPB1gNM53qPepDKBH+drW45zoaMG5Dknm5CDQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/gAAAAAAAAABAAAAxvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWEAlboKAAAAAAEAAADG+nrzvtutOj1l82qryXQxsbvkwtL24OR8pgIDRS9dYTyibwgAAAAAAAAAAAAAAAA=",
+    "pubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+    "source": "er"
+  },
+  "leverage": 500.0,
+  "market": "ETH",
+  "open": {
+    "authoritativeRawBasket": {
+      "account": {
+        "basketBump": 254,
+        "debits": [
+          {
+            "amount": 190000000,
+            "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+          }
+        ],
+        "delegate": "11111111111111111111111111111111",
+        "orders": [],
+        "ordersActive": false,
+        "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+        "pendingCredits": [
+          {
+            "amount": 141533756,
+            "mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+          }
+        ],
+        "positions": [
+          {
+            "market": "GxkxRPheec7f9ZbamzeWdiHiMbrgyoUV7MFPxXW1387q",
+            "position": {
+              "collateralDecimals": 6,
+              "collateralUsd": 9164925,
+              "cumulativeLockFeeSnapshot": "221435713",
+              "degenSizeUsd": 4165874984,
+              "delegate": "11111111111111111111111111111111",
+              "entryPrice": {
+                "exponent": -8,
+                "price": 185436456608
+              },
+              "isActive": true,
+              "lockedAmount": 1050833245,
+              "lockedDecimals": 6,
+              "lockedUsd": 0,
+              "market": "GxkxRPheec7f9ZbamzeWdiHiMbrgyoUV7MFPxXW1387q",
+              "migrateFlag": false,
+              "openTime": 1785836612,
+              "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+              "priceImpactSet": 0,
+              "priceImpactUsd": 0,
+              "referencePrice": {
+                "exponent": -8,
+                "price": 185436456608
+              },
+              "sizeAmount": 224652426,
+              "sizeDecimals": 8,
+              "sizeUsd": 4165874984,
+              "unsettledFeesUsd": 0,
+              "unsettledValueUsd": 0,
+              "updateTime": 1785836612
+            }
+          }
+        ],
+        "positionsActive": true
+      },
+      "dataBase64": "209rh+fz2vgi0qOnOdPB1gNM53qPepDKBH+drW45zoaMG5Dknm5CDQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/gAAAAAAAQABAAAAxvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWGAK1MLAAAAAAEAAADG+nrzvtutOj1l82qryXQxsbvkwtL24OR8pgIDRS9dYTyibwgAAAAAAQAAAO0n8vYJ/8hdn53xopamINNjixEz986WH5FXTIY4iuP4ItKjpznTwdYDTOd6j3qQygR/na1uOc6GjBuQ5J5uQg3tJ/L2Cf/IXZ+d8aKWpiDTY4sRM/fOlh+RV0yGOIrj+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARLRxagAAAABEtHFqAAAAAKDG3ywrAAAA+P///4rsYw0AAAAAKDVO+AAAAABdcaI+AAAAAAAAAAAAAAAAAAAAAAAAAAB92IsAAAAAAAAAAAAAAAAAAAAAAAAAAABB1zINAAAAAAAAAAAAAAAAKDVO+AAAAACgxt8sKwAAAPj///8BAAAACAYGAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "pubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "source": "er"
+    },
+    "buildMs": 183.521,
+    "detectionSource": "raw_basket",
+    "event": {
+      "data": {
+        "basketDataBase64Bytes": 608,
+        "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+        "orderMetrics": {},
+        "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+        "positionMetrics": {
+          "GxkxRPheec7f9ZbamzeWdiHiMbrgyoUV7MFPxXW1387q": {
+            "borrowFeeUsd": "0",
+            "collateralAmountUi": "9.16",
+            "collateralSymbol": "USDC",
+            "collateralUsdUi": "9.16",
+            "entryPriceUi": "1854.3645",
+            "exitFeeUsd": "833175",
+            "exitPrice": {
+              "confidence": "0",
+              "exponent": "-8",
+              "price": "185456298309",
+              "timestamp": "0"
+            },
+            "leverage": "4999999",
+            "leverageUi": "500.00",
+            "liquidationPrice": {
+              "confidence": "0",
+              "exponent": "-8",
+              "price": "185621893109",
+              "timestamp": "0"
+            },
+            "liquidationPriceUi": "1856.2189",
+            "lossUsd": "0",
+            "marginUsd": "9164925",
+            "marketSymbol": "ETH",
+            "pnlPercentageWithFee": "-9.09",
+            "pnlPercentageWithoutFee": "0.00",
+            "pnlWithFeeUsdUi": "-0.83",
+            "pnlWithoutFeeUsdUi": "0.00",
+            "priceImpactUsd": "0",
+            "profitUsd": "0",
+            "sideUi": "Short",
+            "sizeAmountUi": "2.2465",
+            "sizeUsdUi": "4165.87",
+            "totalFeeUsd": "833175"
+          }
+        }
+      },
+      "type": "basket"
+    },
+    "eventWaitMs": 450.458,
+    "quote": {
+      "availableLiquidity": "718568.30",
+      "discountPercentage": "0",
+      "entryFee": "0.83",
+      "entryFeeBeforeDiscount": "0.83",
+      "entryFeeDiscount": "0.00",
+      "marginFeePercentage": "0.00032",
+      "maxPositionSizeUsd": "250000.00",
+      "newEntryPrice": "1854.3645",
+      "newLeverage": "500.00",
+      "newLiquidationPrice": "1856.2189",
+      "openPositionFeePercent": "0.02000",
+      "outputAmount": "224652426",
+      "outputAmountUi": "2.2465",
+      "passesMaxExposure": true,
+      "passesMaxPositionSize": true,
+      "passesMaxUtilization": true,
+      "youPayUsdUi": "9.99",
+      "youRecieveUsdUi": "4165.87"
+    },
+    "rawBasketWaitMs": 189.802,
+    "requestToVisibleMs": 641.056,
+    "signMs": 0.278,
+    "signature": "3JQXoN4Q5DuXfW4EiQbDPnrZBhiBHrh59Mk6F9pCeUWFcut1gBrSzvBk5C64SUhhE1xo9xcRyTUxVSqwyJn74ReC",
+    "stateHedgeSubmission": null,
+    "submission": {
+      "attempts": [
+        {
+          "attempt": 1,
+          "error": null,
+          "ms": 451.177,
+          "response": {
+            "rpc": "er",
+            "signature": "3JQXoN4Q5DuXfW4EiQbDPnrZBhiBHrh59Mk6F9pCeUWFcut1gBrSzvBk5C64SUhhE1xo9xcRyTUxVSqwyJn74ReC"
+          }
+        }
+      ],
+      "error": null,
+      "response": {
+        "rpc": "er",
+        "signature": "3JQXoN4Q5DuXfW4EiQbDPnrZBhiBHrh59Mk6F9pCeUWFcut1gBrSzvBk5C64SUhhE1xo9xcRyTUxVSqwyJn74ReC"
+      },
+      "submitMs": 451.199
+    },
+    "wsMessages": 6
+  },
+  "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+  "reportPath": "research/experiments/venue-checks/reports/flash/cycle-20260804T094331Z.json",
+  "side": "SHORT",
+  "startedAt": "2026-08-04T09:43:31.854080+00:00",
+  "wsInitial": {
+    "data": {
+      "basketDataBase64Bytes": 236,
+      "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "orderMetrics": {},
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "positionMetrics": {}
+    },
+    "type": "basket"
+  }
+}

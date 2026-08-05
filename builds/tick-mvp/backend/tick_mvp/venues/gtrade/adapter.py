@@ -23,8 +23,14 @@ class GTradeVenue:
         self._public.start()
         self._wallet.start()
 
+    def start_market_data(self) -> None:
+        self._public.start()
+
     def stop(self) -> None:
         self._wallet.stop()
+        self._public.stop()
+
+    def stop_market_data(self) -> None:
         self._public.stop()
 
     def health(self) -> dict[str, Any]:

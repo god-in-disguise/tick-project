@@ -16,6 +16,11 @@ class TradingMode(StrEnum):
     DEMO = "demo"
 
 
+class VenueMode(StrEnum):
+    GTRADE = "gtrade"
+    FLASH = "flash"
+
+
 class UserStatus(StrEnum):
     ACTIVE = "active"
     DISABLED = "disabled"

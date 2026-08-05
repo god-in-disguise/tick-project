@@ -86,6 +86,14 @@ class Settings:
     aark_rest_poll_seconds: float = 0.20
     aark_small_ticket_max_usd: Decimal = Decimal("25")
 
+    flash_api_url: str = "https://flashapi.trade"
+    solana_rpc_url: str = "https://api.mainnet-beta.solana.com"
+    flash_real_execution_enabled: bool = False
+    flash_setup_wallet_private_key: str = ""
+    flash_setup_target_sol: Decimal = Decimal("0.075")
+    flash_slippage_percentage: Decimal = Decimal("0.5")
+    flash_price_poll_seconds: float = 0.2
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -195,6 +203,13 @@ def get_settings() -> Settings:
         aark_close_wait_seconds=_float_env("AARK_CLOSE_WAIT_SECONDS", 8.0),
         aark_rest_poll_seconds=_float_env("AARK_REST_POLL_SECONDS", 0.20),
         aark_small_ticket_max_usd=_decimal_env("AARK_SMALL_TICKET_MAX_USD", "25"),
+        flash_api_url=os.getenv("FLASH_API_URL", "https://flashapi.trade"),
+        solana_rpc_url=os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"),
+        flash_real_execution_enabled=_bool_env("FLASH_REAL_EXECUTION_ENABLED", False),
+        flash_setup_wallet_private_key=os.getenv("FLASH_SETUP_WALLET_PRIVATE_KEY", ""),
+        flash_setup_target_sol=_decimal_env("FLASH_SETUP_TARGET_SOL", "0.075"),
+        flash_slippage_percentage=_decimal_env("FLASH_SLIPPAGE_PERCENTAGE", "0.5"),
+        flash_price_poll_seconds=_float_env("FLASH_PRICE_POLL_SECONDS", 0.2),
     )
 
 

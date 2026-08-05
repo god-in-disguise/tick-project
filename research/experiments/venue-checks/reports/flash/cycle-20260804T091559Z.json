@@ -1,0 +1,156 @@
+{
+  "amountUsdc": "10",
+  "close": {
+    "buildMs": 212.027,
+    "quote": {
+      "discountPercentage": "0",
+      "entryPrice": "73.1849",
+      "existingCollateral": "9.16",
+      "existingLeverage": "500.00",
+      "existingLiquidationPrice": "73.1117",
+      "existingSize": "4165.87",
+      "feeDiscount": "0.00",
+      "fees": "0.83",
+      "feesBeforeDiscount": "0.83",
+      "markPrice": "73.1850",
+      "newCollateral": "0.00",
+      "newLeverage": "0.00",
+      "newLiquidationPrice": "0.0000",
+      "newSize": "0.00",
+      "receiveTokenAmountUi": "8.33",
+      "receiveTokenAmountUsdUi": "8.33",
+      "receiveTokenSymbol": "USDC",
+      "settledPnl": "-0.83",
+      "swapPossible": true,
+      "swapRequired": true
+    },
+    "signMs": 0.135,
+    "signature": "6tTEWvZp9GqtRX3HtCwtjpy3S9EAZSLgW6W22akZdR4ohRjHCW9gd9dQ132oAkgkFgcpmABw2umooNnQjF3BGC5"
+  },
+  "error": "RuntimeError: Flash transition was absent from both owner WS and owner snapshot; submission={'submitMs': 1084.917, 'response': {'signature': '6tTEWvZp9GqtRX3HtCwtjpy3S9EAZSLgW6W22akZdR4ohRjHCW9gd9dQ132oAkgkFgcpmABw2umooNnQjF3BGC5', 'rpc': 'er'}, 'error': None, 'attempts': [{'attempt': 1, 'ms': 1084.901, 'response': {'signature': '6tTEWvZp9GqtRX3HtCwtjpy3S9EAZSLgW6W22akZdR4ohRjHCW9gd9dQ132oAkgkFgcpmABw2umooNnQjF3BGC5', 'rpc': 'er'}, 'error': None}]}",
+  "failedAt": "2026-08-04T09:16:09.352815+00:00",
+  "initial": {
+    "at": "2026-08-04T09:15:58.788337+00:00",
+    "flashOwner": {
+      "basketDataBase64Bytes": 236,
+      "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "orderMetrics": {},
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "positionMetrics": {}
+    },
+    "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+    "sol": "0.491304707",
+    "walletUsdc": "13.176259"
+  },
+  "leverage": 500.0,
+  "market": "SOL",
+  "open": {
+    "buildMs": 182.924,
+    "detectionSource": "owner_ws",
+    "event": {
+      "data": {
+        "basketDataBase64Bytes": 608,
+        "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+        "orderMetrics": {},
+        "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+        "positionMetrics": {
+          "EHUaxjoTqTJTWRwQQNy1Wq4sDGdua5r6YGvFzPcuA1eV": {
+            "borrowFeeUsd": "0",
+            "collateralAmountUi": "0.0968",
+            "collateralSymbol": "JitoSOL",
+            "collateralUsdUi": "9.16",
+            "entryPriceUi": "73.1849",
+            "exitFeeUsd": "833175",
+            "exitPrice": {
+              "confidence": "0",
+              "exponent": "-8",
+              "price": "7317908232",
+              "timestamp": "0"
+            },
+            "leverage": "4999955",
+            "leverageUi": "500.00",
+            "liquidationPrice": {
+              "confidence": "0",
+              "exponent": "-8",
+              "price": "7311178779",
+              "timestamp": "0"
+            },
+            "liquidationPriceUi": "73.1117",
+            "lossUsd": "0",
+            "marginUsd": "9164998",
+            "marketSymbol": "SOL",
+            "pnlPercentageWithFee": "-9.09",
+            "pnlPercentageWithoutFee": "0.00",
+            "pnlWithFeeUsdUi": "-0.83",
+            "pnlWithoutFeeUsdUi": "0.00",
+            "priceImpactUsd": "0",
+            "profitUsd": "0",
+            "sideUi": "Long",
+            "sizeAmountUi": "56.9225",
+            "sizeUsdUi": "4165.87",
+            "totalFeeUsd": "833175"
+          }
+        }
+      },
+      "type": "basket"
+    },
+    "eventWaitMs": 430.563,
+    "quote": {
+      "availableLiquidity": "2266499.21",
+      "discountPercentage": "0",
+      "entryFee": "0.83",
+      "entryFeeBeforeDiscount": "0.83",
+      "entryFeeDiscount": "0.00",
+      "marginFeePercentage": "0.00035",
+      "maxPositionSizeUsd": "200000.00",
+      "newEntryPrice": "73.1855",
+      "newLeverage": "500.00",
+      "newLiquidationPrice": "73.1123",
+      "openPositionFeePercent": "0.02000",
+      "outputAmount": "56922539459",
+      "outputAmountUi": "56.9225",
+      "passesMaxExposure": true,
+      "passesMaxPositionSize": true,
+      "passesMaxUtilization": true,
+      "youPayUsdUi": "9.99",
+      "youRecieveUsdUi": "4165.90"
+    },
+    "requestToVisibleMs": 430.563,
+    "signMs": 0.253,
+    "signature": "fqTQZFBQxDxDT78JSU2q3CkP7Yrw7kuF4RcGVzJ2Jxrd3VFRJREgXfBXjuPcF38huhsp9b5YQhQpuT6yLp5BGP7",
+    "submission": {
+      "attempts": [
+        {
+          "attempt": 1,
+          "error": null,
+          "ms": 410.453,
+          "response": {
+            "rpc": "er",
+            "signature": "fqTQZFBQxDxDT78JSU2q3CkP7Yrw7kuF4RcGVzJ2Jxrd3VFRJREgXfBXjuPcF38huhsp9b5YQhQpuT6yLp5BGP7"
+          }
+        }
+      ],
+      "error": null,
+      "response": {
+        "rpc": "er",
+        "signature": "fqTQZFBQxDxDT78JSU2q3CkP7Yrw7kuF4RcGVzJ2Jxrd3VFRJREgXfBXjuPcF38huhsp9b5YQhQpuT6yLp5BGP7"
+      },
+      "submitMs": 410.476
+    },
+    "wsMessages": 6
+  },
+  "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+  "reportPath": "research/experiments/venue-checks/reports/flash/cycle-20260804T091559Z.json",
+  "side": "LONG",
+  "startedAt": "2026-08-04T09:15:59.542186+00:00",
+  "wsInitial": {
+    "data": {
+      "basketDataBase64Bytes": 236,
+      "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "orderMetrics": {},
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "positionMetrics": {}
+    },
+    "type": "basket"
+  }
+}

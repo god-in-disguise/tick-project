@@ -2,7 +2,8 @@ import type { Market, TradeSettings } from "./types";
 
 export function minimumTicketUsd(market: Market, leverage: number): number {
   const venueLeverage = Math.max(1, Math.min(leverage, market.maxLeverage));
-  return Math.ceil(market.minPositionSizeUsd / venueLeverage * 100) / 100;
+  const notionalMinimum = Math.ceil(market.minPositionSizeUsd / venueLeverage * 100) / 100;
+  return Math.max(market.minCollateralUsd ?? 0, notionalMinimum);
 }
 
 export function effectiveTicketUsd(settings: TradeSettings, market: Market): number {

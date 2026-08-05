@@ -14,6 +14,7 @@ from tick_mvp.domain.states import (
     TradeSide,
     TradingMode,
     UserStatus,
+    VenueMode,
     WalletStatus,
     WalletType,
     WithdrawalStatus,
@@ -41,6 +42,7 @@ class UserResponse(BaseModel):
     displayName: str | None = None
     avatarUrl: str | None = None
     status: UserStatus
+    activeVenue: VenueMode = VenueMode.GTRADE
     createdAt: datetime
     lastLoginAt: datetime
 
@@ -56,6 +58,10 @@ class TradingProfileResponse(BaseModel):
 
 class TradingModeRequest(BaseModel):
     mode: TradingMode
+
+
+class VenueModeRequest(BaseModel):
+    venue: VenueMode
 
 
 class DemoResetResponse(BaseModel):
@@ -79,6 +85,11 @@ class WalletAccountResponse(BaseModel):
     custodyKeyRef: str
     createdAt: datetime
     updatedAt: datetime
+
+
+class VenueModeResponse(BaseModel):
+    venue: VenueMode
+    wallet: WalletAccountResponse
 
 
 class SessionResponse(BaseModel):
@@ -148,6 +159,9 @@ class WalletBalancesResponse(BaseModel):
     gasChargesUsdc: Decimal = Decimal(0)
     spendableUsdc: Decimal | None = None
     gtradeAllowanceUsdc: Decimal | None = None
+    venue: VenueMode = VenueMode.GTRADE
+    network: str = "Arbitrum One"
+    venueReady: bool = True
     source: str
     fetchedAt: datetime
     unavailableReason: str | None = None

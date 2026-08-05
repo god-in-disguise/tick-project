@@ -7,6 +7,7 @@ import requests
 
 from tick_mvp.core.config import Settings
 from tick_mvp.domain.schemas import WalletAccountResponse, WalletBalancesResponse
+from tick_mvp.domain.states import VenueMode
 
 
 def read_wallet_balances(
@@ -58,6 +59,8 @@ def read_wallet_balances(
         spendableUsdc=spendable,
         gtradeAllowanceUsdc=_quantize(allowance, 6),
         source="arbitrum_rpc_batch+gas_ledger",
+        venue=VenueMode.GTRADE,
+        network="Arbitrum One",
         fetchedAt=fetched_at,
     )
 

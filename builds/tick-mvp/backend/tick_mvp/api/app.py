@@ -26,11 +26,14 @@ from tick_mvp.domain.schemas import (
     StateResponse,
     TradingModeRequest,
     TradingProfileResponse,
+    VenueModeRequest,
+    VenueModeResponse,
     WalletBalancesResponse,
     WithdrawalRequest,
     WithdrawalResponse,
 )
 from tick_mvp.infrastructure.memory_store import MemoryStore, StoreConflict, StoreNotFound
+from tick_mvp.domain.states import VenueMode
 from tick_mvp.infrastructure.queue import (
     enqueue_execution_attempt,
     enqueue_wallet_preparation,
@@ -214,6 +217,22 @@ def create_app(store: Any | None = None) -> FastAPI:
         except StoreConflict as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
+    @app.post("/api/venue-mode", response_model=VenueModeResponse)
+    def switch_venue(
+        body: VenueModeRequest,
+        authorization: str | None = Header(default=None),
+        x_tick_user: str | None = Header(default=None),
+    ) -> VenueModeResponse:
+        try:
+            return _store(app).switch_venue(
+                _session(app, authorization, x_tick_user).user_id,
+                body.venue,
+            )
+        except StoreNotFound as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except StoreConflict as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @app.get("/api/state", response_model=StateResponse)
     def state(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> StateResponse:
         return _store(app).state(_session(app, authorization, x_tick_user).user_id)
@@ -263,6 +282,7 @@ def create_app(store: Any | None = None) -> FastAPI:
     @app.get("/api/markets")
     def markets(
         limit: int = Query(default=10, ge=1, le=20),
+        venue: VenueMode | None = Query(default=None),
         include_tape: bool = Query(default=False, alias="includeTape"),
         window_seconds: int = Query(default=90, alias="windowSeconds", ge=30, le=300),
     ) -> dict[str, Any]:
@@ -270,6 +290,7 @@ def create_app(store: Any | None = None) -> FastAPI:
             return _market_snapshot(
                 _store(app),
                 limit=limit,
+                venue=venue.value if venue else None,
                 include_tape=include_tape,
                 window_seconds=window_seconds,
             )
@@ -324,7 +345,11 @@ def create_app(store: Any | None = None) -> FastAPI:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.get("/api/wallet/balances", response_model=WalletBalancesResponse)
-    def wallet_balances(authorization: str | None = Header(default=None), x_tick_user: str | None = Header(default=None)) -> WalletBalancesResponse:
+    def wallet_balances(
+        background_tasks: BackgroundTasks,
+        authorization: str | None = Header(default=None),
+        x_tick_user: str | None = Header(default=None),
+    ) -> WalletBalancesResponse:
         user_id = _session(app, authorization, x_tick_user).user_id
         try:
             store = _store(app)
@@ -334,13 +359,20 @@ def create_app(store: Any | None = None) -> FastAPI:
             wallet = store.wallet_for_user(user_id)
         except StoreNotFound as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-        from tick_mvp.infrastructure.wallet_balances import read_wallet_balances
-
-        return read_wallet_balances(
-            wallet,
-            get_settings(),
-            gas_charges_usdc=store.reserved_gas_charges_usdc(user_id),
-        )
+        balances = _wallet_balances(store, user_id, wallet)
+        if (
+            get_settings().tick_enqueue_jobs
+            and balances.venue == VenueMode.FLASH
+            and balances.onchainUsdc is not None
+            and balances.onchainUsdc > 0
+        ):
+            background_tasks.add_task(
+                enqueue_wallet_preparation,
+                user_id,
+                str(balances.onchainUsdc),
+                VenueMode.FLASH.value,
+            )
+        return balances
 
     @app.post("/api/wallet/withdrawals", response_model=WithdrawalResponse, status_code=status.HTTP_202_ACCEPTED)
     async def request_withdrawal(
@@ -352,13 +384,7 @@ def create_app(store: Any | None = None) -> FastAPI:
         try:
             store = _store(app)
             wallet = store.wallet_for_user(user_id)
-            from tick_mvp.infrastructure.wallet_balances import read_wallet_balances
-
-            balances = read_wallet_balances(
-                wallet,
-                get_settings(),
-                gas_charges_usdc=store.reserved_gas_charges_usdc(user_id),
-            )
+            balances = _wallet_balances(store, user_id, wallet)
             if balances.spendableUsdc is None:
                 raise StoreConflict("wallet balance is temporarily unavailable")
             if body.amount > balances.spendableUsdc:
@@ -395,6 +421,7 @@ def create_app(store: Any | None = None) -> FastAPI:
                 enqueue_wallet_preparation,
                 user_id,
                 str(response.ticketUsd),
+                response.venue,
             )
         return response
 
@@ -481,8 +508,12 @@ def _market_snapshot(
     limit: int,
     include_tape: bool,
     window_seconds: int,
+    venue: str | None = None,
 ) -> dict[str, Any]:
-    payload = store.markets(limit=limit)
+    if venue is None:
+        payload = store.markets(limit=limit)
+    else:
+        payload = store.markets(limit=limit, venue=venue)
     if not include_tape:
         return payload
 
@@ -497,6 +528,21 @@ def _market_snapshot(
             }
         )
     return {**payload, "markets": enriched}
+
+
+def _wallet_balances(store: Any, user_id: str, wallet: Any) -> WalletBalancesResponse:
+    settings = get_settings()
+    if wallet.chainId == 501:
+        from tick_mvp.infrastructure.flash_wallet_balances import read_flash_wallet_balances
+
+        return read_flash_wallet_balances(wallet, settings)
+    from tick_mvp.infrastructure.wallet_balances import read_wallet_balances
+
+    return read_wallet_balances(
+        wallet,
+        settings,
+        gas_charges_usdc=store.reserved_gas_charges_usdc(user_id),
+    )
 
 
 def _session(app: FastAPI, authorization: str | None, dev_user_id: str | None) -> UserSession:

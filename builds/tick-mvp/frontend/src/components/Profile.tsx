@@ -24,6 +24,7 @@ import type {
   Session,
   TradeSettings,
   TradingMode,
+  VenueMode,
   WalletBalances
 } from "../types";
 
@@ -42,6 +43,8 @@ type Props = {
   onBalances: () => Promise<void>;
   profileBusy: boolean;
   onTradingMode: (mode: TradingMode) => Promise<boolean>;
+  activeVenue: VenueMode;
+  onVenue: (venue: VenueMode) => Promise<boolean>;
   onResetDemo: () => Promise<void>;
 };
 
@@ -58,7 +61,7 @@ export function Profile(props: Props) {
   const [confirmingDemoReset, setConfirmingDemoReset] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<"all" | "wins" | "losses" | "liquidations">("all");
   const leverageOptions = [25, 50, 100, 500];
-  const address = props.session?.walletAddress ?? props.balances?.address;
+  const address = props.balances?.address ?? props.state?.wallet?.address ?? props.session?.walletAddress;
   const activePosition = props.state?.positions.find(
     (position) =>
       position.status === "opening"
@@ -92,6 +95,7 @@ export function Profile(props: Props) {
   const profile = props.state?.tradingProfile;
   const resolvedTicketUsd = effectiveTicketUsd(props.settings, props.market);
   const demoMode = profile?.mode === "demo";
+  const network = props.activeVenue === "flash" ? "Solana" : "Arbitrum One";
   const filteredHistory = useMemo(
     () => history.filter(({ position, reconciliation }) => {
       const pnl = reconciliation?.walletDeltaUsd;
@@ -194,6 +198,12 @@ export function Profile(props: Props) {
           </button>
         </div>
         <strong>{money(available)}</strong>
+        {props.activeVenue === "flash" && (props.balances?.onchainUsdc ?? 0) > 0 ? (
+          <div className="flash-funding-status">
+            <span>Preparing Flash balance</span>
+            <strong>{money(props.balances?.onchainUsdc ?? 0)} received</strong>
+          </div>
+        ) : null}
         {demoMode ? (
           <div className="demo-season-summary">
             <span>Season {profile?.season ?? 1}</span>
@@ -212,8 +222,9 @@ export function Profile(props: Props) {
               </button>
               <button
                 type="button"
-                disabled={available <= 0}
+                disabled={available <= 0 || props.activeVenue === "flash"}
                 onClick={() => setWalletAction("withdraw")}
+                title={props.activeVenue === "flash" ? "Flash withdrawals are still manual in testing mode" : undefined}
               >
                 <ArrowUpFromLine size={16} />
                 Withdraw
@@ -226,7 +237,7 @@ export function Profile(props: Props) {
               title="Copy deposit address"
             >
               <span>Wallet &amp; network</span>
-              <strong>Arbitrum · {shortAddress(address)}</strong>
+              <strong>{network} · {shortAddress(address ?? undefined)}</strong>
               {addressCopied ? <Check size={13} /> : <Copy size={13} />}
             </button>
           </>
@@ -349,10 +360,29 @@ export function Profile(props: Props) {
         <strong>Settings</strong>
       </div>
       <section className="account-facts">
-        <div><span>Network</span><strong>Arbitrum One</strong></div>
-        <div><span>Execution</span><strong>Best available route</strong></div>
+        <div><span>Network</span><strong>{network}</strong></div>
+        <div><span>Execution</span><strong>{props.activeVenue === "flash" ? "Flash Trade" : "gTrade"}</strong></div>
         <div><span>Account</span><strong>Invite protected</strong></div>
         <div><span>Email</span><strong>Not linked</strong></div>
+      </section>
+      <section className="trading-mode-setting venue-mode-setting">
+        <div>
+          <strong>Venue</strong>
+          <span>Testing balances and wallets stay separate.</span>
+        </div>
+        <div className="trading-mode-control" role="group" aria-label="Venue">
+          {(["gtrade", "flash"] as const).map((venue) => (
+            <button
+              key={venue}
+              type="button"
+              className={props.activeVenue === venue ? "active" : ""}
+              disabled={props.profileBusy || Boolean(activePosition)}
+              onClick={() => void props.onVenue(venue)}
+            >
+              {venue === "gtrade" ? "gTrade" : "Flash"}
+            </button>
+          ))}
+        </div>
       </section>
       <section className="trading-mode-setting">
         <div>
@@ -597,9 +627,13 @@ export function Profile(props: Props) {
             </button>
             {walletAction === "deposit" ? (
               <>
-                <span className="wallet-sheet-kicker">ARBITRUM ONE</span>
+                <span className="wallet-sheet-kicker">{network.toUpperCase()}</span>
                 <h2>Deposit USDC</h2>
-                <p>Send native USDC on Arbitrum to your TICK wallet.</p>
+                <p>
+                  {props.activeVenue === "flash"
+                    ? "Send native Solana USDC. TICK supplies setup SOL and moves the deposit into your Flash account automatically."
+                    : "Send native USDC on Arbitrum to your TICK wallet."}
+                </p>
                 {address ? (
                   <div className="deposit-qr">
                     <QRCodeSVG
@@ -626,7 +660,7 @@ export function Profile(props: Props) {
               </>
             ) : (
               <>
-                <span className="wallet-sheet-kicker">ARBITRUM ONE</span>
+                <span className="wallet-sheet-kicker">{network.toUpperCase()}</span>
                 <h2>Withdraw USDC</h2>
                 <p>USDC is sent directly from your TICK wallet.</p>
                 <form className="withdraw-form" onSubmit={withdraw}>

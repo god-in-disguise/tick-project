@@ -1,0 +1,239 @@
+{
+  "amountUsdc": "10",
+  "close": {
+    "buildMs": 187.081,
+    "detectionSource": "owner_ws",
+    "event": {
+      "data": {
+        "basketDataBase64Bytes": 236,
+        "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+        "orderMetrics": {},
+        "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+        "positionMetrics": {}
+      },
+      "type": "basket"
+    },
+    "eventWaitMs": 436.264,
+    "quote": {
+      "discountPercentage": "0",
+      "entryPrice": "63501.9394",
+      "existingCollateral": "9.16",
+      "existingLeverage": "500.00",
+      "existingLiquidationPrice": "63438.4375",
+      "existingSize": "4165.91",
+      "feeDiscount": "0.00",
+      "fees": "0.83",
+      "feesBeforeDiscount": "0.83",
+      "lockAndUnsettledFeeUsd": "0.00",
+      "markPrice": "63501.9394",
+      "newCollateral": "0.00",
+      "newLeverage": "505.25",
+      "newLiquidationPrice": "63451.9394",
+      "newSize": "0.00",
+      "receiveTokenAmountUi": "8.33",
+      "receiveTokenAmountUsdUi": "8.33",
+      "receiveTokenSymbol": "USDC",
+      "settledPnl": "-0.83",
+      "swapPossible": true,
+      "swapRequired": true
+    },
+    "requestToVisibleMs": 436.264,
+    "signMs": 0.269,
+    "signature": "5qkgBFLmtH9qgGpq2hn9ovcyj6tNnywmb1cpN5Xd1A4tc8Rjpxqnfv2Y6UnpmUZEiujnwLwG7GvuiK58jMcpWMbr",
+    "submission": {
+      "attempts": [
+        {
+          "attempt": 1,
+          "error": null,
+          "ms": 430.219,
+          "response": {
+            "rpc": "er",
+            "signature": "5qkgBFLmtH9qgGpq2hn9ovcyj6tNnywmb1cpN5Xd1A4tc8Rjpxqnfv2Y6UnpmUZEiujnwLwG7GvuiK58jMcpWMbr"
+          }
+        }
+      ],
+      "error": null,
+      "response": {
+        "rpc": "er",
+        "signature": "5qkgBFLmtH9qgGpq2hn9ovcyj6tNnywmb1cpN5Xd1A4tc8Rjpxqnfv2Y6UnpmUZEiujnwLwG7GvuiK58jMcpWMbr"
+      },
+      "submitMs": 430.229
+    },
+    "wsMessages": 7
+  },
+  "final": {
+    "at": "2026-08-04T09:15:47.944852+00:00",
+    "flashOwner": {
+      "basketDataBase64Bytes": 236,
+      "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "orderMetrics": {},
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "positionMetrics": {}
+    },
+    "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+    "sol": "0.491304707",
+    "walletUsdc": "13.176259"
+  },
+  "finishedAt": "2026-08-04T09:15:47.944761+00:00",
+  "initial": {
+    "at": "2026-08-04T09:15:38.181704+00:00",
+    "flashOwner": {
+      "basketDataBase64Bytes": 236,
+      "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "orderMetrics": {},
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "positionMetrics": {}
+    },
+    "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+    "sol": "0.491304707",
+    "walletUsdc": "13.176259"
+  },
+  "leverage": 500.0,
+  "market": "BTC",
+  "open": {
+    "buildMs": 184.123,
+    "detectionSource": "owner_ws",
+    "event": {
+      "data": {
+        "basketDataBase64Bytes": 608,
+        "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+        "orderMetrics": {},
+        "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+        "positionMetrics": {
+          "GGV4VHTAEyWGyGubXTiQZiPajCEtGv2Ed2G2BHmY3zNZ": {
+            "borrowFeeUsd": "4",
+            "collateralAmountUi": "0.000144",
+            "collateralSymbol": "BTC",
+            "collateralUsdUi": "9.16",
+            "entryPriceUi": "63501.9394",
+            "exitFeeUsd": "833183",
+            "exitPrice": {
+              "confidence": "0",
+              "exponent": "-8",
+              "price": "6349895489637",
+              "timestamp": "0"
+            },
+            "leverage": "5000001",
+            "leverageUi": "500.00",
+            "liquidationPrice": {
+              "confidence": "0",
+              "exponent": "-8",
+              "price": "6343843759409",
+              "timestamp": "0"
+            },
+            "liquidationPriceUi": "63438.4375",
+            "lossUsd": "0",
+            "marginUsd": "9165008",
+            "marketSymbol": "BTC",
+            "pnlPercentageWithFee": "-9.09",
+            "pnlPercentageWithoutFee": "0.00",
+            "pnlWithFeeUsdUi": "-0.83",
+            "pnlWithoutFeeUsdUi": "0.00",
+            "priceImpactUsd": "0",
+            "profitUsd": "0",
+            "sideUi": "Long",
+            "sizeAmountUi": "0.065602",
+            "sizeUsdUi": "4165.91",
+            "totalFeeUsd": "833187"
+          }
+        }
+      },
+      "type": "basket"
+    },
+    "eventWaitMs": 433.356,
+    "quote": {
+      "availableLiquidity": "2146263.98",
+      "discountPercentage": "0",
+      "entryFee": "0.83",
+      "entryFeeBeforeDiscount": "0.83",
+      "entryFeeDiscount": "0.00",
+      "marginFeePercentage": "0.00023",
+      "maxPositionSizeUsd": "250000.00",
+      "newEntryPrice": "63501.9429",
+      "newLeverage": "500.00",
+      "newLiquidationPrice": "63438.4410",
+      "openPositionFeePercent": "0.02000",
+      "outputAmount": "6560291",
+      "outputAmountUi": "0.065602",
+      "passesMaxExposure": true,
+      "passesMaxPositionSize": true,
+      "passesMaxUtilization": true,
+      "youPayUsdUi": "9.99",
+      "youRecieveUsdUi": "4165.91"
+    },
+    "requestToVisibleMs": 433.356,
+    "signMs": 1.944,
+    "signature": "Z9bQFLQAvhdS3f42akHoEsab29qijNBDkUgQKXEuStvZvpcWMzkzeMpAZJAH95jKY5ErmbW1b8s1kfp5JkuLFD8",
+    "submission": {
+      "attempts": [
+        {
+          "attempt": 1,
+          "error": null,
+          "ms": 406.568,
+          "response": {
+            "rpc": "er",
+            "signature": "Z9bQFLQAvhdS3f42akHoEsab29qijNBDkUgQKXEuStvZvpcWMzkzeMpAZJAH95jKY5ErmbW1b8s1kfp5JkuLFD8"
+          }
+        }
+      ],
+      "error": null,
+      "response": {
+        "rpc": "er",
+        "signature": "Z9bQFLQAvhdS3f42akHoEsab29qijNBDkUgQKXEuStvZvpcWMzkzeMpAZJAH95jKY5ErmbW1b8s1kfp5JkuLFD8"
+      },
+      "submitMs": 406.585
+    },
+    "wsMessages": 6
+  },
+  "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+  "reportPath": "research/experiments/venue-checks/reports/flash/cycle-20260804T091540Z.json",
+  "side": "LONG",
+  "startedAt": "2026-08-04T09:15:40.054901+00:00",
+  "wsInitial": {
+    "data": {
+      "basketDataBase64Bytes": 608,
+      "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "orderMetrics": {},
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "positionMetrics": {
+        "GGV4VHTAEyWGyGubXTiQZiPajCEtGv2Ed2G2BHmY3zNZ": {
+          "borrowFeeUsd": "87",
+          "collateralAmountUi": "0.000144",
+          "collateralSymbol": "BTC",
+          "collateralUsdUi": "9.16",
+          "entryPriceUi": "63479.4187",
+          "exitFeeUsd": "833175",
+          "exitPrice": {
+            "confidence": "0",
+            "exponent": "-8",
+            "price": "6348668334943",
+            "timestamp": "0"
+          },
+          "leverage": "5000052",
+          "leverageUi": "500.01",
+          "liquidationPrice": {
+            "confidence": "0",
+            "exponent": "-8",
+            "price": "6341594064013",
+            "timestamp": "0"
+          },
+          "liquidationPriceUi": "63415.9406",
+          "lossUsd": "0",
+          "marginUsd": "9164916",
+          "marketSymbol": "BTC",
+          "pnlPercentageWithFee": "-9.09",
+          "pnlPercentageWithoutFee": "0.00",
+          "pnlWithFeeUsdUi": "-0.83",
+          "pnlWithoutFeeUsdUi": "0.00",
+          "priceImpactUsd": "0",
+          "profitUsd": "0",
+          "sideUi": "Long",
+          "sizeAmountUi": "0.065615",
+          "sizeUsdUi": "4165.87",
+          "totalFeeUsd": "833262"
+        }
+      }
+    },
+    "type": "basket"
+  }
+}

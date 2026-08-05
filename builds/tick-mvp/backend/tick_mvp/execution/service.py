@@ -38,6 +38,9 @@ class ExecutionService:
         self._settings = settings or get_settings()
         self._repository = repository or ExecutionRepository(self._settings)
         self._venue = create_venue(self._settings)
+        self._venues = {self._settings.default_venue: self._venue}
+        self._venues_lock = threading.Lock()
+        self._started = False
         self._gas_funding = gas_funding or GasFundingService(self._settings)
         self._gas_accounting = gas_accounting or GasAccountingService(self._settings)
         self._balance_cache: dict[str, tuple[float, Decimal]] = {}
@@ -45,23 +48,24 @@ class ExecutionService:
         self._balance_lock = threading.Lock()
 
     def start(self) -> None:
-        start = getattr(self._venue, "start", None)
-        if start is not None:
-            start()
+        self._started = True
+        for venue in self._venues.values():
+            start = getattr(venue, "start", None)
+            if start is not None:
+                start()
 
     def stop(self) -> None:
-        stop = getattr(self._venue, "stop", None)
-        if stop is not None:
-            stop()
+        self._started = False
+        for venue in reversed(list(self._venues.values())):
+            stop = getattr(venue, "stop", None)
+            if stop is not None:
+                stop()
         self._gas_funding.close()
 
     def recoverable_execution_ids(self) -> list[str]:
         return self._repository.recoverable_execution_ids()
 
     def recover_ambiguous_executions(self) -> dict[str, int]:
-        recover = getattr(self._venue, "recover_execution", None)
-        if recover is None:
-            return {"checked": 0, "resolved": 0}
         checked = 0
         resolved = 0
         for execution_id in self._repository.ambiguous_execution_ids():
@@ -72,6 +76,10 @@ class ExecutionService:
                     context.private_key_hex is None
                     or context.tx_hash is None
                 ):
+                    continue
+                venue = self._venue_for_context(context)
+                recover = getattr(venue, "recover_execution", None)
+                if recover is None:
                     continue
                 recovery = recover(
                     private_key_hex=context.private_key_hex,
@@ -85,17 +93,25 @@ class ExecutionService:
                 if tx is not None:
                     self._charge_result(context, tx)
                 if outcome == "open":
-                    self._adjust_cached_balance(context.user_id, -context.ticket_usd)
+                    self._adjust_cached_balance(
+                        context.user_id,
+                        -context.ticket_usd,
+                        context.venue,
+                    )
                 elif outcome == "closed":
                     try:
-                        account_balance_after = self._venue.collateral_balance_usd(
+                        account_balance_after = venue.collateral_balance_usd(
                             private_key_hex=context.private_key_hex
                         )
                         self._repository.mark_close_reconciliation(
                             context,
                             account_balance_after_usd=account_balance_after,
                         )
-                        self._remember_balance(context.user_id, account_balance_after)
+                        self._remember_balance(
+                            context.user_id,
+                            account_balance_after,
+                            context.venue,
+                        )
                     except Exception:
                         LOGGER.exception(
                             "recovered close accounting deferred",
@@ -116,18 +132,25 @@ class ExecutionService:
                 )
         return {"checked": checked, "resolved": resolved}
 
-    def prepare_user_wallet(self, user_id: str, required_collateral_usd: Decimal) -> dict[str, object]:
+    def prepare_user_wallet(
+        self,
+        user_id: str,
+        required_collateral_usd: Decimal,
+        venue_name: str | None = None,
+    ) -> dict[str, object]:
+        venue_name = venue_name or self._settings.default_venue
+        venue = self._venue_for_name(venue_name)
         gas = None
         if self._settings.tick_real_execution_enabled:
             wallet_id, wallet_address, private_key_hex = (
-                self._repository.load_user_wallet_context(user_id)
+                self._repository.load_user_wallet_context(user_id, venue_name)
             )
         else:
             wallet_address, private_key_hex = (
-                self._repository.load_user_wallet_credentials(user_id)
+                self._repository.load_user_wallet_credentials(user_id, venue_name)
             )
             wallet_id = ""
-        prepare = getattr(self._venue, "prepare_wallet", None)
+        prepare = getattr(venue, "prepare_wallet", None)
         if prepare is None:
             return {"userId": user_id, "status": "unsupported"}
 
@@ -153,11 +176,12 @@ class ExecutionService:
         )
         raw_balance = _decimal_or_none(result.get("collateralBalanceUsd"))
         if raw_balance is not None:
-            self._remember_balance(user_id, raw_balance)
+            self._remember_balance(user_id, raw_balance, venue_name)
             self._require_spendable(
                 user_id=user_id,
                 required_usdc=required_collateral_usd,
                 raw_balance=raw_balance,
+                venue_name=venue_name,
             )
         self._charge_payload_transactions(
             user_id=user_id,
@@ -166,7 +190,10 @@ class ExecutionService:
             wallet_address=wallet_address,
         )
         gas_sweep = None
-        if self._settings.tick_real_execution_enabled:
+        if (
+            self._settings.tick_real_execution_enabled
+            and venue_name.strip().lower() != "flash"
+        ):
             try:
                 gas_sweep = self._gas_funding.reclaim_excess(
                     user_id=user_id,
@@ -184,7 +211,11 @@ class ExecutionService:
             raise WalletNotReady("wallet collateral allowance is not ready")
         if not result.get("delegationReady", True):
             raise WalletNotReady("wallet trading delegation is not ready")
-        self._remember_wallet_ready(user_id, required_collateral_usd)
+        self._remember_wallet_ready_for_venue(
+            user_id,
+            venue_name,
+            required_collateral_usd,
+        )
         return {
             "userId": user_id,
             "status": "ready",
@@ -255,7 +286,7 @@ class ExecutionService:
         settled = 0
         for position in self._repository.open_demo_positions():
             try:
-                fill_quote = self._venue.quote_open(
+                fill_quote = self._venue_for_name(position.venue).quote_open(
                     market=position.market,
                     side=position.side,
                     ticket_usd=position.ticket_usd,
@@ -303,8 +334,9 @@ class ExecutionService:
     def _execute_live(self, context: ExecutionContext) -> dict[str, object]:
         if context.private_key_hex is None:
             raise WalletNotReady("live execution wallet key is unavailable")
+        venue = self._venue_for_context(context)
         if context.action == TradeAction.OPEN:
-            result = self._venue.open_position(
+            result = venue.open_position(
                 private_key_hex=context.private_key_hex,
                 market=context.market,
                 side=context.side,
@@ -326,8 +358,12 @@ class ExecutionService:
                 result.tx,
                 extra_transactions=result.payload.get("gasTransactions"),
             )
-            self._adjust_cached_balance(context.user_id, -context.ticket_usd)
-            self._refresh_open_liquidation_price(context, result)
+            self._adjust_cached_balance(
+                context.user_id,
+                -context.ticket_usd,
+                context.venue,
+            )
+            self._refresh_open_liquidation_price(context, result, venue)
             return {
                 "executionAttemptId": context.execution_id,
                 "status": result.status,
@@ -335,7 +371,7 @@ class ExecutionService:
                 "venuePositionId": result.venue_position_id,
             }
 
-        result = self._venue.close_position(
+        result = venue.close_position(
             private_key_hex=context.private_key_hex,
             market=context.market,
             side=context.side,
@@ -351,12 +387,16 @@ class ExecutionService:
         wallet_delta_usd = self._repository.mark_close_result(context, result)
         if result.status == "closed" and wallet_delta_usd is None:
             try:
-                account_balance_after = self._wait_for_close_balance(context)
+                account_balance_after = self._wait_for_close_balance(context, venue=venue)
                 wallet_delta_usd = self._repository.mark_close_reconciliation(
                     context,
                     account_balance_after_usd=account_balance_after,
                 )
-                self._remember_balance(context.user_id, account_balance_after)
+                self._remember_balance(
+                    context.user_id,
+                    account_balance_after,
+                    context.venue,
+                )
             except Exception:
                 LOGGER.exception(
                     "close accounting reconciliation deferred",
@@ -372,7 +412,7 @@ class ExecutionService:
     def _execute_demo(self, context: ExecutionContext) -> dict[str, object]:
         delay_ms = _demo_delay_ms(context.execution_id, context.action)
         time.sleep(delay_ms / 1000)
-        fill_quote = self._venue.quote_open(
+        fill_quote = self._venue_for_context(context).quote_open(
             market=context.market,
             side=context.side,
             ticket_usd=context.ticket_usd,
@@ -449,10 +489,10 @@ class ExecutionService:
             "delayMs": delay_ms,
         }
 
-    def _refresh_open_liquidation_price(self, context: ExecutionContext, result) -> None:
+    def _refresh_open_liquidation_price(self, context: ExecutionContext, result, venue) -> None:
         if result.status != "open":
             return
-        refresh = getattr(self._venue, "current_liquidation_price", None)
+        refresh = getattr(venue, "current_liquidation_price", None)
         if refresh is None:
             return
         try:
@@ -480,12 +520,12 @@ class ExecutionService:
         )
 
     def _ensure_open_wallet_ready(self, context: ExecutionContext) -> None:
-        if self._wallet_is_ready(context.user_id, context.ticket_usd):
+        if self._wallet_is_ready(context.user_id, context.venue, context.ticket_usd):
             return
-        self.prepare_user_wallet(context.user_id, context.ticket_usd)
+        self.prepare_user_wallet(context.user_id, context.ticket_usd, context.venue)
 
     def _require_open_balance(self, context: ExecutionContext) -> None:
-        raw_balance = self._cached_balance(context.user_id)
+        raw_balance = self._cached_balance(context.user_id, context.venue)
         if raw_balance is None:
             LOGGER.info(
                 "open balance preflight skipped userId=%s executionAttemptId=%s reason=no_prepared_snapshot",
@@ -497,6 +537,7 @@ class ExecutionService:
             user_id=context.user_id,
             required_usdc=context.ticket_usd,
             raw_balance=raw_balance,
+            venue_name=context.venue,
         )
 
     def _require_spendable(
@@ -505,8 +546,14 @@ class ExecutionService:
         user_id: str,
         required_usdc: Decimal,
         raw_balance: Decimal,
+        venue_name: str | None = None,
     ) -> None:
-        charges = self._gas_accounting.total_charges_usdc(user_id)
+        selected_venue = venue_name or self._settings.default_venue
+        charges = (
+            self._gas_accounting.total_charges_usdc(user_id)
+            if selected_venue == "gtrade"
+            else Decimal(0)
+        )
         available = spendable_usdc(raw_balance, charges)
         if available < required_usdc:
             raise InsufficientSpendableUSDC(
@@ -578,38 +625,73 @@ class ExecutionService:
                     transaction.tx_hash,
                 )
 
-    def _cached_balance(self, user_id: str) -> Decimal | None:
+    def _cached_balance(
+        self,
+        user_id: str,
+        venue_name: str | None = None,
+    ) -> Decimal | None:
+        key = f"{user_id}:{venue_name or self._settings.default_venue}"
         with self._balance_lock:
-            cached = self._balance_cache.get(user_id)
+            cached = self._balance_cache.get(key)
         if cached is None or time.monotonic() - cached[0] > self.BALANCE_CACHE_SECONDS:
             return None
         return cached[1]
 
-    def _remember_balance(self, user_id: str, balance: Decimal) -> None:
+    def _remember_balance(
+        self,
+        user_id: str,
+        balance: Decimal,
+        venue_name: str | None = None,
+    ) -> None:
+        key = f"{user_id}:{venue_name or self._settings.default_venue}"
         with self._balance_lock:
-            self._balance_cache[user_id] = (time.monotonic(), balance)
+            self._balance_cache[key] = (time.monotonic(), balance)
 
     def _remember_wallet_ready(self, user_id: str, collateral_usd: Decimal) -> None:
-        with self._balance_lock:
-            current = self._wallet_ready_cache.get(user_id)
-            ready_collateral = max(collateral_usd, current[1]) if current else collateral_usd
-            self._wallet_ready_cache[user_id] = (time.monotonic(), ready_collateral)
+        self._remember_wallet_ready_for_venue(
+            user_id,
+            self._settings.default_venue,
+            collateral_usd,
+        )
 
-    def _wallet_is_ready(self, user_id: str, collateral_usd: Decimal) -> bool:
+    def _remember_wallet_ready_for_venue(
+        self,
+        user_id: str,
+        venue_name: str,
+        collateral_usd: Decimal,
+    ) -> None:
         with self._balance_lock:
-            cached = self._wallet_ready_cache.get(user_id)
+            key = f"{user_id}:{venue_name}"
+            current = self._wallet_ready_cache.get(key)
+            ready_collateral = max(collateral_usd, current[1]) if current else collateral_usd
+            self._wallet_ready_cache[key] = (time.monotonic(), ready_collateral)
+
+    def _wallet_is_ready(
+        self,
+        user_id: str,
+        venue_name: str,
+        collateral_usd: Decimal,
+    ) -> bool:
+        with self._balance_lock:
+            cached = self._wallet_ready_cache.get(f"{user_id}:{venue_name}")
         return bool(
             cached
             and time.monotonic() - cached[0] <= self.BALANCE_CACHE_SECONDS
             and cached[1] >= collateral_usd
         )
 
-    def _adjust_cached_balance(self, user_id: str, delta: Decimal) -> None:
+    def _adjust_cached_balance(
+        self,
+        user_id: str,
+        delta: Decimal,
+        venue_name: str | None = None,
+    ) -> None:
+        key = f"{user_id}:{venue_name or self._settings.default_venue}"
         with self._balance_lock:
-            cached = self._balance_cache.get(user_id)
+            cached = self._balance_cache.get(key)
             if cached is None:
                 return
-            self._balance_cache[user_id] = (
+            self._balance_cache[key] = (
                 time.monotonic(),
                 max(Decimal(0), cached[1] + delta),
             )
@@ -618,6 +700,7 @@ class ExecutionService:
         self,
         context: ExecutionContext,
         *,
+        venue=None,
         timeout_seconds: float = BALANCE_SETTLEMENT_TIMEOUT_SECONDS,
         poll_seconds: float = BALANCE_SETTLEMENT_POLL_SECONDS,
     ) -> Decimal:
@@ -628,12 +711,31 @@ class ExecutionService:
             else None
         )
         while True:
-            balance = self._venue.collateral_balance_usd(private_key_hex=context.private_key_hex)
+            connector = venue or self._venue_for_context(context)
+            balance = connector.collateral_balance_usd(private_key_hex=context.private_key_hex)
             if open_state_balance is None or balance > open_state_balance + BALANCE_SETTLEMENT_EPSILON_USD:
                 return balance
             if time.monotonic() >= deadline:
                 return balance
             time.sleep(poll_seconds)
+
+    def _venue_for_context(self, context: ExecutionContext):
+        return self._venue_for_name(context.venue)
+
+    def _venue_for_name(self, venue_name: str):
+        normalized = venue_name.strip().lower()
+        if normalized == self._settings.default_venue:
+            return self._venue
+        with self._venues_lock:
+            venue = self._venues.get(normalized)
+            if venue is None:
+                venue = create_venue(self._settings, normalized)
+                self._venues[normalized] = venue
+                if self._started:
+                    start = getattr(venue, "start", None)
+                    if start is not None:
+                        start()
+            return venue
 
 
 class InsufficientSpendableUSDC(RuntimeError):

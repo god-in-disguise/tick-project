@@ -19,12 +19,18 @@ async def execute_trade_attempt(ctx: dict, execution_attempt_id: str) -> dict[st
     return {key: str(value) for key, value in result.items() if value is not None}
 
 
-async def prepare_user_wallet(ctx: dict, user_id: str, required_collateral_usd: str) -> dict[str, str]:
+async def prepare_user_wallet(
+    ctx: dict,
+    user_id: str,
+    required_collateral_usd: str,
+    venue_name: str | None = None,
+) -> dict[str, str]:
     service: ExecutionService = ctx["execution_service"]
     result = await asyncio.to_thread(
         service.prepare_user_wallet,
         user_id,
         Decimal(required_collateral_usd),
+        venue_name,
     )
     return {key: str(value) for key, value in result.items() if value is not None}
 

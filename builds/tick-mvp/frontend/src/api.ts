@@ -9,6 +9,7 @@ import type {
   Quote,
   Session,
   TradingMode,
+  VenueMode,
   TradingProfile,
   Side,
   WalletBalances,
@@ -144,6 +145,12 @@ export const api = {
       body: JSON.stringify({ mode })
     }),
 
+  switchVenue: (venue: VenueMode) =>
+    json<{ venue: VenueMode; wallet: Session["wallet"] }>("/api/venue-mode", {
+      method: "POST",
+      body: JSON.stringify({ venue })
+    }),
+
   resetDemo: () =>
     json<DemoReset>("/api/trading-profile/demo/reset", {
       method: "POST"
@@ -200,7 +207,7 @@ export const api = {
     }),
 
   markets: async (
-    options: { includeTape?: boolean; limit?: number } = {}
+    options: { includeTape?: boolean; limit?: number; venue?: VenueMode } = {}
   ): Promise<Market[]> => {
     const query = new URLSearchParams();
     if (options.includeTape) {
@@ -208,6 +215,7 @@ export const api = {
       query.set("windowSeconds", "90");
     }
     if (options.limit) query.set("limit", String(options.limit));
+    if (options.venue) query.set("venue", options.venue);
     const suffix = query.size ? `?${query.toString()}` : "";
     const response = await json<{
       markets: Array<
@@ -217,8 +225,20 @@ export const api = {
     }>(`/api/markets${suffix}`);
     return response.markets.map((market) => ({
       ...market,
+      price: Number(market.price),
+      movePct: Number(market.movePct),
+      activeTapePct: Number(market.activeTapePct),
+      feeHurdlePct: Number(market.feeHurdlePct ?? 0),
+      activitySurplusPct: Number(market.activitySurplusPct ?? 0),
       minPositionSizeUsd: Number(market.minPositionSizeUsd ?? 0),
+      minCollateralUsd: Number(market.minCollateralUsd ?? 0),
       minLeverage: Number(market.minLeverage ?? 1),
+      maxLeverage: Number(market.maxLeverage),
+      suggestedLeverage: Number(market.suggestedLeverage),
+      lastMarketTickAgeMs: market.lastMarketTickAgeMs === null
+        ? null
+        : Number(market.lastMarketTickAgeMs),
+      score: Number(market.score),
       observations: (market.observations ?? []).map(observation),
       sequence: Number(market.sequence ?? 0)
     }));

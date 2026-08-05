@@ -2,6 +2,7 @@ export type Side = "long" | "short";
 export type FeedStatus = "live" | "delayed" | "stale" | "disconnected" | "resyncing";
 export type PositionStatus = "opening" | "open" | "closing" | "closed" | "liquidated" | "unknown";
 export type TradingMode = "live" | "demo";
+export type VenueMode = "gtrade" | "flash";
 
 export type MarketObservation = {
   seq: number;
@@ -33,6 +34,7 @@ export type Market = {
   feeHurdlePct: number;
   activitySurplusPct: number;
   minPositionSizeUsd: number;
+  minCollateralUsd?: number;
   minLeverage: number;
   maxLeverage: number;
   suggestedLeverage: number;
@@ -48,6 +50,7 @@ export type User = {
   id: string;
   email: string;
   displayName: string | null;
+  activeVenue: VenueMode;
 };
 
 export type Wallet = {
@@ -73,6 +76,9 @@ export type WalletBalances = {
   gasChargesUsdc: number;
   spendableUsdc: number | null;
   gtradeAllowanceUsdc: number | null;
+  venue: VenueMode;
+  network: string;
+  venueReady: boolean;
   source: string;
   unavailableReason: string | null;
   tradingMode: TradingMode;

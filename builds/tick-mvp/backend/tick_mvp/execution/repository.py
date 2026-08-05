@@ -34,6 +34,7 @@ from tick_mvp.infrastructure.models import (
     WalletAccount,
 )
 from tick_mvp.venues.base import VenueCloseResult, VenueOpenResult
+from tick_mvp.venues.flash.constants import SOLANA_MAINNET_CHAIN_ID
 
 
 RECONCILIATION_TOLERANCE_USD = Decimal("0.02")
@@ -70,6 +71,7 @@ class ExecutionContext:
     execution_status: ExecutionAttemptStatus = ExecutionAttemptStatus.CREATED
     tx_hash: str | None = None
     signed_raw_transaction: str | None = None
+    venue: str = "gtrade"
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +194,7 @@ class ExecutionRepository:
                 execution_status=ExecutionAttemptStatus(execution.status),
                 tx_hash=execution.tx_hash,
                 signed_raw_transaction=signed_raw_transaction,
+                venue=execution.venue,
             )
 
     def claim(self, execution_attempt_id: str) -> ExecutionContext | None:
@@ -270,6 +273,11 @@ class ExecutionRepository:
         with session_scope(self._session_factory) as session:
             rows = (
                 session.query(ExecutionAttempt.id)
+                .join(
+                    TradeIntent,
+                    TradeIntent.id == ExecutionAttempt.trade_intent_id,
+                )
+                .join(Position, Position.id == TradeIntent.position_id)
                 .filter(
                     ExecutionAttempt.status.in_(
                         [
@@ -282,6 +290,12 @@ class ExecutionRepository:
                     ),
                     ExecutionAttempt.tx_hash.is_not(None),
                     ExecutionAttempt.updated_at <= before,
+                    Position.status.notin_(
+                        [
+                            PositionStatus.CLOSED.value,
+                            PositionStatus.LIQUIDATED.value,
+                        ]
+                    ),
                 )
                 .order_by(ExecutionAttempt.updated_at.asc())
                 .limit(limit)
@@ -764,15 +778,23 @@ class ExecutionRepository:
             session.add_all([reconciliation, ledger])
             return True
 
-    def load_user_wallet_credentials(self, user_id: str) -> tuple[str, str]:
-        _, address, private_key = self.load_user_wallet_context(user_id)
+    def load_user_wallet_credentials(self, user_id: str, venue: str | None = None) -> tuple[str, str]:
+        _, address, private_key = self.load_user_wallet_context(user_id, venue)
         return address, private_key
 
-    def load_user_wallet_context(self, user_id: str) -> tuple[str, str, str]:
+    def load_user_wallet_context(self, user_id: str, venue: str | None = None) -> tuple[str, str, str]:
+        chain_id = (
+            SOLANA_MAINNET_CHAIN_ID
+            if (venue or "").strip().lower() == "flash"
+            else self._settings.arb_chain_id
+        )
         with session_scope(self._session_factory) as session:
             wallet = (
                 session.query(WalletAccount)
-                .filter(WalletAccount.user_id == user_id)
+                .filter(
+                    WalletAccount.user_id == user_id,
+                    WalletAccount.chain_id == chain_id,
+                )
                 .order_by(WalletAccount.created_at.asc())
                 .first()
             )
@@ -785,7 +807,7 @@ class ExecutionRepository:
         context: ExecutionContext,
         *,
         tx_hash: str,
-        nonce: int,
+        nonce: int | None,
         signed_raw_transaction: str,
     ) -> None:
         now = _now()

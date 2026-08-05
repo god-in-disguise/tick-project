@@ -142,6 +142,8 @@ function TickApp({
             onBalances={tick.refreshBalances}
             profileBusy={tick.profileBusy}
             onTradingMode={tick.switchTradingMode}
+            activeVenue={tick.activeVenue}
+            onVenue={tick.switchVenue}
             onResetDemo={tick.resetDemo}
           />
         ) : null}

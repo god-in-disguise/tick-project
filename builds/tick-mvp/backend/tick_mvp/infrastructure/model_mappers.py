@@ -21,6 +21,7 @@ from tick_mvp.domain.states import (
     TradeSide,
     TradingMode,
     UserStatus,
+    VenueMode,
     WalletStatus,
     WalletType,
     WithdrawalStatus,
@@ -48,6 +49,7 @@ def user_response(user: User, identity: AuthIdentity) -> UserResponse:
         displayName=user.display_name,
         avatarUrl=user.avatar_url,
         status=UserStatus(user.status),
+        activeVenue=VenueMode(user.active_venue),
         createdAt=user.created_at,
         lastLoginAt=user.last_login_at,
     )

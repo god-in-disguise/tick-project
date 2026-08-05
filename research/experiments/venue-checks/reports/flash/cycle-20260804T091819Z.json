@@ -1,0 +1,202 @@
+{
+  "amountUsdc": "10",
+  "close": {
+    "buildMs": 188.683,
+    "detectionSource": "owner_ws",
+    "event": {
+      "data": {
+        "basketDataBase64Bytes": 236,
+        "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+        "orderMetrics": {},
+        "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+        "positionMetrics": {}
+      },
+      "type": "basket"
+    },
+    "eventWaitMs": 431.193,
+    "quote": {
+      "discountPercentage": "0",
+      "entryPrice": "63463.6161",
+      "existingCollateral": "9.16",
+      "existingLeverage": "500.00",
+      "existingLiquidationPrice": "63400.1525",
+      "existingSize": "4165.91",
+      "feeDiscount": "0.00",
+      "fees": "0.83",
+      "feesBeforeDiscount": "0.83",
+      "lockAndUnsettledFeeUsd": "0.00",
+      "markPrice": "63463.6161",
+      "newCollateral": "0.00",
+      "newLeverage": "465.40",
+      "newLiquidationPrice": "63388.6161",
+      "newSize": "0.00",
+      "receiveTokenAmountUi": "8.33",
+      "receiveTokenAmountUsdUi": "8.33",
+      "receiveTokenSymbol": "USDC",
+      "settledPnl": "-0.83",
+      "swapPossible": true,
+      "swapRequired": true
+    },
+    "requestToVisibleMs": 431.193,
+    "signMs": 0.145,
+    "signature": "1PB5Uog4vVmUwf78kktGBrkw3J2d84RTXHaPr8Z7xdUiQqnziJ2iBKQp8Zui9nqRJ87V7J7Q6Zck7vcKn7Q8Rmm",
+    "submission": {
+      "attempts": [
+        {
+          "attempt": 1,
+          "error": null,
+          "ms": 412.381,
+          "response": {
+            "rpc": "er",
+            "signature": "1PB5Uog4vVmUwf78kktGBrkw3J2d84RTXHaPr8Z7xdUiQqnziJ2iBKQp8Zui9nqRJ87V7J7Q6Zck7vcKn7Q8Rmm"
+          }
+        }
+      ],
+      "error": null,
+      "response": {
+        "rpc": "er",
+        "signature": "1PB5Uog4vVmUwf78kktGBrkw3J2d84RTXHaPr8Z7xdUiQqnziJ2iBKQp8Zui9nqRJ87V7J7Q6Zck7vcKn7Q8Rmm"
+      },
+      "submitMs": 412.393
+    },
+    "wsMessages": 7
+  },
+  "final": {
+    "at": "2026-08-04T09:18:32.752269+00:00",
+    "flashOwner": {
+      "basketDataBase64Bytes": 236,
+      "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "orderMetrics": {},
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "positionMetrics": {}
+    },
+    "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+    "sol": "0.491304707",
+    "walletUsdc": "13.176259"
+  },
+  "finishedAt": "2026-08-04T09:18:32.752109+00:00",
+  "initial": {
+    "at": "2026-08-04T09:18:19.236291+00:00",
+    "flashOwner": {
+      "basketDataBase64Bytes": 236,
+      "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "orderMetrics": {},
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "positionMetrics": {}
+    },
+    "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+    "sol": "0.491304707",
+    "walletUsdc": "13.176259"
+  },
+  "leverage": 500.0,
+  "market": "BTC",
+  "open": {
+    "buildMs": 181.49,
+    "detectionSource": "owner_ws",
+    "event": {
+      "data": {
+        "basketDataBase64Bytes": 608,
+        "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+        "orderMetrics": {},
+        "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+        "positionMetrics": {
+          "GGV4VHTAEyWGyGubXTiQZiPajCEtGv2Ed2G2BHmY3zNZ": {
+            "borrowFeeUsd": "0",
+            "collateralAmountUi": "0.000144",
+            "collateralSymbol": "BTC",
+            "collateralUsdUi": "9.16",
+            "entryPriceUi": "63463.6161",
+            "exitFeeUsd": "833183",
+            "exitPrice": {
+              "confidence": "0",
+              "exponent": "-8",
+              "price": "6346063335984",
+              "timestamp": "0"
+            },
+            "leverage": "4999999",
+            "leverageUi": "500.00",
+            "liquidationPrice": {
+              "confidence": "0",
+              "exponent": "-8",
+              "price": "6340015252339",
+              "timestamp": "0"
+            },
+            "liquidationPriceUi": "63400.1525",
+            "lossUsd": "0",
+            "marginUsd": "9165008",
+            "marketSymbol": "BTC",
+            "pnlPercentageWithFee": "-9.09",
+            "pnlPercentageWithoutFee": "0.00",
+            "pnlWithFeeUsdUi": "-0.83",
+            "pnlWithoutFeeUsdUi": "0.00",
+            "priceImpactUsd": "0",
+            "profitUsd": "0",
+            "sideUi": "Long",
+            "sizeAmountUi": "0.065642",
+            "sizeUsdUi": "4165.91",
+            "totalFeeUsd": "833183"
+          }
+        }
+      },
+      "type": "basket"
+    },
+    "eventWaitMs": 429.976,
+    "quote": {
+      "availableLiquidity": "2146263.98",
+      "discountPercentage": "0",
+      "entryFee": "0.83",
+      "entryFeeBeforeDiscount": "0.83",
+      "entryFeeDiscount": "0.00",
+      "marginFeePercentage": "0.00023",
+      "maxPositionSizeUsd": "250000.00",
+      "newEntryPrice": "63463.6183",
+      "newLeverage": "500.00",
+      "newLiquidationPrice": "63400.1547",
+      "openPositionFeePercent": "0.02000",
+      "outputAmount": "6564253",
+      "outputAmountUi": "0.065642",
+      "passesMaxExposure": true,
+      "passesMaxPositionSize": true,
+      "passesMaxUtilization": true,
+      "youPayUsdUi": "9.99",
+      "youRecieveUsdUi": "4165.91"
+    },
+    "requestToVisibleMs": 429.976,
+    "signMs": 0.168,
+    "signature": "65To7RMUqd3rkd3kwif9V82DZV77bhpDrXr8JMpBehAYnxxUxqB7eA8MXC6N5YBfCsTA1XcRqMm7NcQJZMZhZ3QA",
+    "submission": {
+      "attempts": [
+        {
+          "attempt": 1,
+          "error": null,
+          "ms": 433.844,
+          "response": {
+            "rpc": "er",
+            "signature": "65To7RMUqd3rkd3kwif9V82DZV77bhpDrXr8JMpBehAYnxxUxqB7eA8MXC6N5YBfCsTA1XcRqMm7NcQJZMZhZ3QA"
+          }
+        }
+      ],
+      "error": null,
+      "response": {
+        "rpc": "er",
+        "signature": "65To7RMUqd3rkd3kwif9V82DZV77bhpDrXr8JMpBehAYnxxUxqB7eA8MXC6N5YBfCsTA1XcRqMm7NcQJZMZhZ3QA"
+      },
+      "submitMs": 433.854
+    },
+    "wsMessages": 6
+  },
+  "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+  "reportPath": "research/experiments/venue-checks/reports/flash/cycle-20260804T091819Z.json",
+  "side": "LONG",
+  "startedAt": "2026-08-04T09:18:19.808038+00:00",
+  "wsInitial": {
+    "data": {
+      "basketDataBase64Bytes": 236,
+      "basketPubkey": "2PbGy3LScGoJWZ68nxTpSDLUGtw4y1WggX4XJaaHQUR3",
+      "orderMetrics": {},
+      "owner": "3Lw9psijH7UNYvVbnUphMrttQfEUGGMaFh687oAUZC8U",
+      "positionMetrics": {}
+    },
+    "type": "basket"
+  }
+}

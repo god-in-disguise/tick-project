@@ -42,12 +42,21 @@ class FakeRepository:
             quote_payload={},
         )
 
-    def load_user_wallet_credentials(self, user_id: str) -> tuple[str, str]:
+    def load_user_wallet_credentials(
+        self,
+        user_id: str,
+        venue: str | None = None,
+    ) -> tuple[str, str]:
         assert user_id == "user_1"
+        assert venue in {None, "gtrade", "flash"}
         return "0x1111111111111111111111111111111111111111", "0x" + "1" * 64
 
-    def load_user_wallet_context(self, user_id: str) -> tuple[str, str, str]:
-        address, private_key = self.load_user_wallet_credentials(user_id)
+    def load_user_wallet_context(
+        self,
+        user_id: str,
+        venue: str | None = None,
+    ) -> tuple[str, str, str]:
+        address, private_key = self.load_user_wallet_credentials(user_id, venue)
         return "wallet_1", address, private_key
 
 
@@ -92,6 +101,12 @@ class NoGasAccounting:
         return Decimal(0)
 
 
+class ChargedGasAccounting:
+    def total_charges_usdc(self, user_id: str) -> Decimal:
+        assert user_id == "user_1"
+        return Decimal("1")
+
+
 def test_execution_service_dry_run_does_not_trade() -> None:
     service = ExecutionService(settings=Settings(tick_real_execution_enabled=False), repository=FakeRepository())
 
@@ -125,6 +140,28 @@ def test_execution_service_prepares_user_wallet_before_swipe() -> None:
 
     assert result["status"] == "ready"
     assert result["allowanceReady"] is True
+
+
+def test_flash_balance_does_not_inherit_gtrade_gas_charges() -> None:
+    service = ExecutionService(
+        settings=Settings(),
+        repository=FakeRepository(),
+        gas_accounting=ChargedGasAccounting(),
+    )
+
+    service._require_spendable(
+        user_id="user_1",
+        required_usdc=Decimal("10"),
+        raw_balance=Decimal("10"),
+        venue_name="flash",
+    )
+    with pytest.raises(InsufficientSpendableUSDC):
+        service._require_spendable(
+            user_id="user_1",
+            required_usdc=Decimal("10"),
+            raw_balance=Decimal("10"),
+            venue_name="gtrade",
+        )
 
 
 def test_open_worker_authoritatively_prepares_an_uncached_wallet() -> None:
@@ -163,6 +200,24 @@ def test_open_worker_uses_recent_successful_wallet_preparation() -> None:
     service.execute("exec_1")
 
     assert venue.preparations == 1
+
+
+def test_execution_service_resolves_the_venue_stored_on_the_attempt(monkeypatch) -> None:
+    repository = FakeRepository()
+    context = replace(repository.load("exec_1"), venue="flash")
+    flash = object()
+    created = []
+
+    def fake_create_venue(_settings, venue_name=None):
+        created.append(venue_name)
+        return flash
+
+    service = ExecutionService(settings=Settings(), repository=repository)
+    monkeypatch.setattr("tick_mvp.execution.service.create_venue", fake_create_venue)
+
+    assert service._venue_for_context(context) is flash
+    assert service._venue_for_context(context) is flash
+    assert created == ["flash"]
 
 
 def test_close_balance_waits_for_returned_collateral() -> None:

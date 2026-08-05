@@ -24,6 +24,7 @@ from tick_mvp.domain.schemas import (
     TradeIntentResponse,
     TradingProfileResponse,
     UserResponse,
+    VenueModeResponse,
     WalletAccountResponse,
     WalletBalancesResponse,
     WithdrawalRequest,
@@ -39,6 +40,7 @@ from tick_mvp.domain.states import (
     TradeIntentStatus,
     TradingMode,
     UserStatus,
+    VenueMode,
     WalletStatus,
     WalletType,
     WithdrawalStatus,
@@ -87,7 +89,7 @@ class MemoryStore:
     _user_by_provider: dict[tuple[AuthProvider, str], str] = field(default_factory=dict)
     _invites_by_hash: dict[str, InviteRecord] = field(default_factory=dict)
     _wallets: dict[str, WalletAccountResponse] = field(default_factory=dict)
-    _wallet_by_user: dict[str, str] = field(default_factory=dict)
+    _wallet_by_user: dict[tuple[str, VenueMode], str] = field(default_factory=dict)
     _intents: dict[str, TradeIntentResponse] = field(default_factory=dict)
     _executions: dict[str, ExecutionAttemptResponse] = field(default_factory=dict)
     _positions: dict[str, PositionResponse] = field(default_factory=dict)
@@ -95,6 +97,7 @@ class MemoryStore:
     _withdrawals: dict[str, WithdrawalResponse] = field(default_factory=dict)
     _profiles: dict[tuple[str, TradingMode], TradingProfileResponse] = field(default_factory=dict)
     _active_modes: dict[str, TradingMode] = field(default_factory=dict)
+    _active_venues: dict[str, VenueMode] = field(default_factory=dict)
     _idempotency: dict[tuple[str, TradingMode, int, str], tuple[str, str]] = field(default_factory=dict)
     _withdrawal_idempotency: dict[tuple[str, str], tuple[str, str]] = field(default_factory=dict)
 
@@ -129,6 +132,7 @@ class MemoryStore:
                 self._users[user.id] = user
                 self._user_by_provider[key] = user.id
                 self._active_modes[user.id] = TradingMode.DEMO
+                self._active_venues[user.id] = VenueMode.GTRADE
             else:
                 previous = self._users[existing_user_id]
                 user = previous.model_copy(
@@ -205,13 +209,43 @@ class MemoryStore:
             raise StoreNotFound("user not found")
         return user
 
-    def wallet_for_user(self, user_id: str) -> WalletAccountResponse:
+    def wallet_for_user(self, user_id: str, venue: VenueMode | str | None = None) -> WalletAccountResponse:
         with self._lock:
-            wallet_id = self._wallet_by_user.get(user_id)
+            selected = VenueMode(venue) if venue is not None else self._active_venue(user_id)
+            wallet_id = self._wallet_by_user.get((user_id, selected))
             wallet = self._wallets.get(wallet_id or "")
         if wallet is None:
             raise StoreNotFound("wallet not found")
         return wallet
+
+    def switch_venue(self, user_id: str, venue: VenueMode) -> VenueModeResponse:
+        with self._lock:
+            if any(
+                item.userId == user_id
+                and item.status in {
+                    PositionStatus.OPENING,
+                    PositionStatus.OPEN,
+                    PositionStatus.CLOSING,
+                    PositionStatus.UNKNOWN,
+                }
+                for item in self._positions.values()
+            ):
+                raise StoreConflict("finish the active trade before switching venue")
+            user = self._users.get(user_id)
+            if user is None:
+                raise StoreNotFound("user not found")
+            now = _now()
+            chain_id = 501 if venue == VenueMode.FLASH else 42161
+            wallet = self._wallet_for_user(
+                user_id,
+                chain_id=chain_id,
+                custody_provider="development",
+                now=now,
+                venue=venue,
+            )
+            self._active_venues[user_id] = venue
+            self._users[user_id] = user.model_copy(update={"activeVenue": venue})
+            return VenueModeResponse(venue=venue, wallet=wallet)
 
     def trading_profile(self, user_id: str) -> TradingProfileResponse:
         with self._lock:
@@ -324,6 +358,8 @@ class MemoryStore:
         with self._lock:
             if self._active_mode(user_id) == TradingMode.DEMO:
                 raise StoreConflict("withdrawals are unavailable in demo mode")
+            if self._active_venue(user_id) != VenueMode.GTRADE:
+                raise StoreConflict("Flash withdrawals are not wired into TICK testing mode yet")
             existing = self._withdrawal_idempotency.get((user_id, request.idempotencyKey))
             if existing is not None:
                 previous_hash, withdrawal_id = existing
@@ -331,7 +367,7 @@ class MemoryStore:
                     raise StoreConflict("idempotency key reused with different payload")
                 return self._withdrawals[withdrawal_id]
 
-            wallet_id = self._wallet_by_user.get(user_id)
+            wallet_id = self._wallet_by_user.get((user_id, VenueMode.GTRADE))
             if wallet_id is None:
                 raise StoreNotFound("wallet not found")
             if request.asset.upper() != "USDC":
@@ -391,7 +427,7 @@ class MemoryStore:
             userId=user_id,
             tradingMode=profile.mode,
             profileSeason=profile.season,
-            venue=self.default_venue,
+            venue=self._active_venue(user_id).value,
             market=_market(request.market),
             side=request.side,
             ticketUsd=request.ticketUsd,
@@ -429,6 +465,8 @@ class MemoryStore:
                 raise StoreConflict("quote expired")
             if quote.response.tradingMode != profile.mode or quote.response.profileSeason != profile.season:
                 raise StoreConflict("quote belongs to another trading profile")
+            if quote.response.venue != self._active_venue(user_id).value:
+                raise StoreConflict("quote belongs to another venue")
             if any(
                 item.userId == user_id
                 and item.tradingMode == profile.mode
@@ -581,12 +619,13 @@ class MemoryStore:
             reconciliations = list(self._reconciliations.values())
             withdrawals = list(self._withdrawals.values())
             user = self._users.get(user_id or "")
-            wallet = self._wallets.get(self._wallet_by_user.get(user_id or "") or "")
+            active_venue = self._active_venue(user_id) if user_id else VenueMode.GTRADE
+            wallet = self._wallets.get(self._wallet_by_user.get((user_id or "", active_venue)) or "")
             profile = self.trading_profile(user_id) if user_id else None
         if user_id is not None:
-            positions = [item for item in positions if item.userId == user_id and item.tradingMode == profile.mode and item.profileSeason == profile.season]
+            positions = [item for item in positions if item.userId == user_id and item.tradingMode == profile.mode and item.profileSeason == profile.season and item.venue == active_venue.value]
             intents = [item for item in intents if item.userId == user_id and item.tradingMode == profile.mode and item.profileSeason == profile.season]
-            executions = [item for item in executions if item.userId == user_id and item.tradingMode == profile.mode and item.profileSeason == profile.season]
+            executions = [item for item in executions if item.userId == user_id and item.tradingMode == profile.mode and item.profileSeason == profile.season and item.venue == active_venue.value]
             withdrawals = [item for item in withdrawals if item.userId == user_id and profile.mode == TradingMode.LIVE]
             position_ids = {item.id for item in positions}
             reconciliations = [item for item in reconciliations if item.positionId in position_ids]
@@ -613,24 +652,32 @@ class MemoryStore:
         position = self._positions.get(intent.positionId or "")
         return AcceptedTradeResponse(intent=intent, executionAttempt=execution, position=position)
 
-    def _wallet_for_user(self, user_id: str, *, chain_id: int, custody_provider: str, now: datetime) -> WalletAccountResponse:
-        wallet_id = self._wallet_by_user.get(user_id)
+    def _wallet_for_user(
+        self,
+        user_id: str,
+        *,
+        chain_id: int,
+        custody_provider: str,
+        now: datetime,
+        venue: VenueMode = VenueMode.GTRADE,
+    ) -> WalletAccountResponse:
+        wallet_id = self._wallet_by_user.get((user_id, venue))
         if wallet_id is not None:
             return self._wallets[wallet_id]
         wallet = WalletAccountResponse(
             id=_id("wallet"),
             userId=user_id,
             chainId=chain_id,
-            address=_dev_address(user_id),
+            address=_dev_address(f"{user_id}:{venue.value}"),
             walletType=WalletType.PLATFORM_CUSTODY,
             status=WalletStatus.ACTIVE,
             custodyProvider=custody_provider,
-            custodyKeyRef=f"development:{user_id}",
+            custodyKeyRef=f"development:{user_id}:{venue.value}",
             createdAt=now,
             updatedAt=now,
         )
         self._wallets[wallet.id] = wallet
-        self._wallet_by_user[user_id] = wallet.id
+        self._wallet_by_user[(user_id, venue)] = wallet.id
         return wallet
 
     def _ensure_profiles(self, user_id: str) -> None:
@@ -652,6 +699,9 @@ class MemoryStore:
     def _active_mode(self, user_id: str) -> TradingMode:
         self._ensure_profiles(user_id)
         return self._active_modes.get(user_id, TradingMode.LIVE)
+
+    def _active_venue(self, user_id: str) -> VenueMode:
+        return self._active_venues.get(user_id, VenueMode.GTRADE)
 
 
 def _id(prefix: str) -> str:

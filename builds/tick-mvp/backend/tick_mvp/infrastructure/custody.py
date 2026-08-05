@@ -50,3 +50,14 @@ class PlatformWalletFactory:
             address=account.address,
             encrypted_private_key=self._cipher.encrypt(account.key.hex()),
         )
+
+    def create_solana_wallet(self) -> GeneratedWallet:
+        import json
+
+        from solders.keypair import Keypair
+
+        keypair = Keypair()
+        return GeneratedWallet(
+            address=str(keypair.pubkey()),
+            encrypted_private_key=self._cipher.encrypt(json.dumps(list(bytes(keypair)))),
+        )

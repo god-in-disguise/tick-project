@@ -18,13 +18,21 @@ class VenueRouter:
 
     def start(self) -> None:
         for venue in self._venues.values():
-            start = getattr(venue, "start", None)
+            start = getattr(venue, "start_market_data", None) or getattr(
+                venue,
+                "start",
+                None,
+            )
             if start is not None:
                 start()
 
     def stop(self) -> None:
         for venue in reversed(list(self._venues.values())):
-            stop = getattr(venue, "stop", None)
+            stop = getattr(venue, "stop_market_data", None) or getattr(
+                venue,
+                "stop",
+                None,
+            )
             if stop is not None:
                 stop()
 
@@ -41,6 +49,7 @@ class VenueRouter:
     def quote_open(
         self,
         *,
+        venue: str | None = None,
         market: str,
         side: TradeSide,
         ticket_usd: Decimal,
@@ -48,8 +57,11 @@ class VenueRouter:
         max_loss_usd: Decimal | None,
         take_profit_usd: Decimal | None,
     ) -> VenueQuote:
-        venue = self._venue_for_market(market)
-        return venue.quote_open(
+        adapter = self._venue(venue) if venue else self._venue_for_market(market)
+        supports = getattr(adapter, "supports_market", None)
+        if supports is not None and not supports(market):
+            raise VenueError(f"{venue} does not support {market}")
+        return adapter.quote_open(
             market=market,
             side=side,
             ticket_usd=ticket_usd,
@@ -58,17 +70,18 @@ class VenueRouter:
             take_profit_usd=take_profit_usd,
         )
 
-    def markets(self, *, limit: int = 10) -> dict[str, Any]:
+    def markets(self, *, limit: int = 10, venue: str | None = None) -> dict[str, Any]:
         rows: list[dict[str, Any]] = []
-        for venue in self._venues.values():
-            method = getattr(venue, "markets", None)
+        selected = {venue: self._venue(venue)} if venue else self._venues
+        for adapter in selected.values():
+            method = getattr(adapter, "markets", None)
             if method is None:
                 continue
             payload = method(limit=limit)
             rows.extend(payload.get("markets") or [])
         rows.sort(key=lambda row: float(row.get("score") or 0), reverse=True)
         return {
-            "venue": "tick-router",
+            "venue": venue or "tick-router",
             "markets": rows,
         }
 
@@ -86,3 +99,10 @@ class VenueRouter:
         if market.upper().startswith("AARK-") and "aark" not in self._venues:
             raise VenueError("Aark route is not enabled")
         return self._venues[self._default_venue]
+
+    def _venue(self, name: str):
+        normalized = name.strip().lower()
+        try:
+            return self._venues[normalized]
+        except KeyError as exc:
+            raise VenueError(f"venue is not enabled: {normalized}") from exc

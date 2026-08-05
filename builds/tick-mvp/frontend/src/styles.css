@@ -2099,6 +2099,21 @@ button:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+.flash-funding-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.flash-funding-status strong {
+  color: var(--accent);
+  font-size: 12px;
+}
+
 .wallet-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

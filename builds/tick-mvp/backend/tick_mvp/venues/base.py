@@ -8,7 +8,7 @@ from typing import Any, Callable, Protocol
 from tick_mvp.domain.states import PositionStatus, TradeSide
 
 
-TransactionPreparedHandler = Callable[[str, int, str], None]
+TransactionPreparedHandler = Callable[[str, int | None, str], None]
 
 
 class VenueError(Exception):

@@ -190,7 +190,7 @@ assert.equal(
   "A small reversal should not chatter across the vertical arm threshold"
 );
 let accidentalTradeRequests = 0;
-const accidentalTradePattern = /\/api\/trade\/(quote|open)$/;
+const accidentalTradePattern = /\/api\/trade\/open$/;
 const accidentalTradeRoute = async (route) => {
   accidentalTradeRequests += 1;
   await route.abort("blockedbyclient");

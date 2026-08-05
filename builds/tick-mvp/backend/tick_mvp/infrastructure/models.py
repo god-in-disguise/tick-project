@@ -23,6 +23,7 @@ class User(Base, TimestampMixin):
     avatar_url: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, nullable=False)
     active_trading_mode: Mapped[str] = mapped_column(Text, nullable=False, default="live")
+    active_venue: Mapped[str] = mapped_column(Text, nullable=False, default="gtrade")
     last_login_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 
