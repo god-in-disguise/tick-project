@@ -92,6 +92,7 @@ def test_live_metrics_refresh_fee_aware_pnl_and_liquidation() -> None:
         Settings(),
         reducer=reducer,
         client_factory=lambda: client,
+        deposit_balance_reader=lambda _owner: Decimal("50"),
     )
 
     assert asyncio.run(monitor.check_once()) == 0
@@ -109,7 +110,7 @@ def test_absent_position_requires_confirmation_then_reconciles() -> None:
             "source": "er",
             "account": {
                 "positions": [],
-                "debits": [{"mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "amount": 49_000_000}],
+                "debits": [{"mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "amount": 1_000_000}],
                 "pendingCredits": [],
             },
         },
@@ -118,6 +119,7 @@ def test_absent_position_requires_confirmation_then_reconciles() -> None:
         Settings(),
         reducer=reducer,
         client_factory=lambda: client,
+        deposit_balance_reader=lambda _owner: Decimal("50"),
     )
 
     assert asyncio.run(monitor.check_once()) == 0

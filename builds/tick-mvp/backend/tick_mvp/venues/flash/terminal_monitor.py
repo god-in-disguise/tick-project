@@ -10,8 +10,10 @@ from tick_mvp.core.config import Settings
 from tick_mvp.domain.states import PositionStatus
 from tick_mvp.execution.terminal_reducer import TerminalEventReducer, TrackedPosition
 from tick_mvp.venues.base import TerminalPositionEvent
+from tick_mvp.venues.flash.balances import available_collateral_usd
 from tick_mvp.venues.flash.client import FlashClient
-from tick_mvp.venues.flash.constants import SOLANA_MAINNET_CHAIN_ID, USDC_MINT, USD_DECIMALS
+from tick_mvp.venues.flash.constants import SOLANA_MAINNET_CHAIN_ID
+from tick_mvp.venues.flash.funding import FlashSetupFunder
 
 
 LOGGER = logging.getLogger("tick.flash-terminal")
@@ -28,6 +30,7 @@ class FlashTerminalMonitor:
         reducer: TerminalEventReducer | None = None,
         *,
         client_factory: Callable[[], FlashClient] | None = None,
+        deposit_balance_reader: Callable[[str], Decimal] | None = None,
     ) -> None:
         self._settings = settings
         self._reducer = reducer or TerminalEventReducer(settings)
@@ -35,6 +38,20 @@ class FlashTerminalMonitor:
             lambda: FlashClient(settings.flash_api_url)
         )
         self._clients: dict[str, FlashClient] = {}
+        self._ledger_reader: FlashSetupFunder | None = None
+        if deposit_balance_reader is not None:
+            self._deposit_balance_reader = deposit_balance_reader
+        elif settings.solana_rpc_url:
+            self._ledger_reader = FlashSetupFunder(
+                settings.solana_rpc_url,
+                "",
+                setup_target_sol=settings.flash_setup_target_sol,
+            )
+            self._deposit_balance_reader = (
+                lambda owner: self._ledger_reader.wallet_state(owner).deposited_usdc
+            )
+        else:
+            self._deposit_balance_reader = lambda _owner: Decimal(0)
         self._absence_counts: dict[str, int] = {}
         self._last_metrics: dict[str, dict[str, Any]] = {}
 
@@ -79,6 +96,8 @@ class FlashTerminalMonitor:
         for client in self._clients.values():
             client.close()
         self._clients.clear()
+        if self._ledger_reader is not None:
+            self._ledger_reader.close()
 
     async def _observe(self, tracked: TrackedPosition) -> bool:
         client = self._clients.setdefault(tracked.owner, self._client_factory())
@@ -108,7 +127,14 @@ class FlashTerminalMonitor:
         if absence_count < ABSENCE_CONFIRMATIONS:
             return False
 
-        account_balance_after = _available_collateral_usd(raw_basket)
+        deposited_usdc = await asyncio.to_thread(
+            self._deposit_balance_reader,
+            tracked.owner,
+        )
+        account_balance_after = available_collateral_usd(
+            raw_basket,
+            deposited_usdc,
+        )
         last_metrics = self._last_metrics.get(tracked.id)
         reason = _terminal_reason(
             tracked,
@@ -207,21 +233,6 @@ def _selected_metrics(metrics: dict[str, Any]) -> dict[str, str | None]:
 def _raw_position_present(raw_basket: dict[str, Any], market_key: str) -> bool:
     positions = list((raw_basket.get("account") or {}).get("positions") or [])
     return any(str(position.get("market")) == market_key for position in positions)
-
-
-def _available_collateral_usd(raw_basket: dict[str, Any]) -> Decimal:
-    account = raw_basket.get("account") or {}
-    debits = _mint_amount(account.get("debits") or [])
-    pending = _mint_amount(account.get("pendingCredits") or [])
-    return max(Decimal(0), Decimal(debits - pending).scaleb(-USD_DECIMALS))
-
-
-def _mint_amount(rows: list[dict[str, Any]]) -> int:
-    return sum(
-        int(row.get("amount") or 0)
-        for row in rows
-        if row.get("mint") == USDC_MINT
-    )
 
 
 def _terminal_reason(

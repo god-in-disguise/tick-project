@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import Any
 
 from tick_mvp.domain.states import TradeSide
+from tick_mvp.venues.flash.balances import available_collateral_usd
 from tick_mvp.venues.base import (
     TransactionPreparedHandler,
     VenueCloseResult,
@@ -64,16 +65,15 @@ class FlashWalletExecutor:
             state = self._client.owner(owner)
             basket = state.get("basketPubkey")
             raw = self._client.raw_basket(str(basket)) if basket else {}
-            basket_available = _available_collateral_usd(raw) if basket else Decimal(0)
             deposited_available = Decimal(0)
-            available = basket_available
+            available = Decimal(0)
             setup_funding: dict[str, Any] | None = None
             wallet_usdc: Decimal | None = None
             if self._setup_funder is not None:
                 wallet_state = self._setup_funder.wallet_state(owner)
                 wallet_usdc = wallet_state.usdc
                 deposited_available = wallet_state.deposited_usdc
-                available += deposited_available
+                available = available_collateral_usd(raw, deposited_available)
                 if available + wallet_usdc < required_collateral_usd:
                     return {
                         "allowanceReady": False,
@@ -120,8 +120,7 @@ class FlashWalletExecutor:
 
             basket = str(basket)
             raw = self._client.raw_basket(basket)
-            basket_available = _available_collateral_usd(raw)
-            available = basket_available + deposited_available
+            available = available_collateral_usd(raw, deposited_available)
 
             if raw.get("source") != "er":
                 actions.append(
@@ -162,9 +161,13 @@ class FlashWalletExecutor:
                 else:
                     raw = self._wait_raw(
                         basket,
-                        lambda value: _available_collateral_usd(value) >= expected_available,
+                        lambda value: available_collateral_usd(
+                            value,
+                            deposited_available,
+                        )
+                        >= expected_available,
                     )
-                    available = _available_collateral_usd(raw)
+                    available = available_collateral_usd(raw, deposited_available)
 
             if raw.get("source") != "er":
                 raw = self._wait_raw(
@@ -210,8 +213,9 @@ class FlashWalletExecutor:
         account = initial.get("account") or {}
         if account.get("positions") or account.get("orders"):
             raise FlashError("Flash basket is not empty")
-        account_balance_before = (
-            _available_collateral_usd(initial) + self._deposited_collateral_usd(owner)
+        account_balance_before = available_collateral_usd(
+            initial,
+            self._deposited_collateral_usd(owner),
         )
 
         prepared = self._client.prepare(
@@ -380,7 +384,10 @@ class FlashWalletExecutor:
         basket = self._basket(owner)
         snapshot = self._client.raw_basket(basket)
         self._remember(owner, basket, snapshot)
-        return _available_collateral_usd(snapshot) + self._deposited_collateral_usd(owner)
+        return available_collateral_usd(
+            snapshot,
+            self._deposited_collateral_usd(owner),
+        )
 
     def current_liquidation_price(self, *, position: dict[str, Any] | None, **_: Any):
         del position
@@ -491,9 +498,9 @@ class FlashWalletExecutor:
         available = Decimal(0)
         while time.monotonic() - started < timeout_seconds:
             latest = self._client.raw_basket(basket)
-            available = (
-                _available_collateral_usd(latest)
-                + self._deposited_collateral_usd(owner)
+            available = available_collateral_usd(
+                latest,
+                self._deposited_collateral_usd(owner),
             )
             if available >= expected:
                 return available, latest
@@ -510,21 +517,6 @@ class FlashWalletExecutor:
 
 def _positions(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     return list((snapshot.get("account") or {}).get("positions") or [])
-
-
-def _available_collateral_usd(snapshot: dict[str, Any]) -> Decimal:
-    account = snapshot.get("account") or {}
-    debits = _mint_amount(account.get("debits") or [])
-    pending_credits = _mint_amount(account.get("pendingCredits") or [])
-    return max(Decimal(0), Decimal(debits - pending_credits).scaleb(-USD_DECIMALS))
-
-
-def _mint_amount(rows: list[dict[str, Any]]) -> int:
-    return sum(
-        int(row.get("amount") or 0)
-        for row in rows
-        if row.get("mint") == USDC_MINT
-    )
 
 
 def _single_position(

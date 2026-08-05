@@ -8,7 +8,8 @@ import requests
 from tick_mvp.core.config import Settings
 from tick_mvp.domain.schemas import WalletAccountResponse, WalletBalancesResponse
 from tick_mvp.domain.states import VenueMode
-from tick_mvp.venues.flash.constants import SOLANA_MAINNET_CHAIN_ID, USDC_MINT, USD_DECIMALS
+from tick_mvp.venues.flash.balances import available_collateral_usd
+from tick_mvp.venues.flash.constants import SOLANA_MAINNET_CHAIN_ID, USDC_MINT
 from tick_mvp.venues.flash.deposit_ledger import deposit_ledger_address, deposit_ledger_usdc
 
 
@@ -67,7 +68,7 @@ def read_flash_wallet_balances(
         owner_response.raise_for_status()
         basket = owner_response.json().get("basketPubkey")
         venue_ready = bool(basket)
-        basket_usdc = Decimal(0)
+        spendable = deposited_usdc
         if basket:
             basket_response = requests.get(
                 f"{settings.flash_api_url.rstrip('/')}/raw/baskets/{basket}",
@@ -75,8 +76,10 @@ def read_flash_wallet_balances(
                 headers={"user-agent": "tick-mvp-flash/0.1"},
             )
             basket_response.raise_for_status()
-            basket_usdc = _basket_available_usdc(basket_response.json())
-        spendable = basket_usdc + deposited_usdc
+            spendable = available_collateral_usd(
+                basket_response.json(),
+                deposited_usdc,
+            )
         return WalletBalancesResponse(
             chainId=SOLANA_MAINNET_CHAIN_ID,
             address=wallet.address,
@@ -114,17 +117,6 @@ def _token_total(payload: dict) -> Decimal:
         token = row["account"]["data"]["parsed"]["info"]["tokenAmount"]
         total += Decimal(str(token["amount"])).scaleb(-int(token["decimals"]))
     return total
-
-
-def _basket_available_usdc(payload: dict) -> Decimal:
-    account = payload.get("account") or {}
-    debits = _mint_amount(account.get("debits") or [])
-    pending_credits = _mint_amount(account.get("pendingCredits") or [])
-    return max(Decimal(0), Decimal(debits - pending_credits).scaleb(-USD_DECIMALS))
-
-
-def _mint_amount(rows: list[dict]) -> int:
-    return sum(int(row.get("amount") or 0) for row in rows if row.get("mint") == USDC_MINT)
 
 
 def _unavailable(

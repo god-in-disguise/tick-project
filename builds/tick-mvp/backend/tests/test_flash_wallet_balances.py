@@ -40,7 +40,7 @@ def test_flash_deposit_ledger_address_and_usdc_decoder() -> None:
     assert decode_deposit_ledger_usdc(_ledger_data(15_000_000)) == Decimal("15")
 
 
-def test_flash_balance_includes_deposit_ledger_collateral(monkeypatch) -> None:
+def test_flash_balance_subtracts_basket_debits_from_deposit_ledger(monkeypatch) -> None:
     encoded = base64.b64encode(_ledger_data(15_000_000)).decode()
 
     def post(*_args, **_kwargs):
@@ -59,7 +59,10 @@ def test_flash_balance_includes_deposit_ledger_collateral(monkeypatch) -> None:
             return Response({"basketPubkey": "basket"})
         return Response({
             "source": "er",
-            "account": {"debits": [], "pendingCredits": []},
+            "account": {
+                "debits": [{"mint": USDC_MINT, "amount": 10_000_000}],
+                "pendingCredits": [],
+            },
         })
 
     monkeypatch.setattr("tick_mvp.infrastructure.flash_wallet_balances.requests.post", post)
@@ -74,8 +77,8 @@ def test_flash_balance_includes_deposit_ledger_collateral(monkeypatch) -> None:
         Settings(solana_rpc_url="https://solana.invalid"),
     )
 
-    assert balances.usdc == Decimal("15")
+    assert balances.usdc == Decimal("5")
     assert balances.onchainUsdc == Decimal(0)
-    assert balances.spendableUsdc == Decimal("15")
+    assert balances.spendableUsdc == Decimal("5")
     assert balances.venueReady is True
     assert balances.source == "solana_rpc+flash_raw_basket+deposit_ledger"

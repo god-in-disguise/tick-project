@@ -203,6 +203,7 @@ class SetupClient:
         self.available = Decimal(0)
         self.delegated = False
         self.paths: list[str] = []
+        self.funder = None
 
     def owner(self, owner: str):
         return {"owner": owner, "basketPubkey": self.basket}
@@ -236,7 +237,12 @@ class SetupClient:
         if path.endswith("init-basket"):
             self.basket = "basket"
         elif path.endswith("deposit-direct"):
-            self.available += Decimal(prepared.quote["body"]["amount"])
+            amount = Decimal(prepared.quote["body"]["amount"])
+            if self.funder is not None:
+                self.funder.deposited_usdc += amount
+                self.funder.usdc -= amount
+            else:
+                self.available += amount
         elif path.endswith("delegate-basket"):
             self.delegated = True
         return {"signature": prepared.signature, "skipPreflight": skip_preflight}
@@ -278,7 +284,13 @@ class SetupFunder:
 
 def test_flash_wallet_first_preparation_initializes_and_funds_once(monkeypatch) -> None:
     client = SetupClient()
-    wallet = FlashWalletExecutor(client, slippage_percentage=Decimal("0.5"))
+    funder = SetupFunder(usdc=Decimal("10"))
+    client.funder = funder
+    wallet = FlashWalletExecutor(
+        client,
+        slippage_percentage=Decimal("0.5"),
+        setup_funder=funder,
+    )
     monkeypatch.setattr("tick_mvp.venues.flash.wallet.time.sleep", lambda _seconds: None)
     secret = "0x" + "01" * 32
 
@@ -320,6 +332,7 @@ def test_flash_wallet_waits_for_usdc_before_platform_sol(monkeypatch) -> None:
 def test_flash_wallet_platform_funds_setup_and_deposits_all_usdc(monkeypatch) -> None:
     client = SetupClient()
     funder = SetupFunder(usdc=Decimal("12.5"))
+    client.funder = funder
     wallet = FlashWalletExecutor(
         client,
         slippage_percentage=Decimal("0.5"),
@@ -333,7 +346,7 @@ def test_flash_wallet_platform_funds_setup_and_deposits_all_usdc(monkeypatch) ->
     assert result["allowanceReady"] is True
     assert Decimal(result["collateralBalanceUsd"]) == Decimal("12.5")
     assert funder.targets == [Decimal("0.075")]
-    assert client.available == Decimal("12.5")
+    assert funder.deposited_usdc == Decimal("12.5")
     assert any(
         item["builderPath"] == "/transaction-builder/deposit-direct"
         for item in result["setupTransactions"]
@@ -343,9 +356,9 @@ def test_flash_wallet_platform_funds_setup_and_deposits_all_usdc(monkeypatch) ->
 def test_flash_wallet_later_deposit_uses_operational_sol_target(monkeypatch) -> None:
     client = SetupClient()
     client.basket = "basket"
-    client.available = Decimal("5")
     client.delegated = True
-    funder = SetupFunder(usdc=Decimal("7"))
+    funder = SetupFunder(usdc=Decimal("7"), deposited_usdc=Decimal("5"))
+    client.funder = funder
     wallet = FlashWalletExecutor(
         client,
         slippage_percentage=Decimal("0.5"),
