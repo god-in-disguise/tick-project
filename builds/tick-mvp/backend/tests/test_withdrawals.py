@@ -14,6 +14,7 @@ from tick_mvp.wallets.arbitrum import (
 )
 from tick_mvp.wallets.repository import WithdrawalContext
 from tick_mvp.wallets.service import WithdrawalService
+from tick_mvp.venues.flash.constants import SOLANA_MAINNET_CHAIN_ID
 
 
 TX_HASH = "0x" + "ab" * 32
@@ -34,6 +35,12 @@ class FakeRepository:
 
     def mark_broadcast(self, withdrawal_id: str, **kwargs) -> None:
         self.calls.append(("broadcast", withdrawal_id, kwargs))
+
+    def mark_venue_stage_prepared(self, withdrawal_id: str, **kwargs) -> None:
+        self.calls.append(("venue_prepared", withdrawal_id, kwargs))
+
+    def mark_venue_stage_broadcast(self, withdrawal_id: str, **kwargs) -> None:
+        self.calls.append(("venue_broadcast", withdrawal_id, kwargs))
 
     def mark_confirmed(self, withdrawal_id: str, **kwargs) -> None:
         self.calls.append(("confirmed", withdrawal_id, kwargs))
@@ -68,6 +75,32 @@ class FakeExecutor:
 
     def close(self) -> None:
         pass
+
+
+class FakeSolanaExecutor(FakeExecutor):
+    def transfer(
+        self,
+        context,
+        *,
+        on_venue_prepared,
+        on_venue_broadcast,
+        on_prepared,
+        on_broadcast,
+    ):
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+        on_venue_prepared("flash_release_signature", "flash_release_raw")
+        on_venue_broadcast(
+            "flash_release_signature",
+            {"signature": "flash_release_signature"},
+        )
+        on_prepared("solana_transfer_signature", None, "solana_transfer_raw")
+        on_broadcast(
+            "solana_transfer_signature",
+            {"signature": "solana_transfer_signature"},
+        )
+        return self.result
 
 
 class FakeGasFunding:
@@ -192,6 +225,59 @@ def test_transport_error_remains_retryable() -> None:
     assert repository.calls[-1][0] == "retryable"
 
 
+def test_flash_withdrawal_uses_solana_route_and_platform_fee_payer() -> None:
+    repository = FakeRepository(
+        _context(
+            chain_id=SOLANA_MAINNET_CHAIN_ID,
+            wallet_address="flash_owner",
+            destination_address="solana_destination",
+        )
+    )
+    arbitrum = FakeExecutor(_confirmed_result())
+    solana = FakeSolanaExecutor(
+        WalletTransferResult(
+            status="confirmed",
+            tx_hash="solana_transfer_signature",
+            nonce=0,
+            block_number=321,
+            gas_used=0,
+            effective_gas_price=0,
+            gas_cost_native=Decimal("0.000005"),
+            payload={"network": "solana", "feePayer": "platform"},
+        )
+    )
+    gas_funding = FakeGasFunding()
+    gas_accounting = FakeGasAccounting()
+    service = WithdrawalService(
+        settings=Settings(
+            tick_real_execution_enabled=True,
+            flash_real_execution_enabled=True,
+        ),
+        repository=repository,
+        executor=arbitrum,
+        solana_executor=solana,
+        gas_funding=gas_funding,
+        gas_accounting=gas_accounting,
+    )
+
+    result = service.execute("withdrawal_1")
+
+    assert result["status"] == "confirmed"
+    assert arbitrum.calls == 0
+    assert solana.calls == 1
+    assert gas_funding.funded == 0
+    assert gas_funding.spent == []
+    assert gas_accounting.transactions == []
+    assert [call[0] for call in repository.calls] == [
+        "load",
+        "venue_prepared",
+        "venue_broadcast",
+        "signed",
+        "broadcast",
+        "confirmed",
+    ]
+
+
 def test_usdc_amount_rejects_more_than_six_decimals() -> None:
     assert _amount_units(Decimal("10.123456")) == 10_123_456
     with pytest.raises(WithdrawalRejected, match="6 decimal"):
@@ -202,16 +288,20 @@ def _context(
     *,
     status: WithdrawalStatus = WithdrawalStatus.VALIDATED,
     tx_hash: str | None = None,
+    chain_id: int = 42161,
+    wallet_address: str = "0x" + "12" * 20,
+    destination_address: str = "0x" + "56" * 20,
 ) -> WithdrawalContext:
     return WithdrawalContext(
         withdrawal_id="withdrawal_1",
         user_id="user_1",
         wallet_id="wallet_1",
-        wallet_address="0x" + "12" * 20,
+        chain_id=chain_id,
+        wallet_address=wallet_address,
         private_key_hex="0x" + "34" * 32,
         asset="USDC",
         amount=Decimal("10"),
-        destination_address="0x" + "56" * 20,
+        destination_address=destination_address,
         status=status,
         tx_hash=tx_hash,
         nonce=7 if tx_hash else None,

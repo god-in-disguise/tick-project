@@ -358,8 +358,7 @@ class MemoryStore:
         with self._lock:
             if self._active_mode(user_id) == TradingMode.DEMO:
                 raise StoreConflict("withdrawals are unavailable in demo mode")
-            if self._active_venue(user_id) != VenueMode.GTRADE:
-                raise StoreConflict("Flash withdrawals are not wired into TICK testing mode yet")
+            venue = self._active_venue(user_id)
             existing = self._withdrawal_idempotency.get((user_id, request.idempotencyKey))
             if existing is not None:
                 previous_hash, withdrawal_id = existing
@@ -367,11 +366,11 @@ class MemoryStore:
                     raise StoreConflict("idempotency key reused with different payload")
                 return self._withdrawals[withdrawal_id]
 
-            wallet_id = self._wallet_by_user.get((user_id, VenueMode.GTRADE))
+            wallet_id = self._wallet_by_user.get((user_id, venue))
             if wallet_id is None:
                 raise StoreNotFound("wallet not found")
             if request.asset.upper() != "USDC":
-                raise StoreConflict("only Arbitrum USDC withdrawals are supported")
+                raise StoreConflict("only USDC withdrawals are supported")
             if any(
                 item.userId == user_id
                 and item.status

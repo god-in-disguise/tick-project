@@ -8,9 +8,10 @@ Production-shaped MVP for TICK.
 - Frontend: Vercel, PWA-first for fast sharing; mobile-shaped UX copied from the local Expo MVP.
 - Database: Postgres.
 - Runtime cache/pubsub: Redis.
-- Venue: gTrade/Gains first, venue-agnostic primitives.
+- Venues: gTrade/Gains default plus a selectable Flash Trade production canary.
 - Auth: invitation-code login and backend-issued TICK session JWT.
-- Wallets: platform-created Arbitrum wallets with encrypted Postgres key material for MVP.
+- Wallets: isolated platform-created Arbitrum and Solana wallets with encrypted
+  Postgres key material.
 
 ## Backend Processes
 
@@ -32,7 +33,7 @@ The PWA is a distribution choice for the first deployable MVP. The product refer
 
 ## MVP Rules
 
-- one live venue at first;
+- one active venue per user;
 - one active position per user;
 - one in-flight command per user;
 - optional stop and take-profit orders must be placed at the venue;
@@ -51,6 +52,10 @@ The PWA is a distribution choice for the first deployable MVP. The product refer
 - Real delegated gTrade open/close execution is extracted and live-tested.
   The user wallet owns collateral and the position; TICK's platform agent pays
   Arbitrum gas.
+- Flash Trade is selectable as an isolated production canary. BTC and ETH
+  100x/500x execution, per-user Solana wallets, automatic SOL setup funding,
+  Flash custody deposits, and USDC withdrawals are wired without changing the
+  gTrade route.
 - invite/session JWTs, per-user encrypted wallets, USDC deposits, automatic
   withdrawals, idempotent trade intents, venue-native SL/TP, terminal events,
   and final wallet reconciliation are wired.

@@ -34,17 +34,29 @@ def keypair_from_secret(secret: str):
 
 
 def sign_built_transaction(transaction_base64: str, keypair) -> PreparedFlashTransaction:
+    return sign_built_transaction_multi(transaction_base64, [keypair])
+
+
+def sign_built_transaction_multi(
+    transaction_base64: str,
+    keypairs: list,
+) -> PreparedFlashTransaction:
     from solders.transaction import VersionedTransaction
 
     unsigned = VersionedTransaction.from_bytes(base64.b64decode(transaction_base64))
     signer_count = unsigned.message.header.num_required_signatures
     required = list(unsigned.message.account_keys[:signer_count])
-    if required != [keypair.pubkey()]:
+    available = {keypair.pubkey(): keypair for keypair in keypairs}
+    missing = [pubkey for pubkey in required if pubkey not in available]
+    if missing:
         raise ValueError(
             "Flash transaction requested unexpected signers: "
-            + ", ".join(map(str, required))
+            + ", ".join(map(str, missing))
         )
-    signed = VersionedTransaction(unsigned.message, [keypair])
+    signed = VersionedTransaction(
+        unsigned.message,
+        [available[pubkey] for pubkey in required],
+    )
     return PreparedFlashTransaction(
         signature=str(signed.signatures[0]),
         signed_transaction_base64=base64.b64encode(bytes(signed)).decode("ascii"),

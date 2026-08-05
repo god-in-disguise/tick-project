@@ -470,15 +470,19 @@ class SQLAlchemyStore:
                 raise StoreNotFound("user not found")
             if user.active_trading_mode == TradingMode.DEMO.value:
                 raise StoreConflict("withdrawals are unavailable in demo mode")
-            if user.active_venue != VenueMode.GTRADE.value:
-                raise StoreConflict("Flash withdrawals are not wired into TICK testing mode yet")
+            if (
+                user.active_venue == VenueMode.FLASH.value
+                and not self._settings.flash_real_execution_enabled
+            ):
+                raise StoreConflict("Flash withdrawals are not enabled")
             if request.asset.upper() != "USDC":
-                raise StoreConflict("only Arbitrum USDC withdrawals are supported")
+                raise StoreConflict("only USDC withdrawals are supported")
             if _active_position_exists(session, user_id):
                 raise StoreConflict("withdrawal unavailable while a position is active")
             if _pending_withdrawal_exists(session, user_id):
                 raise StoreConflict("user already has a pending withdrawal")
-            wallet = _venue_wallet(session, user_id, VenueMode.GTRADE, self.chain_id)
+            venue = VenueMode(user.active_venue)
+            wallet = _venue_wallet(session, user_id, venue, self.chain_id)
             if wallet is None:
                 raise StoreNotFound("wallet not found")
             withdrawal = Withdrawal(
@@ -493,7 +497,10 @@ class SQLAlchemyStore:
                 status=WithdrawalStatus.REQUESTED.value,
                 created_at=now,
                 updated_at=now,
-                payload={},
+                payload={
+                    "venue": venue.value,
+                    "chainId": wallet.chain_id,
+                },
             )
             session.add(withdrawal)
             session.flush()

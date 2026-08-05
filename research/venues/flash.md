@@ -155,20 +155,20 @@ after two transitions exceeded the bounded observation window.
 
 ## TICK Activation Boundary
 
-The venue adapter and local per-user wallet split are no longer the blockers.
-Production activation still requires:
+The venue adapter, production per-user wallet split, setup sponsorship, custody
+deposit, and wallet withdrawal paths are wired. Broader activation still requires:
 
 ```text
 owner WebSocket terminal events for liquidation/external close
 restart backfill from the authoritative raw basket
 venue cash-flow versus TICK ledger reconciliation
-Flash withdrawal and returned-credit recycling in the TICK UI
 funded end-to-end cycles through newly generated TICK user wallets
 ```
 
-TICK will not route user money through the shared canary basket. The local app
-now offers a Flash testing mode backed by a separate encrypted wallet per user,
-while the production PWA remains on gTrade until these gates pass.
+TICK does not route user money through the shared canary basket. The production
+PWA offers Flash as a selectable canary backed by a separate encrypted Solana
+wallet per user. gTrade remains the default route while the remaining gates are
+measured.
 
 A follow-up 12-request builder benchmark isolated the open-build delay:
 

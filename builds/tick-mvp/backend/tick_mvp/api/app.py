@@ -387,9 +387,14 @@ def create_app(store: Any | None = None) -> FastAPI:
             balances = _wallet_balances(store, user_id, wallet)
             if balances.spendableUsdc is None:
                 raise StoreConflict("wallet balance is temporarily unavailable")
-            if body.amount > balances.spendableUsdc:
+            withdrawable = balances.spendableUsdc
+            if balances.venue == VenueMode.FLASH:
+                withdrawable += balances.onchainUsdc or 0
+                if not get_settings().flash_real_execution_enabled:
+                    raise StoreConflict("Flash withdrawals are not enabled")
+            if body.amount > withdrawable:
                 raise StoreConflict(
-                    f"insufficient spendable USDC: {balances.spendableUsdc:.6f} available"
+                    f"insufficient withdrawable USDC: {withdrawable:.6f} available"
                 )
             withdrawal = store.request_withdrawal(user_id, body)
             if get_settings().tick_enqueue_jobs:

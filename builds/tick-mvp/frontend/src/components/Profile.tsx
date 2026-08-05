@@ -92,6 +92,9 @@ export function Profile(props: Props) {
   const winRate = settled.length ? Math.round(wins / settled.length * 100) : 0;
   const displayName = props.session?.user?.displayName || "TICK trader";
   const available = props.balances?.spendableUsdc ?? props.balances?.usdc ?? 0;
+  const withdrawable = props.activeVenue === "flash"
+    ? available + (props.balances?.onchainUsdc ?? 0)
+    : available;
   const profile = props.state?.tradingProfile;
   const resolvedTicketUsd = effectiveTicketUsd(props.settings, props.market);
   const demoMode = profile?.mode === "demo";
@@ -222,9 +225,8 @@ export function Profile(props: Props) {
               </button>
               <button
                 type="button"
-                disabled={available <= 0 || props.activeVenue === "flash"}
+                disabled={withdrawable <= 0}
                 onClick={() => setWalletAction("withdraw")}
-                title={props.activeVenue === "flash" ? "Flash withdrawals are still manual in testing mode" : undefined}
               >
                 <ArrowUpFromLine size={16} />
                 Withdraw
@@ -662,7 +664,9 @@ export function Profile(props: Props) {
               <>
                 <span className="wallet-sheet-kicker">{network.toUpperCase()}</span>
                 <h2>Withdraw USDC</h2>
-                <p>USDC is sent directly from your TICK wallet.</p>
+                <p>
+                  USDC is sent on {props.activeVenue === "flash" ? "Solana" : "Arbitrum One"}.
+                </p>
                 <form className="withdraw-form" onSubmit={withdraw}>
                   <label>
                     Amount
@@ -685,7 +689,7 @@ export function Profile(props: Props) {
                         type="button"
                         onClick={() =>
                           setWithdrawAmount(
-                            String(Math.max(0, props.balances?.spendableUsdc ?? 0))
+                            String(Math.max(0, withdrawable))
                           )
                         }
                       >
@@ -699,7 +703,7 @@ export function Profile(props: Props) {
                       type="text"
                       autoCapitalize="none"
                       autoCorrect="off"
-                      placeholder="0x..."
+                      placeholder={props.activeVenue === "flash" ? "Solana address" : "0x..."}
                       value={withdrawAddress}
                       onChange={(event) => setWithdrawAddress(event.target.value)}
                       required

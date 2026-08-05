@@ -192,6 +192,25 @@ def test_withdrawal_request_is_idempotent() -> None:
     assert store.state(user.id).withdrawals[0].id == first.id
 
 
+def test_flash_withdrawal_uses_the_users_solana_wallet() -> None:
+    store = MemoryStore(default_venue="gtrade")
+    user, _ = _test_user(store, "flash-withdrawal", "Flash Withdrawal")
+    store.switch_trading_mode(user.id, TradingMode.LIVE)
+    flash = store.switch_venue(user.id, VenueMode.FLASH)
+
+    withdrawal = store.request_withdrawal(
+        user.id,
+        WithdrawalRequest(
+            amount="1.25",
+            destinationAddress="11111111111111111111111111111111",
+            idempotencyKey="flash-withdrawal-0001",
+        ),
+    )
+
+    assert flash.wallet.chainId == 501
+    assert withdrawal.walletId == flash.wallet.id
+
+
 def test_pending_withdrawal_blocks_a_new_position() -> None:
     store = MemoryStore(default_venue="gtrade")
     user, _ = _test_user(store, "withdrawal-lock", "Withdrawal Lock")
