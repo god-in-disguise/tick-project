@@ -9,6 +9,7 @@ from tick_mvp.core.config import Settings
 from tick_mvp.domain.schemas import WalletAccountResponse, WalletBalancesResponse
 from tick_mvp.domain.states import VenueMode
 from tick_mvp.venues.flash.constants import SOLANA_MAINNET_CHAIN_ID, USDC_MINT, USD_DECIMALS
+from tick_mvp.venues.flash.deposit_ledger import deposit_ledger_address, deposit_ledger_usdc
 
 
 def read_flash_wallet_balances(
@@ -36,6 +37,15 @@ def read_flash_wallet_balances(
                     {"encoding": "jsonParsed", "commitment": "confirmed"},
                 ],
             },
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "getAccountInfo",
+                "params": [
+                    deposit_ledger_address(wallet.address),
+                    {"encoding": "base64", "commitment": "confirmed"},
+                ],
+            },
         ]
         rpc_response = requests.post(
             settings.solana_rpc_url,
@@ -47,6 +57,7 @@ def read_flash_wallet_balances(
         rpc = _result_by_id(rpc_response.json())
         native_sol = Decimal(int(rpc[1]["value"])).scaleb(-9)
         wallet_usdc = _token_total(rpc[2])
+        deposited_usdc = deposit_ledger_usdc(rpc[3].get("value"))
 
         owner_response = requests.get(
             f"{settings.flash_api_url.rstrip('/')}/owner/{wallet.address}",
@@ -56,7 +67,7 @@ def read_flash_wallet_balances(
         owner_response.raise_for_status()
         basket = owner_response.json().get("basketPubkey")
         venue_ready = bool(basket)
-        spendable = Decimal(0)
+        basket_usdc = Decimal(0)
         if basket:
             basket_response = requests.get(
                 f"{settings.flash_api_url.rstrip('/')}/raw/baskets/{basket}",
@@ -64,7 +75,8 @@ def read_flash_wallet_balances(
                 headers={"user-agent": "tick-mvp-flash/0.1"},
             )
             basket_response.raise_for_status()
-            spendable = _basket_available_usdc(basket_response.json())
+            basket_usdc = _basket_available_usdc(basket_response.json())
+        spendable = basket_usdc + deposited_usdc
         return WalletBalancesResponse(
             chainId=SOLANA_MAINNET_CHAIN_ID,
             address=wallet.address,
@@ -77,7 +89,7 @@ def read_flash_wallet_balances(
             venue=VenueMode.FLASH,
             network="Solana",
             venueReady=venue_ready,
-            source="solana_rpc+flash_raw_basket",
+            source="solana_rpc+flash_raw_basket+deposit_ledger",
             fetchedAt=fetched_at,
             unavailableReason=None if venue_ready else "Flash account setup is pending",
         )

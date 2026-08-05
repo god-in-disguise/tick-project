@@ -78,6 +78,7 @@ export function useTick(initialSession: Session) {
   const resultTimer = useRef<number | null>(null);
   const backgroundFailures = useRef(0);
   const resumeGraceUntil = useRef(Date.now() + 6_000);
+  const venueSwitchTarget = useRef<VenueMode | null>(null);
 
   const rememberQuote = useCallback((quote: Quote) => {
     quoteCache.current[quote.quoteId] = quote;
@@ -90,8 +91,8 @@ export function useTick(initialSession: Session) {
     [state]
   );
   const routedMarkets = useMemo(
-    () => routeMarkets(markets, settings.leverage),
-    [markets, settings.leverage]
+    () => routeMarkets(markets, settings.leverage, activeVenue === "flash"),
+    [activeVenue, markets, settings.leverage]
   );
 
   const activeMarket = useMemo(
@@ -184,7 +185,9 @@ export function useTick(initialSession: Session) {
       const next = await api.state();
       markBackgroundSuccess();
       setState(next);
-      if (next.user?.activeVenue) setActiveVenue(next.user.activeVenue);
+      if (next.user?.activeVenue && venueSwitchTarget.current === null) {
+        setActiveVenue(next.user.activeVenue);
+      }
       if (
         next.tradingProfile?.mode === "demo"
         && typeof next.tradingProfile.balanceUsd === "number"
@@ -286,7 +289,11 @@ export function useTick(initialSession: Session) {
         try {
           const nextMarkets = await api.markets({ includeTape: true, venue: activeVenue });
           if (!alive) return;
-          const firstMarket = routeMarkets(nextMarkets, settings.leverage)[0]?.market;
+          const firstMarket = routeMarkets(
+            nextMarkets,
+            settings.leverage,
+            activeVenue === "flash"
+          )[0]?.market;
           if (!firstMarket) throw new Error("No tradeable markets are available");
           markBackgroundSuccess();
           for (const market of nextMarkets) {
@@ -547,35 +554,61 @@ export function useTick(initialSession: Session) {
   const switchVenue = useCallback(async (venue: VenueMode) => {
     if (profileBusy) return false;
     if (activeVenue === venue) return true;
+    const previousVenue = activeVenue;
+    const previousSettings = settings;
+    const nextSettings = venue === "flash"
+      ? {
+          ...settings,
+          leverage: settings.leverage >= 500 ? 500 : 100,
+          stopLossEnabled: false,
+          takeProfitEnabled: false
+        }
+      : settings;
+    venueSwitchTarget.current = venue;
+    setActiveVenue(venue);
+    if (nextSettings !== settings) setSettings(nextSettings);
     setProfileBusy(true);
     try {
-      await api.switchVenue(venue);
-      const nextSettings = venue === "flash"
-        ? {
-            ...settings,
-            leverage: settings.leverage >= 500 ? 500 : 100,
-            stopLossEnabled: false,
-            takeProfitEnabled: false
-          }
-        : settings;
-      if (nextSettings !== settings) setSettings(nextSettings);
-      const nextMarkets = await api.markets({ includeTape: true, venue });
-      const firstMarket = routeMarkets(nextMarkets, nextSettings.leverage)[0]?.market;
+      const [, nextMarkets] = await Promise.all([
+        api.switchVenue(venue),
+        api.markets({ venue })
+      ]);
+      const firstMarket = routeMarkets(
+        nextMarkets,
+        nextSettings.leverage,
+        venue === "flash"
+      )[0]?.market;
       if (!firstMarket) throw new Error(`No ${venue} markets are available`);
       sequences.current = {};
       for (const market of nextMarkets) sequences.current[market.market] = market.sequence;
-      setActiveVenue(venue);
       setMarkets(nextMarkets);
       setActiveMarketId(firstMarket);
-      await reloadProfileState();
+      void loadMarketChart(firstMarket).catch(showBackgroundError);
+      void reloadProfileState()
+        .catch(showBackgroundError)
+        .finally(() => {
+          if (venueSwitchTarget.current === venue) venueSwitchTarget.current = null;
+        });
       return true;
     } catch (cause) {
+      venueSwitchTarget.current = null;
+      setActiveVenue(previousVenue);
+      if (nextSettings !== previousSettings) setSettings(previousSettings);
       showError(cause);
       return false;
     } finally {
       setProfileBusy(false);
     }
-  }, [activeVenue, profileBusy, reloadProfileState, setSettings, settings, showError]);
+  }, [
+    activeVenue,
+    loadMarketChart,
+    profileBusy,
+    reloadProfileState,
+    setSettings,
+    settings,
+    showBackgroundError,
+    showError
+  ]);
 
   const resetDemo = useCallback(async () => {
     if (profileBusy) return;
@@ -793,7 +826,11 @@ function mergeMarketSummaries(current: Market[], incoming: Market[]): Market[] {
   return stable;
 }
 
-function routeMarkets(markets: Market[], desiredLeverage: number): Market[] {
+function routeMarkets(
+  markets: Market[],
+  desiredLeverage: number,
+  executableOnly = false
+): Market[] {
   const bySymbol = new Map<string, Market[]>();
   for (const market of markets) {
     const group = bySymbol.get(market.symbol) ?? [];
@@ -808,7 +845,7 @@ function routeMarkets(markets: Market[], desiredLeverage: number): Market[] {
           && desiredLeverage <= route.maxLeverage
       );
       const executable = leverageEligible.filter((route) => route.openingAllowed);
-      const eligible = executable.length ? executable : leverageEligible;
+      const eligible = executable.length || executableOnly ? executable : leverageEligible;
       return [...eligible].sort((left, right) => {
         if (left.feeHurdlePct !== right.feeHurdlePct) {
           return left.feeHurdlePct - right.feeHurdlePct;

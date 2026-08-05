@@ -64,12 +64,16 @@ class FlashWalletExecutor:
             state = self._client.owner(owner)
             basket = state.get("basketPubkey")
             raw = self._client.raw_basket(str(basket)) if basket else {}
-            available = _available_collateral_usd(raw) if basket else Decimal(0)
+            basket_available = _available_collateral_usd(raw) if basket else Decimal(0)
+            deposited_available = Decimal(0)
+            available = basket_available
             setup_funding: dict[str, Any] | None = None
             wallet_usdc: Decimal | None = None
             if self._setup_funder is not None:
                 wallet_state = self._setup_funder.wallet_state(owner)
                 wallet_usdc = wallet_state.usdc
+                deposited_available = wallet_state.deposited_usdc
+                available += deposited_available
                 if available + wallet_usdc < required_collateral_usd:
                     return {
                         "allowanceReady": False,
@@ -116,7 +120,20 @@ class FlashWalletExecutor:
 
             basket = str(basket)
             raw = self._client.raw_basket(basket)
-            available = _available_collateral_usd(raw)
+            basket_available = _available_collateral_usd(raw)
+            available = basket_available + deposited_available
+
+            if raw.get("source") != "er":
+                actions.append(
+                    self._prepare_and_submit(
+                        "/transaction-builder/delegate-basket",
+                        {"owner": owner},
+                        keypair,
+                        skip_preflight=True,
+                    )
+                )
+                raw = self._wait_raw(basket, lambda value: value.get("source") == "er")
+
             deposit_amount = (
                 wallet_usdc
                 if wallet_usdc is not None
@@ -135,22 +152,25 @@ class FlashWalletExecutor:
                         skip_preflight=False,
                     )
                 )
-                raw = self._wait_raw(
-                    basket,
-                    lambda value: _available_collateral_usd(value) >= available + deposit_amount,
-                )
-                available = _available_collateral_usd(raw)
+                expected_available = available + deposit_amount
+                if self._setup_funder is not None:
+                    available, raw = self._wait_venue_collateral(
+                        owner,
+                        basket,
+                        expected_available,
+                    )
+                else:
+                    raw = self._wait_raw(
+                        basket,
+                        lambda value: _available_collateral_usd(value) >= expected_available,
+                    )
+                    available = _available_collateral_usd(raw)
 
             if raw.get("source") != "er":
-                actions.append(
-                    self._prepare_and_submit(
-                        "/transaction-builder/delegate-basket",
-                        {"owner": owner},
-                        keypair,
-                        skip_preflight=True,
-                    )
+                raw = self._wait_raw(
+                    basket,
+                    lambda value: value.get("source") == "er",
                 )
-                raw = self._wait_raw(basket, lambda value: value.get("source") == "er")
 
             self._remember(owner, basket, raw)
             self._ready_collateral[owner] = (time.monotonic(), available)
@@ -190,7 +210,9 @@ class FlashWalletExecutor:
         account = initial.get("account") or {}
         if account.get("positions") or account.get("orders"):
             raise FlashError("Flash basket is not empty")
-        account_balance_before = _available_collateral_usd(initial)
+        account_balance_before = (
+            _available_collateral_usd(initial) + self._deposited_collateral_usd(owner)
+        )
 
         prepared = self._client.prepare(
             "/transaction-builder/open-position",
@@ -358,7 +380,7 @@ class FlashWalletExecutor:
         basket = self._basket(owner)
         snapshot = self._client.raw_basket(basket)
         self._remember(owner, basket, snapshot)
-        return _available_collateral_usd(snapshot)
+        return _available_collateral_usd(snapshot) + self._deposited_collateral_usd(owner)
 
     def current_liquidation_price(self, *, position: dict[str, Any] | None, **_: Any):
         del position
@@ -455,6 +477,35 @@ class FlashWalletExecutor:
                 return latest
             time.sleep(0.10)
         raise FlashError(f"Flash basket state did not converge: {latest}")
+
+    def _wait_venue_collateral(
+        self,
+        owner: str,
+        basket: str,
+        expected: Decimal,
+        *,
+        timeout_seconds: float = 30,
+    ) -> tuple[Decimal, dict[str, Any]]:
+        started = time.monotonic()
+        latest: dict[str, Any] = {}
+        available = Decimal(0)
+        while time.monotonic() - started < timeout_seconds:
+            latest = self._client.raw_basket(basket)
+            available = (
+                _available_collateral_usd(latest)
+                + self._deposited_collateral_usd(owner)
+            )
+            if available >= expected:
+                return available, latest
+            time.sleep(0.10)
+        raise FlashError(
+            f"Flash collateral did not converge: {available} available, {expected} expected"
+        )
+
+    def _deposited_collateral_usd(self, owner: str) -> Decimal:
+        if self._setup_funder is None:
+            return Decimal(0)
+        return self._setup_funder.wallet_state(owner).deposited_usdc
 
 
 def _positions(snapshot: dict[str, Any]) -> list[dict[str, Any]]:

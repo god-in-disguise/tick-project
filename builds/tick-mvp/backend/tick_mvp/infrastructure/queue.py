@@ -37,7 +37,7 @@ async def enqueue_wallet_preparation(
     redis = await create_pool(RedisSettings.from_dsn(settings.redis_url))
     try:
         normalized_venue = (venue_name or settings.default_venue).strip().lower()
-        bucket_seconds = 2 if normalized_venue == "flash" else 10
+        bucket_seconds = 30 if normalized_venue == "flash" else 10
         bucket = int(time.time() // bucket_seconds)
         job = await redis.enqueue_job(
             WALLET_PREPARATION_JOB,

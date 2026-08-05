@@ -245,13 +245,24 @@ class SetupClient:
 class SetupFunder:
     setup_target_sol = Decimal("0.075")
 
-    def __init__(self, *, sol: Decimal = Decimal(0), usdc: Decimal = Decimal(0)) -> None:
+    def __init__(
+        self,
+        *,
+        sol: Decimal = Decimal(0),
+        usdc: Decimal = Decimal(0),
+        deposited_usdc: Decimal = Decimal(0),
+    ) -> None:
         self.sol = sol
         self.usdc = usdc
+        self.deposited_usdc = deposited_usdc
         self.targets: list[Decimal] = []
 
     def wallet_state(self, _owner: str) -> SolanaWalletState:
-        return SolanaWalletState(sol=self.sol, usdc=self.usdc)
+        return SolanaWalletState(
+            sol=self.sol,
+            usdc=self.usdc,
+            deposited_usdc=self.deposited_usdc,
+        )
 
     def ensure_funded(self, owner: str, *, target_sol: Decimal):
         self.targets.append(target_sol)
@@ -283,8 +294,8 @@ def test_flash_wallet_first_preparation_initializes_and_funds_once(monkeypatch) 
     assert client.paths == [
         "/transaction-builder/init-basket",
         "/transaction-builder/init-deposit-ledger",
-        "/transaction-builder/deposit-direct",
         "/transaction-builder/delegate-basket",
+        "/transaction-builder/deposit-direct",
     ]
 
 
@@ -347,3 +358,24 @@ def test_flash_wallet_later_deposit_uses_operational_sol_target(monkeypatch) -> 
     assert Decimal(result["collateralBalanceUsd"]) == Decimal("12")
     assert funder.targets == [Decimal("0.005")]
     assert client.paths == ["/transaction-builder/deposit-direct"]
+
+
+def test_flash_wallet_accepts_existing_deposit_ledger_collateral(monkeypatch) -> None:
+    client = SetupClient()
+    client.basket = "basket"
+    client.delegated = True
+    funder = SetupFunder(deposited_usdc=Decimal("15"))
+    wallet = FlashWalletExecutor(
+        client,
+        slippage_percentage=Decimal("0.5"),
+        setup_funder=funder,
+    )
+    monkeypatch.setattr("tick_mvp.venues.flash.wallet.time.sleep", lambda _seconds: None)
+
+    result = wallet.prepare_wallet("0x" + "01" * 32, Decimal("10"))
+
+    assert result["allowanceReady"] is True
+    assert result["delegationReady"] is True
+    assert Decimal(result["collateralBalanceUsd"]) == Decimal("15")
+    assert result["setupSubmitted"] is False
+    assert client.paths == []

@@ -15,6 +15,7 @@ from solders.system_program import TransferParams, transfer
 from solders.transaction import Transaction
 
 from tick_mvp.venues.flash.constants import USDC_MINT, USD_DECIMALS
+from tick_mvp.venues.flash.deposit_ledger import deposit_ledger_address, deposit_ledger_usdc
 from tick_mvp.venues.flash.signing import keypair_from_secret
 
 
@@ -29,6 +30,7 @@ class FlashSetupFundingError(RuntimeError):
 class SolanaWalletState:
     sol: Decimal
     usdc: Decimal
+    deposited_usdc: Decimal = Decimal(0)
 
 
 class FlashSetupFunder:
@@ -83,12 +85,21 @@ class FlashSetupFunder:
                         {"encoding": "jsonParsed", "commitment": "confirmed"},
                     ],
                 },
+                {
+                    "jsonrpc": "2.0",
+                    "id": 3,
+                    "method": "getAccountInfo",
+                    "params": [
+                        deposit_ledger_address(owner),
+                        {"encoding": "base64", "commitment": "confirmed"},
+                    ],
+                },
             ]
         )
         if not isinstance(result, list):
             raise FlashSetupFundingError("Solana balance RPC returned a non-list response")
         by_id = {int(item["id"]): item for item in result if isinstance(item, dict)}
-        for request_id in (1, 2):
+        for request_id in (1, 2, 3):
             item = by_id.get(request_id)
             if item is None or item.get("error"):
                 raise FlashSetupFundingError(f"Solana balance RPC failed: {item}")
@@ -100,6 +111,7 @@ class FlashSetupFunder:
         return SolanaWalletState(
             sol=Decimal(lamports) / LAMPORTS_PER_SOL,
             usdc=Decimal(token_units).scaleb(-USD_DECIMALS),
+            deposited_usdc=deposit_ledger_usdc(by_id[3]["result"].get("value")),
         )
 
     def ensure_funded(
