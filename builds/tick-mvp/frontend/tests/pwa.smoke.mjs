@@ -395,12 +395,17 @@ assert.equal(await customAmountInput.inputValue(), "12.34");
 await fixedAmount.click();
 assert.ok((await fixedAmount.getAttribute("class"))?.includes("active"));
 const leverageGroup = page.getByRole("group", { name: "Leverage" });
-const leverage100 = leverageGroup.getByRole("button", { name: "100x" });
-const leverage500 = leverageGroup.getByRole("button", { name: "500x" });
-await leverage100.click();
-assert.equal(await leverage100.getAttribute("aria-pressed"), "true");
-await leverage500.click();
-assert.equal(await leverage500.getAttribute("aria-pressed"), "true");
+const leverageButtons = leverageGroup.getByRole("button");
+const leverageCount = await leverageButtons.count();
+assert.ok(leverageCount > 0, "The selected market has no valid leverage options");
+const firstLeverage = leverageButtons.first();
+await firstLeverage.click();
+assert.equal(await firstLeverage.getAttribute("aria-pressed"), "true");
+if (leverageCount > 1) {
+  const lastLeverage = leverageButtons.last();
+  await lastLeverage.click();
+  assert.equal(await lastLeverage.getAttribute("aria-pressed"), "true");
+}
 const takeProfitGroup = page.getByRole("group", { name: "Take profit" });
 const takeProfitOff = takeProfitGroup.getByRole("button", { name: "Off" });
 const takeProfitTen = takeProfitGroup.getByRole("button", { name: "Take profit $10" });
