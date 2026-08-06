@@ -105,7 +105,6 @@ class GTradeOnchainEventStream:
                     self._url,
                     open_timeout=10,
                     close_timeout=2,
-                    ping_interval=20,
                     max_size=MAX_ONCHAIN_FRAME_BYTES,
                 ) as websocket:
                     websocket.send(
@@ -129,10 +128,14 @@ class GTradeOnchainEventStream:
                         raise RuntimeError(f"eth_subscribe failed: {subscription.get('error')}")
                     self._connected = True
                     self._last_error = None
+                    last_ping_at = time.monotonic()
                     while not self._stop.is_set():
                         try:
                             raw = websocket.recv(timeout=1)
                         except TimeoutError:
+                            if time.monotonic() - last_ping_at >= 20:
+                                websocket.ping()
+                                last_ping_at = time.monotonic()
                             continue
                         self._handle_raw(raw)
             except Exception as exc:

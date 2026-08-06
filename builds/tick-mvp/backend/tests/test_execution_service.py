@@ -97,14 +97,14 @@ class UnexpectedBalanceReadVenue:
 
 
 class NoGasAccounting:
-    def total_charges_usdc(self, user_id: str) -> Decimal:
+    def total_charges_usdc(self, user_id: str, venue: str | None = None) -> Decimal:
         return Decimal(0)
 
 
 class ChargedGasAccounting:
-    def total_charges_usdc(self, user_id: str) -> Decimal:
+    def total_charges_usdc(self, user_id: str, venue: str | None = None) -> Decimal:
         assert user_id == "user_1"
-        return Decimal("1")
+        return Decimal("1") if venue in {None, "gtrade"} else Decimal(0)
 
 
 def test_execution_service_dry_run_does_not_trade() -> None:

@@ -112,7 +112,6 @@ class GTradePriceStream:
                     self._url,
                     open_timeout=10,
                     close_timeout=2,
-                    ping_interval=None,
                     max_size=MAX_PRICE_FRAME_BYTES,
                 ) as websocket:
                     self._connected = True

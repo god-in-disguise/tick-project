@@ -5,7 +5,9 @@ import logging
 
 from tick_mvp.core.config import get_settings
 from tick_mvp.execution.terminal_reducer import TerminalEventReducer
+from tick_mvp.venues.avantis.terminal_monitor import AvantisTerminalMonitor
 from tick_mvp.venues.gtrade.terminal_monitor import GTradeTerminalMonitor
+from tick_mvp.venues.registry import enabled_venue_names
 
 
 LOGGER = logging.getLogger("tick.venue-events")
@@ -16,29 +18,47 @@ RECOVERY_BLOCKS = 20_000
 async def run() -> None:
     settings = get_settings()
     reducer = TerminalEventReducer(settings)
-    monitor = GTradeTerminalMonitor(settings)
-    monitor.track_owners(await asyncio.to_thread(reducer.wallet_addresses))
-    monitor.start()
+    enabled = set(enabled_venue_names(settings))
+    monitors = []
+    if "gtrade" in enabled:
+        monitors.append(GTradeTerminalMonitor(settings))
+    if "avantis" in enabled:
+        monitors.append(AvantisTerminalMonitor(settings))
+    for monitor in monitors:
+        monitor.track_owners(await asyncio.to_thread(reducer.wallet_addresses))
+        monitor.start()
     try:
-        recovered = await asyncio.to_thread(
-            monitor.recover_recent,
-            from_block=max(0, await asyncio.to_thread(monitor.latest_block) - RECOVERY_BLOCKS),
-        )
-        for event in recovered:
-            await _apply(monitor, reducer, event)
+        for monitor in monitors:
+            recovered = await asyncio.to_thread(
+                monitor.recover_recent,
+                from_block=max(
+                    0,
+                    await asyncio.to_thread(monitor.latest_block) - RECOVERY_BLOCKS,
+                ),
+            )
+            for event in recovered:
+                await _apply(monitor, reducer, event)
 
         last_owner_refresh = 0.0
         loop = asyncio.get_running_loop()
         while True:
             now = loop.time()
             if now - last_owner_refresh >= OWNER_REFRESH_SECONDS:
-                monitor.track_owners(await asyncio.to_thread(reducer.wallet_addresses))
+                owners = await asyncio.to_thread(reducer.wallet_addresses)
+                for monitor in monitors:
+                    monitor.track_owners(owners)
                 last_owner_refresh = now
-            event = await asyncio.to_thread(monitor.next_event, 0.25)
-            if event is not None:
-                await _apply(monitor, reducer, event)
+            handled = False
+            for monitor in monitors:
+                event = await asyncio.to_thread(monitor.next_event, 0.05)
+                if event is not None:
+                    handled = True
+                    await _apply(monitor, reducer, event)
+            if not handled:
+                await asyncio.sleep(0.05)
     finally:
-        monitor.stop()
+        for monitor in reversed(monitors):
+            monitor.stop()
 
 
 async def _apply(monitor, reducer, event) -> None:

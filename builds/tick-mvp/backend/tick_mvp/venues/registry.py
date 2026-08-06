@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from tick_mvp.core.config import Settings
 from tick_mvp.venues.aark import AarkVenue
+from tick_mvp.venues.avantis import AvantisVenue
 from tick_mvp.venues.flash import FlashVenue
 from tick_mvp.venues.gtrade import GTradeVenue
 from tick_mvp.venues.router import VenueRouter
@@ -20,6 +21,8 @@ def create_venue(
         return AarkVenue(settings)
     if venue == "flash":
         return FlashVenue(settings, market_history=market_history)
+    if venue == "avantis":
+        return AvantisVenue(settings, market_history=market_history)
     raise ValueError(f"unsupported venue: {venue}")
 
 

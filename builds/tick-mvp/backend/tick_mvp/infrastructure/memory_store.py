@@ -235,7 +235,13 @@ class MemoryStore:
             if user is None:
                 raise StoreNotFound("user not found")
             now = _now()
-            chain_id = 501 if venue == VenueMode.FLASH else 42161
+            chain_id = (
+                501
+                if venue == VenueMode.FLASH
+                else 8453
+                if venue == VenueMode.AVANTIS
+                else 42161
+            )
             wallet = self._wallet_for_user(
                 user_id,
                 chain_id=chain_id,
@@ -350,7 +356,12 @@ class MemoryStore:
         wallet = self.wallet_for_user(user_id)
         return DepositAddressResponse(chainId=wallet.chainId, walletId=wallet.id, address=wallet.address)
 
-    def reserved_gas_charges_usdc(self, user_id: str) -> Decimal:
+    def reserved_gas_charges_usdc(
+        self,
+        user_id: str,
+        venue: VenueMode | str | None = None,
+    ) -> Decimal:
+        del venue
         return Decimal(0)
 
     def request_withdrawal(self, user_id: str, request: WithdrawalRequest) -> WithdrawalResponse:

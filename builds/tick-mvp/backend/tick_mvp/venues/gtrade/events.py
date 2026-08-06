@@ -151,7 +151,6 @@ class GTradeEventStream:
                     self._backend_url,
                     open_timeout=10,
                     close_timeout=2,
-                    ping_interval=None,
                     max_size=MAX_EVENT_BYTES,
                 ) as websocket:
                     self._backend_connected = True

@@ -188,11 +188,12 @@ class ExecutionService:
             execution_attempt_id=None,
             payload=result.get("gasTransactions"),
             wallet_address=wallet_address,
+            venue=venue_name,
         )
         gas_sweep = None
         if (
             self._settings.tick_real_execution_enabled
-            and venue_name.strip().lower() != "flash"
+            and venue_name.strip().lower() == "gtrade"
         ):
             try:
                 gas_sweep = self._gas_funding.reclaim_excess(
@@ -549,10 +550,9 @@ class ExecutionService:
         venue_name: str | None = None,
     ) -> None:
         selected_venue = venue_name or self._settings.default_venue
-        charges = (
-            self._gas_accounting.total_charges_usdc(user_id)
-            if selected_venue == "gtrade"
-            else Decimal(0)
+        charges = self._gas_accounting.total_charges_usdc(
+            user_id,
+            selected_venue,
         )
         available = spendable_usdc(raw_balance, charges)
         if available < required_usdc:
@@ -574,6 +574,7 @@ class ExecutionService:
             effective_gas_price=tx.effective_gas_price,
             operation=context.action.value,
             gas_payer_address=tx.payload.get("gasPayer"),
+            value_wei=tx.payload.get("valueWei"),
         )
         if primary is not None:
             transactions.append(primary)
@@ -582,6 +583,7 @@ class ExecutionService:
             execution_attempt_id=context.execution_id,
             transactions=transactions,
             wallet_address=context.wallet_address,
+            venue=context.venue,
         )
 
     def _charge_payload_transactions(
@@ -591,12 +593,14 @@ class ExecutionService:
         execution_attempt_id: str | None,
         payload: object,
         wallet_address: str,
+        venue: str,
     ) -> None:
         self._charge_transactions(
             user_id=user_id,
             execution_attempt_id=execution_attempt_id,
             transactions=gas_transactions_from_payload(payload),
             wallet_address=wallet_address,
+            venue=venue,
         )
 
     def _charge_transactions(
@@ -606,6 +610,7 @@ class ExecutionService:
         execution_attempt_id: str | None,
         transactions: list,
         wallet_address: str,
+        venue: str,
     ) -> None:
         for transaction in transactions:
             self._gas_funding.note_spent(
@@ -617,6 +622,7 @@ class ExecutionService:
                     user_id=user_id,
                     transaction=transaction,
                     execution_attempt_id=execution_attempt_id,
+                    venue=venue,
                 )
             except Exception:
                 LOGGER.exception(

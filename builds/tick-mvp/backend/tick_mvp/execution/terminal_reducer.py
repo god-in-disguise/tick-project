@@ -54,9 +54,12 @@ class TerminalEventReducer:
         self._settings = settings or get_settings()
         self._session_factory = session_factory or create_session_factory()
 
-    def wallet_addresses(self) -> list[str]:
+    def wallet_addresses(self, venue: str | None = None) -> list[str]:
         with session_scope(self._session_factory) as session:
-            return [str(row[0]) for row in session.query(WalletAccount.address).all()]
+            query = session.query(WalletAccount.address)
+            if venue is not None:
+                query = query.filter(WalletAccount.chain_id == self._chain_id(venue))
+            return [str(row[0]) for row in query.all()]
 
     def active_positions(self, venue: str = "gtrade") -> list[TrackedPosition]:
         with session_scope(self._session_factory) as session:
@@ -147,9 +150,13 @@ class TerminalEventReducer:
         defer_to_active_close: bool = False,
     ) -> str | None:
         with session_scope(self._session_factory) as session:
+            chain_id = self._chain_id(event.venue)
             wallet = (
                 session.query(WalletAccount)
-                .filter(func.lower(WalletAccount.address) == event.owner.lower())
+                .filter(
+                    func.lower(WalletAccount.address) == event.owner.lower(),
+                    WalletAccount.chain_id == chain_id,
+                )
                 .first()
             )
             if wallet is None:
@@ -202,7 +209,7 @@ class TerminalEventReducer:
                         venue=event.venue,
                         event_type=event_type.value,
                         source=event.source,
-                        chain_id=event.chain_id or self._settings.arb_chain_id,
+                        chain_id=event.chain_id or chain_id,
                         block_number=event.block_number,
                         block_hash=None,
                         transaction_hash=event.transaction_hash,
@@ -327,12 +334,19 @@ class TerminalEventReducer:
         return (
             session.query(VenueEvent)
             .filter(
-                VenueEvent.chain_id == (event.chain_id or self._settings.arb_chain_id),
+                VenueEvent.chain_id == (
+                    event.chain_id or self._chain_id(event.venue)
+                ),
                 VenueEvent.transaction_hash == event.transaction_hash,
                 VenueEvent.log_index == event.log_index,
             )
             .first()
         )
+
+    def _chain_id(self, venue: str) -> int:
+        if venue == "avantis":
+            return self._settings.base_chain_id
+        return self._settings.arb_chain_id
 
 
 def _reconciliation(session, position_id: str) -> Reconciliation | None:

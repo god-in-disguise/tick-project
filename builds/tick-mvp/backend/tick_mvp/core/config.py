@@ -94,6 +94,24 @@ class Settings:
     flash_slippage_percentage: Decimal = Decimal("0.5")
     flash_price_poll_seconds: float = 0.2
 
+    base_chain_id: int = 8453
+    base_rpc_url: str = ""
+    base_wss_url: str = ""
+    base_usdc_address: str = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+    avantis_trading_storage_address: str = "0x8a311D7048c35985aa31C131B9A13e03a5f7422d"
+    avantis_trading_address: str = "0x44914408af82bC9983bbb330e3578E1105e11d4e"
+    avantis_socket_api_url: str = "https://socket-api-pub.avantisfi.com/socket-api/v1/data"
+    avantis_real_execution_enabled: bool = False
+    avantis_slippage_percentage: int = 1
+    avantis_price_poll_seconds: float = 0.2
+    avantis_catalog_ttl_seconds: float = 300.0
+    avantis_open_wait_seconds: float = 12.0
+    avantis_close_wait_seconds: float = 12.0
+    avantis_setup_target_eth: Decimal = Decimal("0.00005")
+    avantis_open_gas: int = 900_000
+    avantis_close_gas: int = 800_000
+    avantis_setup_gas: int = 150_000
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -210,6 +228,50 @@ def get_settings() -> Settings:
         flash_setup_target_sol=_decimal_env("FLASH_SETUP_TARGET_SOL", "0.075"),
         flash_slippage_percentage=_decimal_env("FLASH_SLIPPAGE_PERCENTAGE", "0.5"),
         flash_price_poll_seconds=_float_env("FLASH_PRICE_POLL_SECONDS", 0.2),
+        base_chain_id=_int_env("BASE_CHAIN_ID", 8453),
+        base_rpc_url=os.getenv("BASE_RPC_URL", ""),
+        base_wss_url=_base_wss_url(),
+        base_usdc_address=os.getenv("BASE_USDC_ADDRESS")
+        or "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        avantis_trading_storage_address=os.getenv("AVANTIS_TRADING_STORAGE_ADDRESS")
+        or "0x8a311D7048c35985aa31C131B9A13e03a5f7422d",
+        avantis_trading_address=os.getenv("AVANTIS_TRADING_ADDRESS")
+        or "0x44914408af82bC9983bbb330e3578E1105e11d4e",
+        avantis_socket_api_url=os.getenv(
+            "AVANTIS_SOCKET_API_URL",
+            "https://socket-api-pub.avantisfi.com/socket-api/v1/data",
+        ),
+        avantis_real_execution_enabled=_bool_env(
+            "AVANTIS_REAL_EXECUTION_ENABLED",
+            False,
+        ),
+        avantis_slippage_percentage=_int_env(
+            "AVANTIS_SLIPPAGE_PERCENTAGE",
+            1,
+        ),
+        avantis_price_poll_seconds=_float_env(
+            "AVANTIS_PRICE_POLL_SECONDS",
+            0.2,
+        ),
+        avantis_catalog_ttl_seconds=_float_env(
+            "AVANTIS_CATALOG_TTL_SECONDS",
+            300.0,
+        ),
+        avantis_open_wait_seconds=_float_env(
+            "AVANTIS_OPEN_WAIT_SECONDS",
+            12.0,
+        ),
+        avantis_close_wait_seconds=_float_env(
+            "AVANTIS_CLOSE_WAIT_SECONDS",
+            12.0,
+        ),
+        avantis_setup_target_eth=_decimal_env(
+            "AVANTIS_SETUP_TARGET_ETH",
+            "0.00005",
+        ),
+        avantis_open_gas=_int_env("AVANTIS_OPEN_GAS", 900_000),
+        avantis_close_gas=_int_env("AVANTIS_CLOSE_GAS", 800_000),
+        avantis_setup_gas=_int_env("AVANTIS_SETUP_GAS", 150_000),
     )
 
 
@@ -239,6 +301,18 @@ def _arb_wss_url() -> str:
     if explicit:
         return explicit
     rpc_url = os.getenv("ARB_RPC_URL", "")
+    if rpc_url.startswith("https://"):
+        return f"wss://{rpc_url.removeprefix('https://')}"
+    if rpc_url.startswith("http://"):
+        return f"ws://{rpc_url.removeprefix('http://')}"
+    return ""
+
+
+def _base_wss_url() -> str:
+    explicit = os.getenv("BASE_WSS_URL", "")
+    if explicit:
+        return explicit
+    rpc_url = os.getenv("BASE_RPC_URL", "")
     if rpc_url.startswith("https://"):
         return f"wss://{rpc_url.removeprefix('https://')}"
     if rpc_url.startswith("http://"):

@@ -128,6 +128,7 @@ class QuoteResponse(BaseModel):
     stopLossPrice: Decimal | None
     takeProfitPrice: Decimal | None
     openingAllowed: bool
+    profitFeeTiers: list[dict[str, Decimal]] = Field(default_factory=list)
     riskDecisionId: str
     createdAt: datetime
     expiresAt: datetime

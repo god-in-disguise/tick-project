@@ -116,12 +116,15 @@ def test_venue_switch_keeps_separate_wallets_per_user() -> None:
 
     flash = store.switch_venue(user.id, VenueMode.FLASH)
     selected_flash = store.wallet_for_user(user.id)
+    avantis = store.switch_venue(user.id, VenueMode.AVANTIS)
     back_to_gtrade = store.switch_venue(user.id, VenueMode.GTRADE)
 
     assert flash.venue == VenueMode.FLASH
     assert flash.wallet.chainId == 501
     assert selected_flash.id == flash.wallet.id
     assert flash.wallet.id != gtrade_wallet.id
+    assert avantis.wallet.chainId == 8453
+    assert avantis.wallet.id not in {flash.wallet.id, gtrade_wallet.id}
     assert back_to_gtrade.wallet.id == gtrade_wallet.id
 
 

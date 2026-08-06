@@ -362,15 +362,16 @@ def create_app(store: Any | None = None) -> FastAPI:
         balances = _wallet_balances(store, user_id, wallet)
         if (
             get_settings().tick_enqueue_jobs
-            and balances.venue == VenueMode.FLASH
+            and balances.venue in {VenueMode.FLASH, VenueMode.AVANTIS}
             and balances.onchainUsdc is not None
             and balances.onchainUsdc > 0
+            and not balances.venueReady
         ):
             background_tasks.add_task(
                 enqueue_wallet_preparation,
                 user_id,
                 str(balances.onchainUsdc),
-                VenueMode.FLASH.value,
+                balances.venue.value,
             )
         return balances
 
@@ -541,12 +542,28 @@ def _wallet_balances(store: Any, user_id: str, wallet: Any) -> WalletBalancesRes
         from tick_mvp.infrastructure.flash_wallet_balances import read_flash_wallet_balances
 
         return read_flash_wallet_balances(wallet, settings)
+    if wallet.chainId == settings.base_chain_id:
+        from tick_mvp.infrastructure.avantis_wallet_balances import (
+            read_avantis_wallet_balances,
+        )
+
+        return read_avantis_wallet_balances(
+            wallet,
+            settings,
+            gas_charges_usdc=store.reserved_gas_charges_usdc(
+                user_id,
+                VenueMode.AVANTIS,
+            ),
+        )
     from tick_mvp.infrastructure.wallet_balances import read_wallet_balances
 
     return read_wallet_balances(
         wallet,
         settings,
-        gas_charges_usdc=store.reserved_gas_charges_usdc(user_id),
+        gas_charges_usdc=store.reserved_gas_charges_usdc(
+            user_id,
+            VenueMode.GTRADE,
+        ),
     )
 
 

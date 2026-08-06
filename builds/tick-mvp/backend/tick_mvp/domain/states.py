@@ -19,6 +19,7 @@ class TradingMode(StrEnum):
 class VenueMode(StrEnum):
     GTRADE = "gtrade"
     FLASH = "flash"
+    AVANTIS = "avantis"
 
 
 class UserStatus(StrEnum):

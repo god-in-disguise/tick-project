@@ -786,6 +786,8 @@ class ExecutionRepository:
         chain_id = (
             SOLANA_MAINNET_CHAIN_ID
             if (venue or "").strip().lower() == "flash"
+            else self._settings.base_chain_id
+            if (venue or "").strip().lower() == "avantis"
             else self._settings.arb_chain_id
         )
         with session_scope(self._session_factory) as session:

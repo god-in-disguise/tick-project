@@ -200,6 +200,7 @@ class WithdrawalService:
                         user_id=context.user_id,
                         transaction=transaction,
                         withdrawal_id=withdrawal_id,
+                        venue="gtrade",
                     )
                 except Exception:
                     LOGGER.exception(

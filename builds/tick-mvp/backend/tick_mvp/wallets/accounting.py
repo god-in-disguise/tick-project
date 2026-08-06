@@ -54,10 +54,13 @@ class GasTransaction:
     effective_gas_price: int
     operation: str
     gas_payer_address: str | None = None
+    value_wei: int = 0
 
     @property
     def native_cost(self) -> Decimal:
-        return Decimal(self.gas_used * self.effective_gas_price) / Decimal(10**18)
+        return Decimal(
+            self.gas_used * self.effective_gas_price + self.value_wei
+        ) / Decimal(10**18)
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,6 +72,7 @@ class GasCharge:
     charge_usdc: Decimal
     oracle_updated_at: int
     gas_payer_address: str | None = None
+    venue: str = "gtrade"
 
 
 class EthUsdOracle:
@@ -176,6 +180,7 @@ class GasAccountingRepository:
                         "ethUsdPrice": str(charge.eth_usd_price),
                         "oracleUpdatedAt": charge.oracle_updated_at,
                         "gasPayerAddress": charge.gas_payer_address,
+                        "venue": charge.venue,
                     },
                     created_at=now,
                 )
@@ -205,17 +210,30 @@ class GasAccountingRepository:
                 _refresh_position_reconciliation(session, position_id, now=now)
         return charge.charge_usdc
 
-    def total_charges_usdc(self, user_id: str) -> Decimal:
+    def total_charges_usdc(
+        self,
+        user_id: str,
+        venue: str | None = None,
+    ) -> Decimal:
         with session_scope(self._session_factory) as session:
-            total = (
-                session.query(func.coalesce(func.sum(LedgerEvent.amount), 0))
+            rows = (
+                session.query(LedgerEvent.amount, LedgerEvent.payload)
                 .filter(
                     LedgerEvent.user_id == user_id,
                     LedgerEvent.event_type == "gas_charge",
                     LedgerEvent.asset == "USDC",
                 )
-                .scalar()
+                .all()
             )
+        total = sum(
+            (
+                Decimal(amount or 0)
+                for amount, payload in rows
+                if venue is None
+                or str((payload or {}).get("venue") or "gtrade") == venue
+            ),
+            Decimal(0),
+        )
         return max(Decimal(0), -Decimal(total or 0))
 
 
@@ -237,6 +255,7 @@ class GasAccountingService:
         transaction: GasTransaction,
         execution_attempt_id: str | None = None,
         withdrawal_id: str | None = None,
+        venue: str = "gtrade",
     ) -> GasCharge:
         eth_usd, oracle_updated_at = self._oracle.price()
         amount = (transaction.native_cost * eth_usd).quantize(
@@ -251,6 +270,7 @@ class GasAccountingService:
             charge_usdc=amount,
             oracle_updated_at=oracle_updated_at,
             gas_payer_address=transaction.gas_payer_address,
+            venue=venue,
         )
         self._repository.record_charge(
             user_id=user_id,
@@ -260,8 +280,12 @@ class GasAccountingService:
         )
         return charge
 
-    def total_charges_usdc(self, user_id: str) -> Decimal:
-        return self._repository.total_charges_usdc(user_id)
+    def total_charges_usdc(
+        self,
+        user_id: str,
+        venue: str | None = None,
+    ) -> Decimal:
+        return self._repository.total_charges_usdc(user_id, venue)
 
 
 class GasAccountingUnavailable(RuntimeError):
@@ -275,6 +299,7 @@ def gas_transaction(
     effective_gas_price: int | None,
     operation: str,
     gas_payer_address: str | None = None,
+    value_wei: int | None = None,
 ) -> GasTransaction | None:
     if not tx_hash or gas_used is None or effective_gas_price is None:
         return None
@@ -284,6 +309,7 @@ def gas_transaction(
         effective_gas_price=int(effective_gas_price),
         operation=operation,
         gas_payer_address=gas_payer_address,
+        value_wei=int(value_wei or 0),
     )
 
 
@@ -302,6 +328,7 @@ def gas_transactions_from_payload(payload: object) -> list[GasTransaction]:
             gas_payer_address=(
                 str(item["gasPayer"]) if item.get("gasPayer") else None
             ),
+            value_wei=_int_or_none(item.get("valueWei")),
         )
         if transaction is not None:
             transactions.append(transaction)

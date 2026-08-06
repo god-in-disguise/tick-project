@@ -102,6 +102,7 @@ def quote_response(quote: Quote) -> QuoteResponse:
         stopLossPrice=quote.stop_loss_price,
         takeProfitPrice=quote.take_profit_price,
         openingAllowed=quote.opening_allowed,
+        profitFeeTiers=list((quote.payload or {}).get("profitFeeTiers") or []),
         riskDecisionId=quote.risk_decision_id,
         createdAt=quote.created_at,
         expiresAt=quote.expires_at,

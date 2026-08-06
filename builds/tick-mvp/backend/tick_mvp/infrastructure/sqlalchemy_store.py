@@ -436,19 +436,32 @@ class SQLAlchemyStore:
         wallet = self.wallet_for_user(user_id)
         return DepositAddressResponse(chainId=wallet.chainId, walletId=wallet.id, address=wallet.address)
 
-    def reserved_gas_charges_usdc(self, user_id: str) -> Decimal:
-        from sqlalchemy import func
-
+    def reserved_gas_charges_usdc(
+        self,
+        user_id: str,
+        venue: VenueMode | str | None = None,
+    ) -> Decimal:
+        selected = VenueMode(venue) if venue is not None else None
         with session_scope(self._session_factory) as session:
-            total = (
-                session.query(func.coalesce(func.sum(LedgerEvent.amount), 0))
+            rows = (
+                session.query(LedgerEvent.amount, LedgerEvent.payload)
                 .filter(
                     LedgerEvent.user_id == user_id,
                     LedgerEvent.event_type == "gas_charge",
                     LedgerEvent.asset == "USDC",
                 )
-                .scalar()
+                .all()
             )
+        total = sum(
+            (
+                Decimal(amount or 0)
+                for amount, payload in rows
+                if selected is None
+                or str((payload or {}).get("venue") or VenueMode.GTRADE.value)
+                == selected.value
+            ),
+            Decimal(0),
+        )
         return max(Decimal(0), -Decimal(total or 0))
 
     def request_withdrawal(self, user_id: str, request: WithdrawalRequest) -> WithdrawalResponse:
@@ -987,7 +1000,11 @@ def _active_venue(session, user_id: str) -> VenueMode:
 
 
 def _chain_id_for_venue(venue: VenueMode, arbitrum_chain_id: int) -> int:
-    return SOLANA_MAINNET_CHAIN_ID if venue == VenueMode.FLASH else arbitrum_chain_id
+    if venue == VenueMode.FLASH:
+        return SOLANA_MAINNET_CHAIN_ID
+    if venue == VenueMode.AVANTIS:
+        return 8453
+    return arbitrum_chain_id
 
 
 def _venue_wallet(
