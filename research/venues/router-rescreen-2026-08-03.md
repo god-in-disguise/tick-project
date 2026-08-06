@@ -69,7 +69,7 @@ realized PnL.
 
 | Venue | Best lane | Current economics | Integration fit | Main unknown |
 | --- | --- | --- | --- | --- |
-| [Avantis](avantis.md) | Small-ticket high leverage and cross-asset | ZFP has no fixed open/close fee; winning trades pay variable profit share and every trade still faces spread/execution costs | Python SDK, delegated trading, native TP/SL | Real open/close latency, execution fee, minimum practical collateral, effective spread |
+| [Avantis](avantis.md) | Small-ticket high leverage and cross-asset | Live $10 cycles returned $9.792732 at 75x and $8.961121 at 500x with no fixed open/close trading fee; spread, impact, execution ETH, and winning-trade profit share still apply | Live wallet-native 75x and 500x canaries passed; Python SDK, delegated trading, native TP/SL | WSS callback p50/p95, hot-path SDK build removal, profitable-close share |
 | [Paradex](paradex.md) | Small-ticket crypto | Retail interactive orders are documented as zero fee with a 300 ms speed bump | API subkeys, REST/WS, native TP/SL | Whether TICK's custodial PWA flow qualifies as interactive and its measured fill path |
 | [Lighter](lighter.md) | Small-ticket crypto | Standard account has zero maker/taker fees with a 300 ms taker delay | API keys, fast sequencer, broad markets | Signed lifecycle, custody/account model, actual small-order fills |
 | [Aark](aark.md) | Small-ticket 500x-1000x | Favorable tested fee model for the loop | Gasless delegated API | TICK needs partner authorization or an accepted origin challenge |
@@ -89,13 +89,14 @@ native trigger orders, API subkeys, and private order/fill streams. The canary
 must establish that TICK can legitimately use the interactive profile and that
 the 300 ms delay does not hide a larger lifecycle delay.
 
-### 2. Avantis ZFP signed canary
+### 2. Avantis ZFP integration benchmark
 
-This is the strongest new high-leverage candidate. It directly attacks the
-problem that hurts gTrade's $10 loop: losing trades are not charged a fixed
-venue trading fee. Measure Base transaction submission, oracle execution,
-position visibility, spread, execution ETH, minimum collateral, stop behavior,
-and profit share on a winning close.
+The 75x and 500x signed canaries passed. They directly addressed the problem
+that hurts gTrade's $10 loop: the losing trades had no fixed venue trading fee.
+The next benchmark must pre-arm Base WSS callback detection, remove the
+approximately two-second SDK open-build delay from the hot path, batch the
+500x comparison, and capture a winning close's profit share before Avantis
+becomes a production route.
 
 ### 3. Lighter Standard signed canary
 

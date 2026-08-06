@@ -114,3 +114,59 @@ venue-checks/.venv/bin/python venue-checks/gtrade_public_probe.py \
 ```
 
 If allowance is zero, the dry estimate should revert with the ERC-20 allowance error. That means the calldata shape is valid and the next live step is an approval transaction before an open/close canary.
+
+## Avantis ZFP
+
+Install the pinned official SDK in the research-only virtual environment, then
+run the read-only Base probe:
+
+```bash
+BASE_RPC_URL="<base-rpc>" \
+  venue-checks/.venv/bin/python venue-checks/avantis_zfp_probe.py
+```
+
+The probe reads live pair eligibility, leverage limits, minimum notional,
+spread, sample price impact, execution fee, balances, and allowance. It never
+signs or broadcasts.
+
+The guarded live canary is fixed to BTC/USD and `$10` margin. Leverage is
+restricted to `75x`, `100x`, `250x`, or `500x`. It requires both live-risk
+flags, approves exactly `$10` when needed, opens, correlates the callback order,
+holds briefly, closes the exact callback trade, and verifies that no open or
+pending trade remains:
+
+```bash
+BASE_RPC_URL="<base-rpc>" \
+  venue-checks/.venv/bin/python venue-checks/avantis_zfp_canary.py \
+  --execute \
+  --i-understand-live-risk \
+  --side short \
+  --leverage 75 \
+  --hold-seconds 1 \
+  --json-report venue-checks/reports/avantis/latest_live.json
+```
+
+`WALLET_PK` must point to the dedicated canary wallet. RPC URLs and private keys
+are not written to the report. The first clean live cycle returned the wallet
+to a flat state with a `-$0.207268` USDC result. The current canary intentionally
+uses HTTP callback polling for measurement; a production connector should
+pre-arm a persistent Base WSS callback subscription.
+
+The same canary supports the high-leverage comparison directly:
+
+```bash
+BASE_RPC_URL="<base-rpc>" \
+  venue-checks/.venv/bin/python venue-checks/avantis_zfp_canary.py \
+  --execute \
+  --i-understand-live-risk \
+  --side short \
+  --leverage 500 \
+  --hold-seconds 1 \
+  --json-report venue-checks/reports/avantis/latest_500x_live.json
+```
+
+The clean 500x cycle returned `$8.961121` from `$10`, consumed
+`0.000017815145207003558 ETH`, and finished with no open or pending trade. The
+canary refreshes the pending wallet nonce immediately before every signature;
+this prevents an SDK transaction template built after an approval from reusing
+the approval nonce.
