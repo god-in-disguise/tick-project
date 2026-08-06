@@ -62,6 +62,26 @@ This proves that the RPC is connected to a live Monad node. It does not prove Pe
 
 The live frontend exposes a public API-docs repository link, `https://github.com/PerplFoundation/api-docs`, but the deployed frontend still does not provide enough information to safely infer the exchange contracts from generic Monad traffic. The next probe should use the documented API or the Perpl team-provided addresses, then filter logs by those addresses.
 
+## Public Context Probe
+
+The documented public endpoint is `GET https://app.perpl.xyz/api/v1/pub/context`. It returned exchange configuration at block `93,632,100`:
+
+```text
+exchange:       0x34B6552d57a35a1D042CcAe1951BD1C370112a6F
+collateral:     AUSD, 0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a
+markets:        BTC, MON, ETH, SOL, HYPE, ZEC
+all markets:    open
+funding:        2,580 seconds, about 43 minutes
+order TTL:      20 blocks
+market slip:    100 bps maximum
+maker fee:      0.009%
+taker fee:      0.069%
+```
+
+The context also exposed current market snapshots, open interest, and TVL-like fields. Those values are useful for a first activity screen, but the API response does not define enough units to treat every field as verified volume. The public API-docs repository is the correct integration reference: [Perpl API docs](https://github.com/PerplFoundation/api-docs).
+
+The configured collateral is AUSD rather than the USDC-only flow currently used by TICK. A Perpl adapter would therefore need an AUSD funding path or an explicit supported bridge/swap route.
+
 ## Activity Read
 
 ```text
