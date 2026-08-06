@@ -21,7 +21,7 @@ Snapshot: 2026-08-05.
 
 | Venue | Evidence | Best TICK use | Execution model | Useful leverage | Baseline trading cost | Rewards | Current view |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| [Flash Trade](flash.md) | Live tested | Small-ticket high-leverage crypto and synthetic candidates | MagicBlock ER with transaction builders, signed submission, and authoritative basket state | BTC/ETH 100x and 500x live-tested; XAU 100x canary passed; SOL and synthetic 200x disabled | Live `$10 x 500` cycles cost about `$1.67`; 100x quotes cost about `$0.38` round trip | Voltage points exist; not a routing reason | Selectable production canary with per-user Solana custody, automatic setup funding, deposits, and withdrawals; terminal monitoring and multi-cycle recovery certification remain |
+| [Flash Trade](flash.md) | Live tested, shadowed | Future game-like high-leverage mode and execution research | MagicBlock ER with transaction builders, session keys, signed submission, and owner WS | BTC/ETH 100x and 500x live-tested; XAU 100x canary passed; SOL and synthetic 200x disabled | Live `$10 x 500` cycles cost about `$1.67`; positive PnL is reference-capped during the market-specific delay window | Voltage points exist; not a routing reason | Preserved as a shadow adapter; disabled as a production user route because its delayed positive-PnL mechanics do not match canonical perps |
 | [Avantis](avantis.md) | Documented | Small-ticket high leverage and cross-asset | Base transaction plus oracle execution; SDK and delegation | ZFP majors documented at 75x-500x | ZFP has no fixed open/close fee; winning closes pay variable profit share; spread and execution still apply | Avantis XP exists; not a routing reason | Strongest new high-leverage canary candidate |
 | [Paradex](paradex.md) | Documented + public measured | Small-ticket crypto | Starknet CLOB with EVM onboarding and trading subkeys | BTC/ETH/SOL 50x, HYPE 20x in current public config | Interactive retail orders are zero fee with a 300 ms speed bump | Rewards are secondary | Strong immediate canary if TICK qualifies for interactive classification |
 | [Aark](aark.md) | Live tested | Small-ticket high-leverage crypto | Gasless API/relayer with per-user delegated signer and venue balance | BTC 500x/750x/1000x in current live config | 1 bp open fee plus $0.60 execution fee in the live canary; losing close charged no trading fee | Existing AARK/VIP programs; not a routing reason | Full round trip works with Aark-origin challenge and live EIP-712 signing; TICK-origin challenges and documented EIP-191 opens are currently rejected |
@@ -41,15 +41,15 @@ Costs above are venue schedules, not all-in TICK costs. Spread, slippage, fundin
 
 ## Current Test Order
 
-1. Certify the selectable [Flash Trade](flash.md) production canary over 20 BTC/ETH cycles, including liquidation, reconnect, restart recovery, and withdrawal tails.
-2. Continue hardening the gTrade route's quote truth, direct events, reducer, reconciliation, and deterministic transaction recovery.
+1. Harden the gTrade live route inside `builds/tick-mvp/`: quote truth, native stop, direct events, reducer, reconciliation, and deterministic transaction recovery.
+2. Complete the Avantis ZFP benchmark with a profitable close, delegated lifecycle canary, guaranteed stop, and at least 20 optimized cycles.
 3. Run a Paradex Retail signed canary and verify interactive classification, effective fees, the 300 ms speed bump, and private-event latency.
-4. Run an Avantis ZFP signed canary covering one losing close, one winning close, delegated execution, spread, execution ETH, and native stop behavior.
-5. Run Lighter Standard in the same signed harness as Paradex.
-6. Probe Hyperliquid and Orderly as moderate-leverage serious-crypto routes.
-7. Probe Extended for crypto plus one RWA/FX market and measure depth, trading-hour behavior, signing, and fill lifecycle.
-8. Continue Aark partner authorization; the live route works only with an accepted Aark-origin challenge today.
-9. Keep Pacifica as a 50x fallback candidate and Ostium as the live-tested cross-asset accounting benchmark.
+4. Run Lighter Standard in the same signed harness as Paradex.
+5. Probe Hyperliquid and Orderly as moderate-leverage serious-crypto routes.
+6. Probe Extended for crypto plus one RWA/FX market and measure depth, trading-hour behavior, signing, and fill lifecycle.
+7. Continue Aark partner authorization; the live route works only with an accepted Aark-origin challenge today.
+8. Keep Pacifica as a 50x fallback candidate and Ostium as the live-tested cross-asset accounting benchmark.
+9. Keep Flash in shadow mode for future game mechanics and protocol research; do not expose it as a canonical perp route.
 
 The full lane analysis and normalized cost formula are in
 [`router-rescreen-2026-08-03.md`](router-rescreen-2026-08-03.md).
@@ -57,6 +57,8 @@ The Solana-specific comparison and Flash canary plan are in
 [`solana-perps-rescreen-2026-08-04.md`](solana-perps-rescreen-2026-08-04.md).
 
 This is a research order, not a final routing decision. Production routing should be chosen from measured fill latency, all-in cost, state consistency, market coverage, user eligibility, and operational control. Points are secondary.
+
+The broader venue universe and triage list is in [`universe-2026-08-06.md`](universe-2026-08-06.md). It includes protocols that still require verification and must not be treated as live TICK candidates.
 
 ## Required Canary Output
 
