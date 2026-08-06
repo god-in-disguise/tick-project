@@ -1,5 +1,3 @@
-import { ChartNoAxesCombined } from "lucide-react";
-
 import { percent, price } from "../format";
 import { buildMicroBars, describeMarket } from "../marketActivity";
 import { themeFor } from "../theme";
@@ -28,7 +26,7 @@ export function Dashboard({ markets, onMarket }: Props) {
           <span>VOLATILITY SCANNER</span>
           <h1>Pulse</h1>
         </div>
-        <ChartNoAxesCombined size={22} />
+        <span className="pulse-header-status">LIVE FEED</span>
       </header>
       <div className="scanner-meta">
         <span>Markets moving now</span>

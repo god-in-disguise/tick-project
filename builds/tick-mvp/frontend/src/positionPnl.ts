@@ -44,5 +44,23 @@ export function positionNetPnl(
     (market.price - position.entryPrice)
     / position.entryPrice
   ) * position.notionalUsd * direction;
+  if (position.venue === "avantis") {
+    const profitFee = gross > 0
+      ? gross * profitFeeShare(quote, gross / position.ticketUsd * 100) / 100
+      : 0;
+    return Math.max(-Math.abs(position.ticketUsd), gross - profitFee);
+  }
   return Math.max(-Math.abs(position.ticketUsd), gross - estimatedCost);
+}
+
+export function profitFeeShare(quote: Quote | null, profitPct: number): number {
+  if (!quote?.profitFeeTiers?.length || !Number.isFinite(profitPct) || profitPct <= 0) {
+    return 0;
+  }
+  let share = quote.profitFeeTiers[0]?.feeSharePct ?? 0;
+  for (const tier of quote.profitFeeTiers) {
+    if (profitPct < tier.minProfitPct) break;
+    share = tier.feeSharePct;
+  }
+  return share;
 }

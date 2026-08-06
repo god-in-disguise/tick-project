@@ -48,6 +48,7 @@ type Props = {
   onShift: (offset: number) => void;
   onFund: () => void;
   onStartLive: () => void;
+  onEditPreset: () => void;
 };
 
 type Cue = SwipeCue;
@@ -354,7 +355,8 @@ export function TradeView(props: Props) {
                 {signedMoney(props.estimatedNetPnl)}
               </strong>
             )}
-            {executionPending ? <ExecutionProgress /> : null}
+            {executionPending ? <ExecutionProgress opening={positionOpening} /> : null}
+            {positionOpening ? <OpeningStages /> : null}
             <small>
               {positionClosing
                 ? "position remains exposed"
@@ -369,7 +371,7 @@ export function TradeView(props: Props) {
           <div className="pnl-panel execution-pending">
             <span>{props.busyAction.toUpperCase()} · {leverage}x</span>
             <strong>Submitting</strong>
-            <ExecutionProgress />
+            <ExecutionProgress opening={false} />
             <small>sending execution request</small>
           </div>
         ) : null}
@@ -473,6 +475,29 @@ export function TradeView(props: Props) {
           <GestureGuide userId={props.userId} />
         ) : null}
 
+        {!props.position && !props.busy ? (
+          <div className="trade-actions" onPointerDown={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="trade-action trade-action-long"
+              disabled={needsFunding}
+              onClick={() => props.onOpen("long")}
+            >
+              <span>LONG</span>
+              <small>Swipe up</small>
+            </button>
+            <button
+              type="button"
+              className="trade-action trade-action-short"
+              disabled={needsFunding}
+              onClick={() => props.onOpen("short")}
+            >
+              <span>SHORT</span>
+              <small>Swipe down</small>
+            </button>
+          </div>
+        ) : null}
+
         <div className="execution-dock">
           <div className="terms">
             {props.position ? (
@@ -491,6 +516,16 @@ export function TradeView(props: Props) {
               </>
             )}
           </div>
+          {!props.position ? (
+            <button
+              type="button"
+              className="preset-link"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={props.onEditPreset}
+            >
+              Edit preset · {money(amount)} · {leverage}x
+            </button>
+          ) : null}
           {props.position ? (
             <button className="close-button" disabled={props.busy} onClick={props.onClose}>
               {positionOpening ? "Confirming" : positionClosing ? "Closing" : "Close"}
@@ -557,10 +592,20 @@ function Term({
   );
 }
 
-function ExecutionProgress() {
+function ExecutionProgress({ opening }: { opening: boolean }) {
   return (
-    <div className="execution-progress" aria-hidden="true">
+    <div className={`execution-progress ${opening ? "is-opening" : ""}`} aria-hidden="true">
       <i />
+    </div>
+  );
+}
+
+function OpeningStages() {
+  return (
+    <div className="opening-stages" aria-hidden="true">
+      <span>Order submitted</span>
+      <span>Waiting for venue</span>
+      <span>Position confirming</span>
     </div>
   );
 }

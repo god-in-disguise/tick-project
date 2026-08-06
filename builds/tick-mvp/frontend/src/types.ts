@@ -2,7 +2,7 @@ export type Side = "long" | "short";
 export type FeedStatus = "live" | "delayed" | "stale" | "disconnected" | "resyncing";
 export type PositionStatus = "opening" | "open" | "closing" | "closed" | "liquidated" | "unknown";
 export type TradingMode = "live" | "demo";
-export type VenueMode = "gtrade" | "flash";
+export type VenueMode = "gtrade" | "flash" | "avantis";
 
 export type MarketObservation = {
   seq: number;
@@ -143,6 +143,10 @@ export type Quote = {
   stopLossPrice: number | null;
   takeProfitPrice: number | null;
   openingAllowed: boolean;
+  profitFeeTiers?: Array<{
+    minProfitPct: number;
+    feeSharePct: number;
+  }>;
   createdAt: string;
   expiresAt: string;
 };

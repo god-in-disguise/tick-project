@@ -30,7 +30,7 @@ export function GestureGuide({ userId }: Props) {
       <section className="gesture-guide-panel">
         <header>
           <strong>HOW IT WORKS</strong>
-          <p>Swipe to trade. Move through live markets.</p>
+          <p>Choose an action. Swipe is the fast shortcut.</p>
         </header>
         <div className="gesture-guide-actions">
           <Gesture direction="up" Icon={ArrowUp} gesture="Swipe up" action="Go long" />

@@ -60,6 +60,23 @@ function TickApp({
   const [tab, setTab] = useState<Tab>("trade");
   const [depositRequested, setDepositRequested] = useState(false);
 
+  if (!tick.activeMarket && tick.activePosition) {
+    return (
+      <div className="position-exit-fallback">
+        <span>ACTIVE POSITION</span>
+        <strong>{tick.activePosition.market}</strong>
+        <p>
+          {tick.activePosition.side.toUpperCase()} · {tick.activePosition.leverage}x
+        </p>
+        <small>Market display is reconnecting. Your exit remains available.</small>
+        <button type="button" disabled={tick.busy} onClick={tick.close}>
+          {tick.busy ? "Closing" : "Close position"}
+        </button>
+        {tick.error ? <em>{tick.error}</em> : null}
+      </div>
+    );
+  }
+
   if (!tick.activeMarket) {
     return (
       <div className="loading-screen">
@@ -123,6 +140,7 @@ function TickApp({
             onShift={tick.shiftMarket}
             onFund={requestFunding}
             onStartLive={() => void requestLiveFunding()}
+            onEditPreset={() => setTab("profile")}
           />
         ) : null}
         {tab === "dashboard" ? <Dashboard markets={tick.markets} onMarket={selectMarket} /> : null}

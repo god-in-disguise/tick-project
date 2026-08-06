@@ -60,9 +60,11 @@ export function Profile(props: Props) {
   const [customAmountText, setCustomAmountText] = useState(String(props.settings.ticketUsd));
   const [confirmingDemoReset, setConfirmingDemoReset] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<"all" | "wins" | "losses" | "liquidations">("all");
-  const leverageOptions = props.activeVenue === "flash"
+  const leverageOptions = (props.activeVenue === "flash"
     ? [100, 500]
-    : [25, 50, 100, 500];
+    : [25, 50, 75, 100, 200, 250, 500, 1000]).filter(
+    (value) => value >= props.market.minLeverage && value <= props.market.maxLeverage
+  );
   const address = props.balances?.address ?? props.state?.wallet?.address ?? props.session?.walletAddress;
   const activePosition = props.state?.positions.find(
     (position) =>
@@ -100,7 +102,17 @@ export function Profile(props: Props) {
   const profile = props.state?.tradingProfile;
   const resolvedTicketUsd = effectiveTicketUsd(props.settings, props.market);
   const demoMode = profile?.mode === "demo";
-  const network = props.activeVenue === "flash" ? "Solana" : "Arbitrum One";
+  const network = props.activeVenue === "flash"
+    ? "Solana"
+    : props.activeVenue === "avantis"
+      ? "Base"
+      : "Arbitrum One";
+  const venueLabel = props.activeVenue === "flash"
+    ? "Flash Trade"
+    : props.activeVenue === "avantis"
+      ? "Avantis"
+      : "gTrade";
+  const withdrawalUnavailable = props.activeVenue === "avantis";
   const filteredHistory = useMemo(
     () => history.filter(({ position, reconciliation }) => {
       const pnl = reconciliation?.walletDeltaUsd;
@@ -203,9 +215,9 @@ export function Profile(props: Props) {
           </button>
         </div>
         <strong>{money(available)}</strong>
-        {props.activeVenue === "flash" && (props.balances?.onchainUsdc ?? 0) > 0 ? (
+        {props.activeVenue !== "gtrade" && (props.balances?.onchainUsdc ?? 0) > 0 && !props.balances?.venueReady ? (
           <div className="flash-funding-status">
-            <span>Preparing Flash balance</span>
+            <span>Preparing {venueLabel} balance</span>
             <strong>{money(props.balances?.onchainUsdc ?? 0)} received</strong>
           </div>
         ) : null}
@@ -227,8 +239,9 @@ export function Profile(props: Props) {
               </button>
               <button
                 type="button"
-                disabled={withdrawable <= 0}
+                disabled={withdrawable <= 0 || withdrawalUnavailable}
                 onClick={() => setWalletAction("withdraw")}
+                title={withdrawalUnavailable ? `${venueLabel} withdrawals are still manual in testing mode` : undefined}
               >
                 <ArrowUpFromLine size={16} />
                 Withdraw
@@ -365,7 +378,7 @@ export function Profile(props: Props) {
       </div>
       <section className="account-facts">
         <div><span>Network</span><strong>{network}</strong></div>
-        <div><span>Execution</span><strong>{props.activeVenue === "flash" ? "Flash Trade" : "gTrade"}</strong></div>
+        <div><span>Execution</span><strong>{venueLabel}</strong></div>
         <div><span>Account</span><strong>Invite protected</strong></div>
         <div><span>Email</span><strong>Not linked</strong></div>
       </section>
@@ -378,16 +391,24 @@ export function Profile(props: Props) {
               : "Broader markets with venue stop loss and take profit."}
           </span>
         </div>
-        <div className="trading-mode-control" role="group" aria-label="Venue">
-          {(["gtrade", "flash"] as const).map((venue) => (
+        <div className={`venue-option-list ${props.profileBusy ? "is-switching" : ""}`} role="group" aria-label="Venue">
+          {enabledVenues().map((venue) => (
             <button
               key={venue}
               type="button"
               className={props.activeVenue === venue ? "active" : ""}
               disabled={props.profileBusy || Boolean(activePosition)}
+              aria-busy={props.profileBusy && props.activeVenue !== venue}
               onClick={() => void props.onVenue(venue)}
             >
-              {venue === "gtrade" ? "gTrade" : "Flash"}
+              <strong>{venue === "gtrade" ? "gTrade" : venue === "flash" ? "Flash" : "Avantis"}</strong>
+              <span>
+                {venue === "gtrade"
+                  ? "Broad 500x route · fixed open and close fees"
+                  : venue === "flash"
+                    ? "Fastest tested fills · separate Solana balance"
+                    : "Lower losing-trade cost · slower keeper fill · profit share on wins"}
+              </span>
             </button>
           ))}
         </div>
@@ -646,7 +667,9 @@ export function Profile(props: Props) {
                 <p>
                   {props.activeVenue === "flash"
                     ? "Send native Solana USDC. TICK supplies setup SOL and moves the deposit into your Flash account automatically."
-                    : "Send native USDC on Arbitrum to your TICK wallet."}
+                    : props.activeVenue === "avantis"
+                      ? "Send native USDC on Base. TICK supplies setup ETH and enables delegated Avantis execution automatically."
+                      : "Send native USDC on Arbitrum to your TICK wallet."}
                 </p>
                 {address ? (
                   <div className="deposit-qr">
@@ -734,6 +757,16 @@ export function Profile(props: Props) {
       ) : null}
     </main>
   );
+}
+
+function enabledVenues(): VenueMode[] {
+  const configured = String(import.meta.env.VITE_ENABLED_VENUES ?? "gtrade,avantis")
+    .split(",")
+    .map((venue) => venue.trim())
+    .filter((venue): venue is VenueMode =>
+      venue === "gtrade" || venue === "flash" || venue === "avantis"
+    );
+  return configured.length ? configured : ["gtrade", "avantis"];
 }
 
 async function copyText(value: string): Promise<void> {
