@@ -1,0 +1,164 @@
+{
+  "sampleCount": 4,
+  "method": "prewarmed Pyth Lazer SSE + local calldata/signing + reused QuickNode HTTP + Base Flashblocks pendingLogs",
+  "p95Available": false,
+  "rows": [
+    {
+      "report": "research/experiments/venue-checks/reports/avantis/current_75x_live.json",
+      "leverage": 75,
+      "side": "short",
+      "marginUsdc": 10.0,
+      "setupMs": 8155.0,
+      "openEncodeSignMs": 15.6,
+      "openBroadcastResponseMs": 215.0,
+      "openInitiationPreconfirmedMs": 787.8,
+      "openVisibleMs": 3987.0,
+      "openKeeperAfterInitiationMs": 3199.2,
+      "closeEncodeSignMs": 8.0,
+      "closeBroadcastResponseMs": 226.5,
+      "closeInitiationPreconfirmedMs": 450.1999999999998,
+      "closeVisibleMs": 3010.7999999999993,
+      "closeKeeperAfterInitiationMs": 2560.5999999999995,
+      "closeSealAfterVisibleMs": 1184.300000000001,
+      "executionAdjustmentUsd": 0.150088311825336,
+      "executionAdjustmentPctOfMargin": 1.50088311825336,
+      "closingFeeUsdc": 0.0,
+      "marketAndRoundingResultUsdc": 0.011882311825336,
+      "actualUsdcDelta": -0.138206,
+      "returnedUsdc": 9.861794,
+      "ethDelta": -1.8146821076217567e-05
+    },
+    {
+      "report": "research/experiments/venue-checks/reports/avantis/current_100x_live.json",
+      "leverage": 100,
+      "side": "short",
+      "marginUsdc": 10.0,
+      "setupMs": 7496.6,
+      "openEncodeSignMs": 14.4,
+      "openBroadcastResponseMs": 246.7,
+      "openInitiationPreconfirmedMs": 477.4,
+      "openVisibleMs": 3792.5,
+      "openKeeperAfterInitiationMs": 3315.1,
+      "closeEncodeSignMs": 10.800000000000182,
+      "closeBroadcastResponseMs": 221.29999999999927,
+      "closeInitiationPreconfirmedMs": 433.89999999999964,
+      "closeVisibleMs": 2824.8999999999996,
+      "closeKeeperAfterInitiationMs": 2391.0,
+      "closeSealAfterVisibleMs": 1191.9000000000005,
+      "executionAdjustmentUsd": 0.200143663469321,
+      "executionAdjustmentPctOfMargin": 2.00143663469321,
+      "closingFeeUsdc": 0.0,
+      "marketAndRoundingResultUsdc": -0.003007336530679,
+      "actualUsdcDelta": -0.203151,
+      "returnedUsdc": 9.796849,
+      "ethDelta": -1.8146599870124194e-05
+    },
+    {
+      "report": "research/experiments/venue-checks/reports/avantis/current_250x_live.json",
+      "leverage": 250,
+      "side": "short",
+      "marginUsdc": 10.0,
+      "setupMs": 23805.7,
+      "openEncodeSignMs": 16.599999999999998,
+      "openBroadcastResponseMs": 238.5,
+      "openInitiationPreconfirmedMs": 438.0,
+      "openVisibleMs": 3349.6,
+      "openKeeperAfterInitiationMs": 2911.6,
+      "closeEncodeSignMs": 13.100000000000364,
+      "closeBroadcastResponseMs": 231.5,
+      "closeInitiationPreconfirmedMs": 456.0,
+      "closeVisibleMs": 2996.1000000000004,
+      "closeKeeperAfterInitiationMs": 2540.1000000000004,
+      "closeSealAfterVisibleMs": 1632.6000000000004,
+      "executionAdjustmentUsd": 0.5007478692836687,
+      "executionAdjustmentPctOfMargin": 5.007478692836687,
+      "closingFeeUsdc": 0.0,
+      "marketAndRoundingResultUsdc": -0.003057130716331291,
+      "actualUsdcDelta": -0.503805,
+      "returnedUsdc": 9.496195,
+      "ethDelta": -1.814679327651232e-05
+    },
+    {
+      "report": "research/experiments/venue-checks/reports/avantis/current_500x_live.json",
+      "leverage": 500,
+      "side": "short",
+      "marginUsdc": 10.0,
+      "setupMs": 8321.4,
+      "openEncodeSignMs": 10.8,
+      "openBroadcastResponseMs": 249.2,
+      "openInitiationPreconfirmedMs": 618.1,
+      "openVisibleMs": 3897.6,
+      "openKeeperAfterInitiationMs": 3279.5,
+      "closeEncodeSignMs": 14.400000000000546,
+      "closeBroadcastResponseMs": 215.90000000000055,
+      "closeInitiationPreconfirmedMs": 436.5,
+      "closeVisibleMs": 3004.6000000000004,
+      "closeKeeperAfterInitiationMs": 2568.1000000000004,
+      "closeSealAfterVisibleMs": 1224.8999999999996,
+      "executionAdjustmentUsd": 1.0027914728194531,
+      "executionAdjustmentPctOfMargin": 10.027914728194531,
+      "closingFeeUsdc": 0.0,
+      "marketAndRoundingResultUsdc": -0.004975527180546946,
+      "actualUsdcDelta": -1.007767,
+      "returnedUsdc": 8.992233,
+      "ethDelta": -1.8352759240333055e-05
+    }
+  ],
+  "latencySummaryMs": {
+    "openEncodeSignMs": {
+      "min": 10.8,
+      "median": 15.0,
+      "max": 16.599999999999998
+    },
+    "openBroadcastResponseMs": {
+      "min": 215.0,
+      "median": 242.6,
+      "max": 249.2
+    },
+    "openInitiationPreconfirmedMs": {
+      "min": 438.0,
+      "median": 547.75,
+      "max": 787.8
+    },
+    "openVisibleMs": {
+      "min": 3349.6,
+      "median": 3845.05,
+      "max": 3987.0
+    },
+    "openKeeperAfterInitiationMs": {
+      "min": 2911.6,
+      "median": 3239.35,
+      "max": 3315.1
+    },
+    "closeEncodeSignMs": {
+      "min": 8.0,
+      "median": 11.950000000000273,
+      "max": 14.400000000000546
+    },
+    "closeBroadcastResponseMs": {
+      "min": 215.90000000000055,
+      "median": 223.89999999999964,
+      "max": 231.5
+    },
+    "closeInitiationPreconfirmedMs": {
+      "min": 433.89999999999964,
+      "median": 443.3499999999999,
+      "max": 456.0
+    },
+    "closeVisibleMs": {
+      "min": 2824.8999999999996,
+      "median": 3000.3500000000004,
+      "max": 3010.7999999999993
+    },
+    "closeKeeperAfterInitiationMs": {
+      "min": 2391.0,
+      "median": 2550.35,
+      "max": 2568.1000000000004
+    },
+    "closeSealAfterVisibleMs": {
+      "min": 1184.300000000001,
+      "median": 1208.4,
+      "max": 1632.6000000000004
+    }
+  }
+}

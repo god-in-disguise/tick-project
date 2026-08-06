@@ -1,23 +1,38 @@
 # Flash Trade
 
-Snapshot: 2026-08-05.
+Snapshot: 2026-08-06.
 
-Status: the production TICK adapter has completed live `$10 x 500` BTC/ETH
-open/close canaries and a live `$10 x 100` BTC cycle. A separate funded canary
-also opened and closed XAU at `100x`. Flash quotes, market data, per-user Solana
-wallets, sponsored account preparation, BTC/ETH execution, USDC withdrawals,
-fee-aware live PnL, and always-on raw-basket terminal monitoring are deployed as
-a selectable production canary. Repeated funded cycles through newly generated
-production-user wallets remain the next certification step.
+Status: shadowed. The TICK adapter completed live `$10 x 500` BTC/ETH
+open/close canaries, a live `$10 x 100` BTC cycle, and a funded XAU `100x`
+cycle. Its code, wallet isolation, market observations, and execution history
+remain available for research. Flash is disabled as a production user route
+because positive PnL is reference-capped during its market-specific delay
+window, while losses and liquidation remain live.
 
 ## Bottom Line
 
-Flash Trade V2 has the strongest measured fast path among TICK's gTrade
-alternatives. Its public ER path is usable through the guarded connector, but
-the API currently reports a development deployment. The local TICK account
-model now provisions an encrypted Solana wallet and isolated Flash basket per
-user. The production PWA exposes that path as a venue mode while gTrade remains
-the default.
+Flash Trade V2 has the strongest measured fast path among TICK's tested gTrade
+alternatives. That speed belongs to a structured high-leverage product rather
+than the canonical mark-to-market perp model TICK currently wants. For BTC and
+ETH Degen positions, positive PnL is delayed for 30 seconds; SOL uses 10
+seconds. During that window the closeable positive result is constrained by a
+reference price even though losses and liquidation continue normally. TICK
+must not display ordinary gross mark PnL as immediately realizable PnL for this
+product.
+
+On 2026-08-06, Chronos's remaining Flash balance was withdrawn. The venue
+settlement returned `5.000000 USDC` to the user's Solana wallet after the prior
+liquidation, and that amount was transferred to the operational Solana wallet.
+The user basket is flat with no positions or orders. Production now has only
+gTrade enabled and `FLASH_REAL_EXECUTION_ENABLED=false`.
+
+```text
+Flash withdrawal action:
+5GCWC1xsfQ6gxfYMCa4K1vSpViVv3jRfMq9sJTEBbxwKJP1hYx1ypZmamtaoqXc6PXL8HmVPxhck5SwftMGJEiwC
+
+Chronos -> operational USDC transfer:
+46LcoA4VbuRhgUvAToCSEDqRgLu5M8pRv8jwa6ikywD3dY2kurKswX32qGHby2sqTBboZjPN9qeG4mJ5PPJcKty7
+```
 
 The documented Degen product supports BTC, ETH, and SOL from 125x through 500x.
 The current public API accepted an unsigned `$10 x 500` quote for all three
@@ -157,12 +172,12 @@ after two transitions exceeded the bounded observation window.
 
 ## TICK Production Boundary
 
-The venue adapter, production per-user wallet split, setup sponsorship, custody
-deposit, wallet withdrawal, continuous position monitoring, restart recovery,
-and fee-aware venue metrics are wired. The terminal monitor checks normalized
-owner metrics first, verifies disappearance against the authoritative raw
-basket twice, defers to an active close worker, and immediately reconciles the
-post-trade basket balance. Broader activation still requires:
+The venue adapter, per-user wallet split, setup sponsorship, custody deposit,
+wallet withdrawal, continuous position monitoring, restart recovery, and
+fee-aware venue metrics remain wired for research. The terminal monitor checks
+normalized owner metrics first, verifies disappearance against the authoritative
+raw basket twice, defers to an active close worker, and immediately reconciles
+the post-trade basket balance. Any future activation still requires:
 
 ```text
 funded end-to-end cycles through newly generated TICK user wallets
@@ -171,10 +186,10 @@ venue-reported terminal reason and cash flow versus wallet reconciliation
 owner-stream terminal events to reduce the current 200 ms polling interval
 ```
 
-TICK does not route user money through the shared canary basket. The production
-PWA offers Flash as a selectable canary backed by a separate encrypted Solana
-wallet per user. gTrade remains the default route while the remaining gates are
-measured.
+TICK does not route user money through the shared canary basket. Flash remains
+shadowed from the production user route. Its isolated encrypted Solana wallets
+and adapter are retained so the product can be reconsidered without rebuilding
+the integration.
 
 A follow-up 12-request builder benchmark isolated the open-build delay:
 

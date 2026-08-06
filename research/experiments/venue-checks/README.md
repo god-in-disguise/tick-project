@@ -2,6 +2,38 @@
 
 These probes are research and canary tools, not production connectors.
 
+## Flash Trade V2
+
+The guarded production-adapter canary uses the ignored Solana canary secret,
+prepares its existing basket, requests a normalized quote, opens, closes, and
+requires the raw basket to return flat:
+
+```bash
+builds/tick-mvp/backend/.venv/bin/python \
+  research/experiments/venue-checks/flash_adapter_canary.py \
+  --execute \
+  --market BTC \
+  --side short \
+  --amount 10 \
+  --leverage 500 \
+  --hold-seconds 0.2 \
+  --json-report research/experiments/venue-checks/reports/flash/adapter-btc-live.json
+```
+
+Only BTC and ETH are execution-certified. Flash submission acknowledgement is
+not execution truth; the canary and production adapter require the intended raw
+basket transition. A timeout may trigger one delayed resend of the identical
+signed transaction. A deterministic program error is not retried.
+
+For local quote and chart evaluation, set:
+
+```text
+ENABLED_VENUES=gtrade,flash
+FLASH_REAL_EXECUTION_ENABLED=false
+```
+
+This does not make the shared research basket available to PWA users.
+
 ## GMTrade
 
 ## Aster
@@ -170,3 +202,38 @@ The clean 500x cycle returned `$8.961121` from `$10`, consumed
 canary refreshes the pending wallet nonce immediately before every signature;
 this prevents an SDK transaction template built after an approval from reusing
 the approval nonce.
+
+For the latency path, use the optimized canary. It prewarms the official SDK,
+Pyth Lazer feed, execution fee, fee envelope, nonce, and gas estimate before the
+gesture. The hot path locally encodes and signs the prepared transaction, sends
+it over a reused HTTP connection, and races Base Flashblocks `pendingLogs`
+against the sealed callback:
+
+```bash
+BASE_RPC_URL="<base-rpc>" \
+BASE_WSS_URL="<base-wss>" \
+  venue-checks/.venv/bin/python venue-checks/avantis_zfp_optimized_canary.py \
+  --execute \
+  --i-understand-live-risk \
+  --side short \
+  --leverage 500 \
+  --hold-seconds 1 \
+  --json-report venue-checks/reports/avantis/optimized_500x.json
+```
+
+`pendingLogs` is treated as preconfirmed visibility, not final settlement. The
+canary waits separately for the sealed callback and verifies the final flat
+state. It also decodes `PriceReceived`, `MarketExecuted`, and `FeesCharged` so
+venue execution adjustment, market movement, and closing fee are not conflated.
+
+Build a comparable latency and cost matrix from completed reports with:
+
+```bash
+venue-checks/.venv/bin/python venue-checks/avantis_zfp_matrix.py \
+  venue-checks/reports/avantis/optimized_75x_flash_1.json \
+  venue-checks/reports/avantis/optimized_100x_flash_1.json \
+  venue-checks/reports/avantis/optimized_250x_flash_1.json \
+  venue-checks/reports/avantis/optimized_500x_flash_2.json \
+  --json-report venue-checks/reports/avantis/optimized_matrix.json \
+  --markdown-report venue-checks/reports/avantis/optimized_matrix.md
+```

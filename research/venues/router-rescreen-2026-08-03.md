@@ -69,7 +69,7 @@ realized PnL.
 
 | Venue | Best lane | Current economics | Integration fit | Main unknown |
 | --- | --- | --- | --- | --- |
-| [Avantis](avantis.md) | Small-ticket high leverage and cross-asset | Live $10 cycles returned $9.792732 at 75x and $8.961121 at 500x with no fixed open/close trading fee; spread, impact, execution ETH, and winning-trade profit share still apply | Live wallet-native 75x and 500x canaries passed; Python SDK, delegated trading, native TP/SL | WSS callback p50/p95, hot-path SDK build removal, profitable-close share |
+| [Avantis](avantis.md) | Small-ticket high leverage and cross-asset | Receipt-level `$10` matrix measured opening adjustments of `$0.150108` at 75x through `$1.003661` at 500x, with `$0` closing fee in all four losing samples; execution ETH and winning-trade profit share still apply | Live wallet-native 75x/100x/250x/500x canaries passed; optimized local signing, Base Flashblocks, Python SDK, delegated trading, native TP/SL | Keeper callback p50/p95, profitable-close share, delegated lifecycle |
 | [Paradex](paradex.md) | Small-ticket crypto | Retail interactive orders are documented as zero fee with a 300 ms speed bump | API subkeys, REST/WS, native TP/SL | Whether TICK's custodial PWA flow qualifies as interactive and its measured fill path |
 | [Lighter](lighter.md) | Small-ticket crypto | Standard account has zero maker/taker fees with a 300 ms taker delay | API keys, fast sequencer, broad markets | Signed lifecycle, custody/account model, actual small-order fills |
 | [Aark](aark.md) | Small-ticket 500x-1000x | Favorable tested fee model for the loop | Gasless delegated API | TICK needs partner authorization or an accepted origin challenge |
@@ -91,12 +91,14 @@ the 300 ms delay does not hide a larger lifecycle delay.
 
 ### 2. Avantis ZFP integration benchmark
 
-The 75x and 500x signed canaries passed. They directly addressed the problem
-that hurts gTrade's $10 loop: the losing trades had no fixed venue trading fee.
-The next benchmark must pre-arm Base WSS callback detection, remove the
-approximately two-second SDK open-build delay from the hot path, batch the
-500x comparison, and capture a winning close's profit share before Avantis
-becomes a production route.
+The 75x, 100x, 250x, and 500x signed canaries passed. They directly addressed
+the problem that hurts gTrade's $10 loop: the 500x opening adjustment measured
+about `$1.00`, while all four losing samples reported no closing fee. The
+optimized path reduced local encode/sign to single-digit milliseconds and
+preconfirmed initiation in roughly 0.36-0.78 seconds. Callback visibility still
+took 2.99-4.03 seconds, making Avantis keeper behavior the remaining latency
+question. The next benchmark is a 20-cycle p50/p95 batch plus a profitable-close
+profit-share sample.
 
 ### 3. Lighter Standard signed canary
 

@@ -1,0 +1,382 @@
+{
+  "createdAt": "2026-08-06T10:57:28.651353+00:00",
+  "mode": "optimized_sse_wss",
+  "wallet": "0xeD1fa479504Ec60DB8a314BfF2DbbD1bB481Db78",
+  "chainId": 8453,
+  "pair": "BTC/USD",
+  "pairIndex": 1,
+  "side": "short",
+  "marginUsdc": 10.0,
+  "leverage": 250,
+  "holdSeconds": 1.0,
+  "setupMs": 46797.2,
+  "openGas": 720000,
+  "closeGas": 660000,
+  "executionFeeWei": 5636134740000,
+  "callbackMode": "pendingLogs",
+  "before": {
+    "eth": 0.009489129637311714,
+    "usdc": 43.974271,
+    "allowanceUsdc": 0.0,
+    "openCount": 0,
+    "pendingOpenCount": 0,
+    "pendingCloseCount": 0,
+    "nextTradeIndex": 0,
+    "callbacks": "0x0C16ff40065Cc3Ab4bc55B60E447504AFB9C7970"
+  },
+  "openInitiated": {
+    "trader": "0xeD1fa479504Ec60DB8a314BfF2DbbD1bB481Db78",
+    "pairIndex": 1,
+    "open": true,
+    "orderId": 6329487,
+    "timestamp": 1786013839,
+    "isBuy": false,
+    "isPnl": true,
+    "initialPosToken": 10000000,
+    "leverage": 2500000000000
+  },
+  "openCallback": {
+    "event": "MarketExecuted",
+    "args": {
+      "orderId": 6329487,
+      "t": {
+        "trader": "0xeD1fa479504Ec60DB8a314BfF2DbbD1bB481Db78",
+        "pairIndex": 1,
+        "index": 0,
+        "initialPosToken": 10000000,
+        "positionSizeUSDC": 1786013841,
+        "openPrice": 645292991565164,
+        "buy": false,
+        "leverage": 2500000000000,
+        "tp": 580763692408648,
+        "sl": 0,
+        "timestamp": 1786013841
+      },
+      "open": true,
+      "price": 645292991565164,
+      "positionSizeUSDC": 10000000,
+      "percentProfit": 0,
+      "usdcSentToTrader": 0,
+      "isPnl": true
+    },
+    "transactionHash": "0x6470c89aa42aed719fc6e8e8a08de70f7cb80be96c6c2cb52f78d5716175ca7a",
+    "blockNumber": 49612247,
+    "logIndex": 452,
+    "receivedAt": "2026-08-06T10:57:20.465866+00:00"
+  },
+  "closeInitiated": {
+    "trader": "0xeD1fa479504Ec60DB8a314BfF2DbbD1bB481Db78",
+    "pairIndex": 1,
+    "open": false,
+    "orderId": 6329488,
+    "timestamp": 1786013843,
+    "isBuy": false,
+    "isPnl": true,
+    "initialPosToken": 10000000,
+    "leverage": 2500000000000
+  },
+  "closeCallback": {
+    "event": "MarketExecuted",
+    "args": {
+      "orderId": 6329488,
+      "t": {
+        "trader": "0xeD1fa479504Ec60DB8a314BfF2DbbD1bB481Db78",
+        "pairIndex": 1,
+        "index": 0,
+        "initialPosToken": 10000000,
+        "positionSizeUSDC": 1786013841,
+        "openPrice": 645292991565164,
+        "buy": false,
+        "leverage": 2500000000000,
+        "tp": 580763692408648,
+        "sl": 0,
+        "timestamp": 1786013841
+      },
+      "open": false,
+      "price": 645424549718400,
+      "positionSizeUSDC": 10000000,
+      "percentProfit": -50968379850,
+      "usdcSentToTrader": 9490317,
+      "isPnl": true
+    },
+    "transactionHash": "0x6d8d36366c04e23d1c73846b1fb1151f05eae2cf12ab0356ebf8aa6936546f8f",
+    "blockNumber": 49612250,
+    "logIndex": 363,
+    "receivedAt": "2026-08-06T10:57:25.387455+00:00"
+  },
+  "after": {
+    "eth": 0.009470804094681012,
+    "usdc": 43.464588,
+    "allowanceUsdc": 0.0,
+    "openCount": 0,
+    "pendingOpenCount": 0,
+    "pendingCloseCount": 0,
+    "nextTradeIndex": 0,
+    "callbacks": "0x0C16ff40065Cc3Ab4bc55B60E447504AFB9C7970"
+  },
+  "usdcDelta": -0.509683,
+  "ethDelta": -1.8325542630702116e-05,
+  "costAnalysis": {
+    "open": {
+      "transactionHash": "0x6470c89aa42aed719fc6e8e8a08de70f7cb80be96c6c2cb52f78d5716175ca7a",
+      "blockNumber": 49612247,
+      "blockTimestamp": 1786013841,
+      "orderId": 6329487,
+      "callbackSender": "0xf45CfB7BEd7856E5847E7955A1ac8C3cf9e3317A",
+      "callbackTarget": "0x44914408af82bC9983bbb330e3578E1105e11d4e",
+      "callbackSelector": "0x53e8840c",
+      "callbackMethod": "executeMarketOrders",
+      "callbackOrderIds": [
+        6329487
+      ],
+      "priceSource": "pyth_lazer",
+      "spreadP": 200259036,
+      "signedPriceUpdates": [
+        {
+          "signedUpdateBytes": 111,
+          "envelopeMagic": 706910618,
+          "recoveryId": 27,
+          "payloadBytes": 40,
+          "payloadMagic": 2479346549,
+          "oracleTimestampUs": 1786013839800000,
+          "oracleTimestampUtc": "2026-08-06T10:57:19.800000+00:00",
+          "channel": 3,
+          "feedCount": 1,
+          "oracleToPendingLogMs": 665.866,
+          "oracleToCallbackBlockTimestampMs": 1200.0
+        }
+      ],
+      "callbackPendingLogAt": "2026-08-06T10:57:20.465866+00:00",
+      "pythPriceUpdates": [],
+      "newestOraclePublishTime": null,
+      "oraclePublishToCallbackBlockMs": null,
+      "positionTimestamp": 1786013841,
+      "positionTimestampToCallbackBlockMs": 0,
+      "oraclePrice": 64542.22432014,
+      "executionPrice": 64529.2991565164,
+      "executionAdjustmentPct": 0.020029914771346746,
+      "executionAdjustmentUsdAtRequestedNotional": 0.5007478692836687,
+      "feesCharged": []
+    },
+    "close": {
+      "transactionHash": "0x6d8d36366c04e23d1c73846b1fb1151f05eae2cf12ab0356ebf8aa6936546f8f",
+      "blockNumber": 49612250,
+      "blockTimestamp": 1786013847,
+      "orderId": 6329488,
+      "callbackSender": "0x47811Ea3EbA7FC33550Ec370bCFDc661B586cd4d",
+      "callbackTarget": "0x44914408af82bC9983bbb330e3578E1105e11d4e",
+      "callbackSelector": "0x53e8840c",
+      "callbackMethod": "executeMarketOrders",
+      "callbackOrderIds": [
+        6329488
+      ],
+      "priceSource": "pyth_lazer",
+      "spreadP": 0,
+      "signedPriceUpdates": [
+        {
+          "signedUpdateBytes": 111,
+          "envelopeMagic": 706910618,
+          "recoveryId": 27,
+          "payloadBytes": 40,
+          "payloadMagic": 2479346549,
+          "oracleTimestampUs": 1786013844800000,
+          "oracleTimestampUtc": "2026-08-06T10:57:24.800000+00:00",
+          "channel": 3,
+          "feedCount": 1,
+          "oracleToPendingLogMs": 587.455,
+          "oracleToCallbackBlockTimestampMs": 2200.0
+        }
+      ],
+      "callbackPendingLogAt": "2026-08-06T10:57:25.387455+00:00",
+      "pythPriceUpdates": [],
+      "newestOraclePublishTime": null,
+      "oraclePublishToCallbackBlockMs": null,
+      "positionTimestamp": 1786013841,
+      "positionTimestampToCallbackBlockMs": 6000,
+      "oraclePrice": 64542.45497184,
+      "executionPrice": 64542.45497184,
+      "executionAdjustmentPct": 0.0,
+      "executionAdjustmentUsdAtRequestedNotional": 0.0,
+      "feesCharged": [
+        {
+          "buy": false,
+          "collateral": 10000000,
+          "leverage": 2500000000000,
+          "percentProfit": -50968379850,
+          "r": 0,
+          "closingFee": 0,
+          "lossProtection": 100
+        }
+      ]
+    },
+    "totalExecutionAdjustmentUsd": 0.5007478692836687
+  },
+  "timeline": {
+    "open_gesture": {
+      "utc": "2026-08-06T10:57:16.839986+00:00",
+      "elapsedMs": 0.0,
+      "price": 64542.56626051,
+      "priceAgeMs": 186.3,
+      "sourceTimestampMs": 1786013836200
+    },
+    "open_encoded": {
+      "utc": "2026-08-06T10:57:16.844541+00:00",
+      "elapsedMs": 4.6
+    },
+    "open_sign_started": {
+      "utc": "2026-08-06T10:57:16.844573+00:00",
+      "elapsedMs": 4.6
+    },
+    "open_signed": {
+      "utc": "2026-08-06T10:57:16.850555+00:00",
+      "elapsedMs": 10.6,
+      "txHash": "0xd0944fcb2b8402a43aba2700b4f57d93c400560aad986440a3258f092f5a5c5a",
+      "nonce": 86,
+      "gas": 720000
+    },
+    "open_broadcast_started": {
+      "utc": "2026-08-06T10:57:16.850578+00:00",
+      "elapsedMs": 10.6
+    },
+    "open_broadcast_returned": {
+      "utc": "2026-08-06T10:57:17.068915+00:00",
+      "elapsedMs": 229.0,
+      "txHash": "0xd0944fcb2b8402a43aba2700b4f57d93c400560aad986440a3258f092f5a5c5a"
+    },
+    "open_receipt": {
+      "utc": "2026-08-06T10:57:17.326599+00:00",
+      "elapsedMs": 486.6,
+      "txHash": "0xd0944fcb2b8402a43aba2700b4f57d93c400560aad986440a3258f092f5a5c5a",
+      "blockNumber": 49612246,
+      "status": 1
+    },
+    "open_callback_direct": {
+      "utc": "2026-08-06T10:57:20.465866+00:00",
+      "elapsedMs": 3625.8,
+      "event": "MarketExecuted",
+      "args": {
+        "orderId": 6329487,
+        "t": {
+          "trader": "0xeD1fa479504Ec60DB8a314BfF2DbbD1bB481Db78",
+          "pairIndex": 1,
+          "index": 0,
+          "initialPosToken": 10000000,
+          "positionSizeUSDC": 1786013841,
+          "openPrice": 645292991565164,
+          "buy": false,
+          "leverage": 2500000000000,
+          "tp": 580763692408648,
+          "sl": 0,
+          "timestamp": 1786013841
+        },
+        "open": true,
+        "price": 645292991565164,
+        "positionSizeUSDC": 10000000,
+        "percentProfit": 0,
+        "usdcSentToTrader": 0,
+        "isPnl": true
+      },
+      "transactionHash": "0x6470c89aa42aed719fc6e8e8a08de70f7cb80be96c6c2cb52f78d5716175ca7a",
+      "blockNumber": 49612247,
+      "logIndex": 452,
+      "receivedAt": "2026-08-06T10:57:20.465866+00:00"
+    },
+    "close_gesture": {
+      "utc": "2026-08-06T10:57:21.466861+00:00",
+      "elapsedMs": 4626.8,
+      "tradeIndex": 0
+    },
+    "close_encoded": {
+      "utc": "2026-08-06T10:57:21.467845+00:00",
+      "elapsedMs": 4627.8
+    },
+    "close_sign_started": {
+      "utc": "2026-08-06T10:57:21.467867+00:00",
+      "elapsedMs": 4627.8
+    },
+    "close_signed": {
+      "utc": "2026-08-06T10:57:21.479275+00:00",
+      "elapsedMs": 4639.2,
+      "txHash": "0x54c12f210cf5285bc278bb0560c238e5f68acccdbcf92cec7297c260650cb50d",
+      "nonce": 87,
+      "gas": 660000
+    },
+    "close_broadcast_started": {
+      "utc": "2026-08-06T10:57:21.479321+00:00",
+      "elapsedMs": 4639.3
+    },
+    "close_broadcast_returned": {
+      "utc": "2026-08-06T10:57:21.710868+00:00",
+      "elapsedMs": 4870.8,
+      "txHash": "0x54c12f210cf5285bc278bb0560c238e5f68acccdbcf92cec7297c260650cb50d"
+    },
+    "close_receipt": {
+      "utc": "2026-08-06T10:57:21.911429+00:00",
+      "elapsedMs": 5071.3,
+      "txHash": "0x54c12f210cf5285bc278bb0560c238e5f68acccdbcf92cec7297c260650cb50d",
+      "blockNumber": 49612248,
+      "status": 1
+    },
+    "close_callback_direct": {
+      "utc": "2026-08-06T10:57:25.387455+00:00",
+      "elapsedMs": 8547.3,
+      "event": "MarketExecuted",
+      "args": {
+        "orderId": 6329488,
+        "t": {
+          "trader": "0xeD1fa479504Ec60DB8a314BfF2DbbD1bB481Db78",
+          "pairIndex": 1,
+          "index": 0,
+          "initialPosToken": 10000000,
+          "positionSizeUSDC": 1786013841,
+          "openPrice": 645292991565164,
+          "buy": false,
+          "leverage": 2500000000000,
+          "tp": 580763692408648,
+          "sl": 0,
+          "timestamp": 1786013841
+        },
+        "open": false,
+        "price": 645424549718400,
+        "positionSizeUSDC": 10000000,
+        "percentProfit": -50968379850,
+        "usdcSentToTrader": 9490317,
+        "isPnl": true
+      },
+      "transactionHash": "0x6d8d36366c04e23d1c73846b1fb1151f05eae2cf12ab0356ebf8aa6936546f8f",
+      "blockNumber": 49612250,
+      "logIndex": 363,
+      "receivedAt": "2026-08-06T10:57:25.387455+00:00"
+    },
+    "close_callback_sealed": {
+      "utc": "2026-08-06T10:57:28.186188+00:00",
+      "elapsedMs": 11346.1,
+      "callbackBlock": 49612250,
+      "sealedHead": 49612250
+    }
+  },
+  "setupTimeline": {
+    "approval_signed": {
+      "utc": "2026-08-06T10:56:34.246341+00:00",
+      "elapsedMs": 1254.5,
+      "txHash": "0x3c5700490a93ad2e19d7852ee494f9f2a0972ca6f77af82f531a9ad38320d242",
+      "nonce": 85,
+      "gas": 67488,
+      "valueWei": 0
+    },
+    "approval_broadcast_returned": {
+      "utc": "2026-08-06T10:56:34.486510+00:00",
+      "elapsedMs": 1494.6,
+      "txHash": "0x3c5700490a93ad2e19d7852ee494f9f2a0972ca6f77af82f531a9ad38320d242"
+    },
+    "approval_receipt": {
+      "utc": "2026-08-06T10:56:34.597942+00:00",
+      "elapsedMs": 1606.0,
+      "txHash": "0x3c5700490a93ad2e19d7852ee494f9f2a0972ca6f77af82f531a9ad38320d242",
+      "blockNumber": 49612224,
+      "status": 1,
+      "gasUsed": 55437,
+      "effectiveGasPrice": 6000000
+    }
+  }
+}
