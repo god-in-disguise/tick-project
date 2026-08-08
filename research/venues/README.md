@@ -24,6 +24,7 @@ Snapshot: 2026-08-08.
 | [Flash Trade](flash.md) | Live tested, shadowed | Future game-like high-leverage mode and execution research | MagicBlock ER with transaction builders, session keys, signed submission, and owner WS | BTC/ETH 100x and 500x live-tested; XAU 100x canary passed; SOL and synthetic 200x disabled | Live `$10 x 500` cycles cost about `$1.67`; positive PnL is reference-capped during the market-specific delay window | Voltage points exist; not a routing reason | Preserved as a shadow adapter; disabled as a production user route because its delayed positive-PnL mechanics do not match canonical perps |
 | [Avantis](avantis.md) | Documented | Small-ticket high leverage and cross-asset | Base transaction plus oracle execution; SDK and delegation | ZFP majors documented at 75x-500x | ZFP has no fixed open/close fee; winning closes pay variable profit share; spread and execution still apply | Avantis XP exists; not a routing reason | Strongest new high-leverage canary candidate |
 | [Ondo Perps](ondo.md) | Documented + public measured | TICK Pro and lower-leverage cross-asset | Offchain SGX order book/account engine with onchain deposits and withdrawals | 5x-25x across 35 enabled crypto, stock, ETF, index, and commodity markets | Live API reports 1.5 bps maker and 3.5 bps taker; liquidation can charge 1.5% of notional | Ondo points exist; not a routing reason | High-priority normal-wallet canary; rich data and fast matching, but cross-margin omnibus custody requires a distinct truth model |
+| [Decibel](decibel.md) | Documented + public-page measured | Fast onchain TICK Pro and cross-asset | Fully onchain Aptos CLOB with trade-only API wallets, Trading Accounts, private WS, and optional gas sponsorship | BTC 40x; SPY 50x; ETH/metals 25x; broad 5x-30x crypto/RWA catalog | Tier-0 taker 3.4 bps and maker 1.1 bps per fill; `$10 x 40` taker round trip is `$0.272` before spread/funding/gas | AMPs and rebates exist; not a routing reason | Top signed-canary candidate; strong execution truth and likely fast fills, but Aptos account provisioning, authenticated data, cross margin, and terms need validation |
 | [Paradex](paradex.md) | Documented + public measured | Small-ticket crypto | Starknet CLOB with EVM onboarding and trading subkeys | BTC/ETH/SOL 50x, HYPE 20x in current public config | Interactive retail orders are zero fee with a 300 ms speed bump | Rewards are secondary | Strong immediate canary if TICK qualifies for interactive classification |
 | [Aark](aark.md) | Live tested | Small-ticket high-leverage crypto | Gasless API/relayer with per-user delegated signer and venue balance | BTC 500x/750x/1000x in current live config | 1 bp open fee plus $0.60 execution fee in the live canary; losing close charged no trading fee | Existing AARK/VIP programs; not a routing reason | Full round trip works with Aark-origin challenge and live EIP-712 signing; TICK-origin challenges and documented EIP-191 opens are currently rejected |
 | [GMTrade](gmtrade.md) | Live tested | High-leverage crypto and cross-asset feed | Solana order transaction followed by keeper/oracle execution; pool based | Live BTC 500x, ETH ~294x, SOL 250x; 54 markets at 100x+ | Crypto/stock/commodity: 1.0-1.2 bps per fill | GT points explicitly qualify users for its TGE | Public keeper path too slow; viable only with private/order-keeper lane |
@@ -45,13 +46,14 @@ Costs above are venue schedules, not all-in TICK costs. Spread, slippage, fundin
 1. Harden the gTrade live route inside `builds/tick-mvp/`: quote truth, native stop, direct events, reducer, reconciliation, and deterministic transaction recovery.
 2. Complete the Avantis ZFP benchmark with a profitable close, delegated lifecycle canary, guaranteed stop, and at least 20 optimized cycles.
 3. Run an Ondo normal-wallet canary: SIWE, Arbitrum USDC deposit, 20x crypto cycle, 25x XAU cycle, private fills, withdrawal, and credential-scope verification.
-4. Run a Paradex Retail signed canary and verify interactive classification, effective fees, the 300 ms speed bump, and private-event latency.
-5. Run Lighter Standard in the same signed harness as Paradex.
-6. Probe Hyperliquid and Orderly as moderate-leverage serious-crypto routes.
-7. Probe Extended for crypto plus one RWA/FX market and measure depth, trading-hour behavior, signing, and fill lifecycle.
-8. Continue Aark partner authorization; the live route works only with an accepted Aark-origin challenge today.
-9. Keep Pacifica as a 50x fallback candidate and Ostium as the live-tested cross-asset accounting benchmark.
-10. Keep Flash in shadow mode for future game mechanics and protocol research; do not expose it as a canonical perp route.
+4. Run a Decibel Aptos canary: trade-only API wallet, Gas Station, `$10 x 40` BTC cycle, one RWA cycle, native stop, WebSocket recovery, withdrawal, and exact fill timing.
+5. Run a Paradex Retail signed canary and verify interactive classification, effective fees, the 300 ms speed bump, and private-event latency.
+6. Run Lighter Standard in the same signed harness as Paradex.
+7. Probe Hyperliquid and Orderly as moderate-leverage serious-crypto routes.
+8. Probe Extended for crypto plus one RWA/FX market and measure depth, trading-hour behavior, signing, and fill lifecycle.
+9. Continue Aark partner authorization; the live route works only with an accepted Aark-origin challenge today.
+10. Keep Pacifica as a 50x fallback candidate and Ostium as the live-tested cross-asset accounting benchmark.
+11. Keep Flash in shadow mode for future game mechanics and protocol research; do not expose it as a canonical perp route.
 
 The full lane analysis and normalized cost formula are in
 [`router-rescreen-2026-08-03.md`](router-rescreen-2026-08-03.md).
