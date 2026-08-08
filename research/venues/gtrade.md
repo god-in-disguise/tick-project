@@ -97,6 +97,54 @@ thread-scoped cache initially warmed the wrong pool, so the final worker uses
 one explicit shared HTTP session across keepalive and broadcaster threads. A
 Docker cross-thread check measured `1.35s` cold and `198ms` reused.
 
+## MegaETH Deployment To Benchmark
+
+Logged: 2026-08-08.
+
+Gains now lists an active MegaETH mainnet deployment. The documented core
+diamond is:
+
+```text
+Network: MegaETH mainnet
+Chain ID: 4326
+GNSMultiCollatDiamond: 0x2D5B1ba6E2093a5b927Fe5bF8C049B107de31eaF
+Public RPC: https://mainnet.megaeth.com/rpc
+Gas token: ETH
+```
+
+MegaETH documents 10 ms mini-blocks, one-second EVM blocks, and a
+`realtime_sendRawTransaction` method that can return transaction execution
+data. This makes the deployment a serious latency A/B candidate for TICK.
+
+Faster chain execution does not establish a faster complete gTrade fill. The
+market-order lifecycle still includes Gains oracle fulfillment and the callback
+transaction. The MegaETH route must therefore measure the same boundaries as
+Arbitrum:
+
+```text
+signed transaction -> initiation execution
+initiation execution -> oracle callback execution
+callback execution -> direct event arrival
+direct event arrival -> normalized position state
+close callback -> financial reconciliation
+```
+
+Open questions before a funded canary:
+
+1. Confirm live pairs, leverage groups, fees, minimum notional, and collateral
+   from the MegaETH deployment rather than reusing Arbitrum configuration.
+2. Confirm delegated-trading support and ABI/version parity.
+3. Find and validate the supported Gains REST and WebSocket endpoints.
+4. Verify direct callback logs, historical backfill, and reorg behavior.
+5. Verify USDm/gUSDm deposit, withdrawal, approval, and user-wallet ownership.
+6. Compare normal `eth_sendRawTransaction` with
+   `realtime_sendRawTransaction` using identical signed bytes.
+7. Run at least 20 low-value open/close cycles and compare p50/p95 with the
+   current Arbitrum route.
+
+Do not merge MegaETH into the production gTrade connector until a complete
+open, close, terminal event, and balance reconciliation are explained.
+
 ## Execution Model
 
 - TICK creates one Arbitrum wallet per user and encrypts its key in Postgres for the private MVP.
@@ -178,3 +226,6 @@ optional wallet balances and allowances
 - [Backend](https://docs.gains.trade/developer/integrators/backend)
 - [Live prices and OHLC snapshots](https://docs.gains.trade/developer/integrators/price-feed)
 - [Arbitrum contract addresses](https://docs.gains.trade/what-is-gains-network/contract-addresses/arbitrum-mainnet)
+- [MegaETH contract addresses](https://docs.gains.trade/what-is-gains-network/contract-addresses/megaeth-mainnet)
+- [MegaETH mainnet](https://docs.megaeth.com/frontier)
+- [MegaETH realtime transaction submission](https://docs.megaeth.com/developer-docs/overview-2/rpc-reference/realtime_sendrawtransaction)
